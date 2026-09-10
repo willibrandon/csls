@@ -1,0 +1,16 @@
+<Project>
+  <Target Name="_BuildCslsDebuggerFixtures"
+          AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildProjectReferences)' != 'false'">
+    <MSBuild Projects="@(CslsDebuggerFixture)"
+             Targets="Build"
+             Properties="Configuration=Debug"
+             RemoveProperties="CurrentSolutionConfigurationContents"
+             BuildInParallel="true" />
+    <MSBuild Projects="@(CslsDebuggerFixture)"
+             Targets="Build"
+             Properties="Configuration=Release"
+             RemoveProperties="CurrentSolutionConfigurationContents"
+             BuildInParallel="true" />
+  </Target>
+</Project>

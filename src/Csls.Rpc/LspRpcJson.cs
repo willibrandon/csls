@@ -30,5 +30,10 @@ public static class LspRpcJson
         {
             options.TypeInfoResolverChain.Add(LspRpcJsonSerializerContext.Default);
         }
+
+        if (!options.TypeInfoResolverChain.Contains(LspRequestIdJsonTypeInfoResolver.Instance))
+        {
+            options.TypeInfoResolverChain.Add(LspRequestIdJsonTypeInfoResolver.Instance);
+        }
     }
 }

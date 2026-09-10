@@ -1,0 +1,91 @@
+using Csls.Debugger.Contracts;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Describes a concrete program invocation owned by a debugger session.
+/// </summary>
+public sealed class DebuggeeLaunchOptions
+{
+    /// <summary>
+    /// Gets the absolute managed assembly or executable path.
+    /// </summary>
+    public required string Program { get; init; }
+
+    /// <summary>
+    /// Gets the absolute working directory.
+    /// </summary>
+    public required string WorkingDirectory { get; init; }
+
+    /// <summary>
+    /// Gets the target argument sequence.
+    /// </summary>
+    public required IReadOnlyList<string> Arguments { get; init; }
+
+    /// <summary>
+    /// Gets environment additions and removals for the target.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string?> Environment { get; init; }
+
+    /// <summary>
+    /// Gets the UTF-8 environment-file path resolved against the target working directory.
+    /// </summary>
+    public string? EnvironmentFilePath { get; init; }
+
+    /// <summary>
+    /// Gets the host used to execute managed assemblies.
+    /// </summary>
+    public string? RuntimeHostPath { get; init; }
+
+    /// <summary>
+    /// Gets whether launch pauses at the first authored entry-point statement.
+    /// </summary>
+    public bool StopAtEntry { get; init; }
+
+    /// <summary>
+    /// Gets build-time source prefixes mapped to local editor paths.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Gets whether local source must match the symbols before source breakpoint binding.
+    /// </summary>
+    public bool RequireExactSource { get; init; } = true;
+
+    /// <summary>
+    /// Gets the session's managed value presentation options.
+    /// </summary>
+    public DebugExpressionEvaluationOptions ExpressionEvaluationOptions { get; init; } = new();
+
+    /// <summary>
+    /// Gets Source Link URL patterns mapped to enabled states.
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets trusted symbol search paths, servers, and cache configuration.
+    /// </summary>
+    public DebugSymbolOptions SymbolOptions { get; init; } = new();
+
+    /// <summary>
+    /// Gets whether the debugger requests unoptimized JIT code for loaded managed modules.
+    /// </summary>
+    public bool SuppressJitOptimizations { get; init; }
+
+    /// <summary>
+    /// Gets whether loaded modules are prepared for compiler-driven Hot Reload.
+    /// </summary>
+    public bool EnableHotReload { get; init; }
+
+    /// <summary>
+    /// Gets whether source stepping excludes non-user managed code.
+    /// </summary>
+    public bool JustMyCode { get; init; } = true;
+
+    /// <summary>
+    /// Gets whether source stepping skips managed properties and operators.
+    /// </summary>
+    public bool EnableStepFiltering { get; init; } = true;
+}

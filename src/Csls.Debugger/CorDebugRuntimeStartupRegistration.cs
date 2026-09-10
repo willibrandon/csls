@@ -1,0 +1,234 @@
+using Csls.Debugger.Interop;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Owns one dbgshim runtime-startup callback registration and its native callback context.
+/// </summary>
+internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
+{
+    private readonly TaskCompletionSource<CorDebugActivationResult> _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly uint _processId;
+    private readonly DebuggerSessionActor _actor;
+    private readonly CorDebugManagedCallback _managedCallback;
+    private readonly SourceBreakpointManager _sourceBreakpoints;
+    private readonly Lock _registrationGate = new();
+    private readonly GCHandle _context;
+    private DbgShimRegistrationHandle? _unregisterHandle;
+    private int _disposed;
+
+    /// <summary>
+    /// Creates a rooted callback context for one runtime-startup registration.
+    /// </summary>
+    /// <param name="processId">The operating-system target identifier to attach.</param>
+    /// <param name="actor">The engine actor that owns runtime activation.</param>
+    /// <param name="managedCallback">The callback object installed before attach.</param>
+    /// <param name="sourceBreakpoints">The manager configured before module callbacks run.</param>
+    internal CorDebugRuntimeStartupRegistration(
+        uint processId,
+        DebuggerSessionActor actor,
+        CorDebugManagedCallback managedCallback,
+        SourceBreakpointManager sourceBreakpoints)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(processId);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(managedCallback);
+        ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        _processId = processId;
+        _actor = actor;
+        _managedCallback = managedCallback;
+        _sourceBreakpoints = sourceBreakpoints;
+        _context = GCHandle.Alloc(this, GCHandleType.Normal);
+    }
+
+    /// <summary>
+    /// Gets the unmanaged callback function passed to dbgshim.
+    /// </summary>
+    internal static unsafe nint Callback =>
+        (nint)(delegate* unmanaged[Stdcall]<nint, nint, int, void>)&OnRuntimeStartup;
+
+    /// <summary>
+    /// Gets the opaque callback context passed to dbgshim.
+    /// </summary>
+    internal nint Context => GCHandle.ToIntPtr(_context);
+
+    /// <summary>
+    /// Records the token returned by a successful dbgshim registration.
+    /// </summary>
+    /// <param name="unregisterToken">The non-null dbgshim registration token.</param>
+    internal void SetUnregisterToken(nint unregisterToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(unregisterToken);
+        lock (_registrationGate)
+        {
+            if (_disposed != 0)
+            {
+                using var abandonedHandle = new DbgShimRegistrationHandle(unregisterToken);
+                throw new ObjectDisposedException(nameof(CorDebugRuntimeStartupRegistration));
+            }
+
+            if (_unregisterHandle is not null)
+            {
+                throw new InvalidOperationException(
+                    "A runtime-startup registration token was already recorded.");
+            }
+
+            _unregisterHandle = new DbgShimRegistrationHandle(unregisterToken);
+        }
+    }
+
+    /// <summary>
+    /// Waits for dbgshim to report runtime startup or activation failure.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting without discarding native ownership.</param>
+    /// <returns>The transferred ICorDebug and ICorDebugProcess interface pointers.</returns>
+    internal Task<CorDebugActivationResult> WaitAsync(CancellationToken cancellationToken) =>
+        _completion.Task.WaitAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        lock (_registrationGate)
+        {
+            if (_disposed != 0)
+            {
+                return;
+            }
+
+            _disposed = 1;
+            _unregisterHandle?.Dispose();
+            _unregisterHandle = null;
+        }
+
+        if (_context.IsAllocated)
+        {
+            _context.Free();
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static void OnRuntimeStartup(nint corDebug, nint parameter, int hresult)
+    {
+        if (parameter == 0)
+        {
+            return;
+        }
+
+        var context = GCHandle.FromIntPtr(parameter);
+        if (context.Target is CorDebugRuntimeStartupRegistration registration)
+        {
+            registration.CompleteRuntimeStartupFromCallback(corDebug, hresult);
+        }
+    }
+
+    private void CompleteRuntimeStartupFromCallback(nint callbackObject, int callbackResult)
+    {
+        nint ownedCallbackObject = callbackObject;
+        Task operation = _actor.InvokeAsync(
+            cancellationToken =>
+            {
+                _ = cancellationToken;
+                nint currentCallbackObject = Interlocked.Exchange(
+                    ref ownedCallbackObject,
+                    0);
+                CompleteRuntimeStartup(currentCallbackObject, callbackResult);
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None);
+        _ = ((IAsyncResult)operation).AsyncWaitHandle.WaitOne();
+        if (operation.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        nint unclaimedCallbackObject = Interlocked.Exchange(
+            ref ownedCallbackObject,
+            0);
+        if (unclaimedCallbackObject != 0)
+        {
+            _ = ComAbi.Release(unclaimedCallbackObject);
+        }
+
+        if (operation.IsCanceled)
+        {
+            _ = _completion.TrySetCanceled();
+            return;
+        }
+
+        AggregateException failure = operation.Exception
+            ?? new AggregateException("Runtime startup failed without an exception.");
+        _ = _completion.TrySetException(failure.InnerExceptions);
+    }
+
+    private unsafe void CompleteRuntimeStartup(nint callbackObject, int callbackResult)
+    {
+        CorDebugHResult.ThrowIfFailed(callbackResult, "Runtime startup");
+        if (callbackObject == 0)
+        {
+            throw new InvalidOperationException(
+                "Runtime startup succeeded without returning an ICorDebug object.");
+        }
+
+        nint corDebug = 0;
+        nint attachedProcess = 0;
+        try
+        {
+            corDebug = ComAbi.QueryInterface(callbackObject, ICorDebugAbi.InterfaceId);
+            _ = ComAbi.Release(callbackObject);
+            callbackObject = 0;
+
+            var api = new ICorDebugAbi(corDebug);
+            CorDebugHResult.ThrowIfFailed(api.Initialize(), "ICorDebug.Initialize");
+            CorDebugHResult.ThrowIfFailed(
+                api.SetManagedHandler(_managedCallback.Pointer),
+                "ICorDebug.SetManagedHandler");
+            nint nativeProcess = 0;
+            nint* processAddress = &nativeProcess;
+            int attachResult = api.DebugActiveProcess(
+                _processId,
+                win32Attach: 0,
+                (nint)processAddress);
+            attachedProcess = Volatile.Read(ref *processAddress);
+            _managedCallback.ThrowIfRuntimeFailed();
+            CorDebugHResult.ThrowIfFailed(attachResult, "ICorDebug.DebugActiveProcess");
+            if (attachedProcess == 0)
+            {
+                throw new InvalidOperationException(
+                    "ICorDebug.DebugActiveProcess succeeded without returning a process.");
+            }
+
+            _sourceBreakpoints.SetRuntimeVersion(
+                CorDebugRuntimeVersionReader.TryRead(attachedProcess));
+            var result = new CorDebugActivationResult(corDebug, attachedProcess);
+            if (!_completion.TrySetResult(result))
+            {
+                throw new InvalidOperationException(
+                    "The runtime-startup callback completed more than once.");
+            }
+
+            corDebug = 0;
+            attachedProcess = 0;
+        }
+        finally
+        {
+            if (attachedProcess != 0)
+            {
+                _ = ComAbi.Release(attachedProcess);
+            }
+
+            if (corDebug != 0)
+            {
+                _ = ComAbi.Release(corDebug);
+            }
+
+            if (callbackObject != 0)
+            {
+                _ = ComAbi.Release(callbackObject);
+            }
+        }
+    }
+
+}

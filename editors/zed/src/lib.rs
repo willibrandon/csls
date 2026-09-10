@@ -9,6 +9,8 @@ use std::path::Path;
 use tar::Archive;
 use zed_extension_api::{self as zed, Result, settings::LspSettings};
 
+mod debug_adapter;
+
 const LANGUAGE_SERVER_ID: &str = "csls";
 
 struct CslsExtension {
@@ -37,31 +39,8 @@ impl zed::Extension for CslsExtension {
         let configured_arguments = binary_settings
             .as_ref()
             .and_then(|settings| settings.arguments.clone());
-        if let Some(path) = binary_settings.and_then(|settings| settings.path) {
-            return Ok(command(
-                path,
-                configured_arguments.unwrap_or_else(lsp_arguments),
-            ));
-        }
-
-        if let Some(path) = worktree.which(LANGUAGE_SERVER_ID) {
-            return Ok(command(
-                path,
-                configured_arguments.unwrap_or_else(lsp_arguments),
-            ));
-        }
-
-        if let Some(path) = self.cached_binary_path.as_ref()
-            && fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
-        {
-            return Ok(command(
-                path.clone(),
-                configured_arguments.unwrap_or_else(lsp_arguments),
-            ));
-        }
-
-        let path = install_latest_release(language_server_id)?;
-        self.cached_binary_path = Some(path.clone());
+        let configured_path = binary_settings.and_then(|settings| settings.path);
+        let path = self.resolve_binary_path(configured_path, worktree, Some(language_server_id))?;
         Ok(command(
             path,
             configured_arguments.unwrap_or_else(lsp_arguments),
@@ -82,6 +61,60 @@ impl zed::Extension for CslsExtension {
             .and_then(|settings| settings.settings);
         Ok(settings.map(|value| zed::serde_json::json!({ "csls": value })))
     }
+
+    fn get_dap_binary(
+        &mut self,
+        adapter_name: String,
+        config: zed::DebugTaskDefinition,
+        user_provided_debug_adapter_path: Option<String>,
+        worktree: &zed::Worktree,
+    ) -> Result<zed::DebugAdapterBinary> {
+        if adapter_name != LANGUAGE_SERVER_ID {
+            return Err(format!("unknown debug adapter: {adapter_name}"));
+        }
+
+        let path = self.resolve_binary_path(user_provided_debug_adapter_path, worktree, None)?;
+        debug_adapter::binary(path, config)
+    }
+
+    fn dap_request_kind(
+        &mut self,
+        adapter_name: String,
+        config: zed::serde_json::Value,
+    ) -> Result<zed::StartDebuggingRequestArgumentsRequest> {
+        if adapter_name != LANGUAGE_SERVER_ID {
+            return Err(format!("unknown debug adapter: {adapter_name}"));
+        }
+
+        debug_adapter::request_kind(&config)
+    }
+}
+
+impl CslsExtension {
+    fn resolve_binary_path(
+        &mut self,
+        configured_path: Option<String>,
+        worktree: &zed::Worktree,
+        status_id: Option<&zed::LanguageServerId>,
+    ) -> Result<String> {
+        if let Some(path) = configured_path {
+            return Ok(path);
+        }
+
+        if let Some(path) = worktree.which(LANGUAGE_SERVER_ID) {
+            return Ok(path);
+        }
+
+        if let Some(path) = self.cached_binary_path.as_ref()
+            && fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
+        {
+            return Ok(path.clone());
+        }
+
+        let path = install_latest_release(status_id)?;
+        self.cached_binary_path = Some(path.clone());
+        Ok(path)
+    }
 }
 
 fn command(path: String, args: Vec<String>) -> zed::Command {
@@ -96,11 +129,13 @@ fn lsp_arguments() -> Vec<String> {
     vec!["lsp".to_owned()]
 }
 
-fn install_latest_release(language_server_id: &zed::LanguageServerId) -> Result<String> {
-    zed::set_language_server_installation_status(
-        language_server_id,
-        &zed::LanguageServerInstallationStatus::CheckingForUpdate,
-    );
+fn install_latest_release(language_server_id: Option<&zed::LanguageServerId>) -> Result<String> {
+    if let Some(language_server_id) = language_server_id {
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &zed::LanguageServerInstallationStatus::CheckingForUpdate,
+        );
+    }
     let release = zed::latest_github_release(
         "willibrandon/csls",
         zed::GithubReleaseOptions {
@@ -135,10 +170,12 @@ fn install_latest_release(language_server_id: &zed::LanguageServerId) -> Result<
         return absolute_path(&executable_path);
     }
 
-    zed::set_language_server_installation_status(
-        language_server_id,
-        &zed::LanguageServerInstallationStatus::Downloading,
-    );
+    if let Some(language_server_id) = language_server_id {
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &zed::LanguageServerInstallationStatus::Downloading,
+        );
+    }
     let archive_path = format!(".{archive_name}.download");
     let checksum_path = format!(".SHA256SUMS-{version}.download");
     zed::download_file(
@@ -171,10 +208,12 @@ fn install_latest_release(language_server_id: &zed::LanguageServerId) -> Result<
     }
 
     remove_outdated_versions(&version_directory)?;
-    zed::set_language_server_installation_status(
-        language_server_id,
-        &zed::LanguageServerInstallationStatus::None,
-    );
+    if let Some(language_server_id) = language_server_id {
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &zed::LanguageServerInstallationStatus::None,
+        );
+    }
     absolute_path(&executable_path)
 }
 

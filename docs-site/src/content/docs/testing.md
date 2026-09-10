@@ -5,8 +5,7 @@ description: Run the real workspace, protocol, editor, package, and policy tests
 
 csls uses MSTest on Microsoft Testing Platform. Test methods run in parallel, while
 fixtures that launch costly external programs use bounded shared leases. Run tests
-without suppressing the build step so source and analyzer errors cannot hide behind
-an older test binary.
+with the build step enabled to compile and analyze the source being tested.
 
 ```console
 dotnet test --solution Csls.slnx
@@ -25,17 +24,17 @@ Multi-target coverage loads an SDK project with several target frameworks and
 verifies the selected Roslyn flavor through a real hover request. Diagnostic cache
 coverage changes one project and confirms that an unrelated project stays unchanged.
 
-Tests do not replace Roslyn, MSBuild, the file system, processes, clocks, sockets, or
-edit application with mocking libraries. Malformed wire data is constructed only
-when the behavior under test is input rejection.
+Tests exercise real Roslyn, MSBuild, file-system, process, clock, socket, and edit
+operations. Malformed-input tests send hostile data through real transport or file
+boundaries.
 
 The language suite covers advertised capabilities, initialization, cancellation,
 workspace generations, file operations, diagnostics, semantic edits, CLI commands,
-MCP tools and resource templates, control resources, package workers, and shutdown. Parity cases keep
-ported behavior executable without publishing private backlog references.
+MCP tools and resource templates, control resources, package workers, and shutdown.
+Parity cases compare observable protocol results.
 Watched-file coverage changes a closed source file on disk through the real LSP
 worker, observes the diagnostic refresh request, and verifies that an open dependent
-document updates without restarting the editor.
+document updates in the same editor session.
 
 ## Editor sessions
 
@@ -45,7 +44,7 @@ extension and WebAssembly server run in Chromium, Firefox, and WebKit. Every VS 
 host executes the same hover, completion, definition, reference CodeLens, semantic
 token, configurable inlay hint, diagnostics, formatting, rename, code action, file
 synchronization, and restart contract. Zed runs with the csls extension.
-Tests wait for visible editor or protocol state instead of fixed delays.
+Tests synchronize on visible editor or protocol state.
 
 Provisioners are .NET file-based apps. Each one selects a compatible release
 for the host operating system and architecture, verifies its digest, extracts it
@@ -65,10 +64,10 @@ Pass `--with-web-browsers` to the VS Code provisioner to install the matching
 Chromium, Firefox, and WebKit builds. Linux also needs the browser and display
 packages installed by `Install-GraphicalEditorTestPrerequisites.cs`.
 
-Legacy workspace jobs run old project files without reference-assembly packages.
-Windows uses the Visual Studio or Build Tools MSBuild host, while Linux and macOS
-use Mono MSBuild. The test fails unless framework references and semantic results
-come from the platform host. Run its prerequisite with:
+Legacy workspace jobs resolve framework references through the platform's MSBuild
+installation. Windows uses the Visual Studio or Build Tools MSBuild host, while
+Linux and macOS use Mono MSBuild. The tests verify framework-reference resolution
+and semantic results from that host. Run the prerequisite with:
 
 ```console
 # Linux
@@ -80,12 +79,12 @@ dotnet run --file scripts/Provision-LegacyBuildHost.cs
 
 ## Debugging a failing protocol test
 
-`$/csharp/debugInfo` is the first diagnostic source. A phase of `Uninitialized`
-means initialization did not complete. Empty folders mean no workspace was loaded.
-Request statistics show whether a notification entered and completed its handler.
+`$/csharp/debugInfo` is the first diagnostic source. Inspect the initialization
+phase and loaded folders, then use request statistics to follow a notification
+through its handler.
 
 Server logs are written to standard error. A focused test can forward that stream
-while it runs, but temporary diagnostic output must not remain in product code. Use
+while it runs. Use
 the correlation identifier from debug information, the dashboard, or a trace to
 follow cancellation and scheduling.
 

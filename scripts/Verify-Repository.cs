@@ -35,6 +35,10 @@ VerifyFilePolicy(trackedPaths, failures);
 VerifyTrackedText(repositoryRoot, trackedPaths, failures);
 VerifyDependencies(repositoryRoot, failures);
 VerifyPackageSources(repositoryRoot, failures);
+VerifyDapSchema(repositoryRoot, failures);
+await VerifyGeneratedDapProtocolAsync(repositoryRoot, failures).ConfigureAwait(false);
+VerifyCorDebugIdl(repositoryRoot, failures);
+await VerifyGeneratedCorDebugInteropAsync(repositoryRoot, failures).ConfigureAwait(false);
 VerifyGitHubActionReferences(repositoryRoot, failures);
 VerifyVsCodeActivationEvents(repositoryRoot, failures);
 if (failures.Count != 0)
@@ -244,9 +248,10 @@ static void VerifyTrackedText(
         }
 
         if (trackedPath.StartsWith("src/", StringComparison.Ordinal) &&
-            text.Contains("InternalsVisibleTo", StringComparison.Ordinal))
+            !HasOnlyTestFriendAssemblies(text))
         {
-            failures.Add($"Production assemblies must not expose internals to another assembly: {trackedPath}");
+            failures.Add(
+                $"Production assemblies may expose internals only to test assemblies: {trackedPath}");
         }
 
         if (text.Contains(privateRazorSdkPath, StringComparison.Ordinal))
@@ -258,15 +263,49 @@ static void VerifyTrackedText(
     }
 }
 
+static bool HasOnlyTestFriendAssemblies(string text)
+{
+    const string marker = "InternalsVisibleTo";
+    int searchStart = 0;
+    while (text.IndexOf(marker, searchStart, StringComparison.Ordinal) is int markerStart &&
+        markerStart >= 0)
+    {
+        int quoteStart = text.IndexOf('"', markerStart + marker.Length);
+        if (quoteStart < 0)
+        {
+            return false;
+        }
+
+        int quoteEnd = text.IndexOf('"', quoteStart + 1);
+        if (quoteEnd < 0)
+        {
+            return false;
+        }
+
+        string assemblyName = text[(quoteStart + 1)..quoteEnd].Split(',', 2)[0];
+        if (!assemblyName.EndsWith(".Tests", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        searchStart = quoteEnd + 1;
+    }
+
+    return true;
+}
+
 static void VerifyDependencies(string repositoryRoot, ICollection<string> failures)
 {
     string[] approvedCorePrefixes =
     [
+        "FSharp.Compiler.Service",
         "Hex1b",
         "Microsoft.AspNetCore.Razor",
         "Microsoft.Bcl",
         "Microsoft.Build",
         "Microsoft.CodeAnalysis",
+        "Microsoft.DiaSymReader",
+        "Microsoft.Diagnostics",
         "Microsoft.Extensions",
         "Microsoft.NET.StringTools",
         "Microsoft.SourceLink",
@@ -388,6 +427,143 @@ static void VerifyPackageSources(string repositoryRoot, ICollection<string> fail
         package => !mappedPackages.Contains(package)))
     {
         failures.Add($"NuGet.Config must map {package} to dotnet-tools.");
+    }
+}
+
+static void VerifyDapSchema(string repositoryRoot, ICollection<string> failures)
+{
+    string schemaPath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.DebugAdapter",
+        "Protocol",
+        "debugAdapterProtocol.json");
+    string licensePath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.DebugAdapter",
+        "Protocol",
+        "LICENSE.txt");
+    if (!File.Exists(schemaPath) || !File.Exists(licensePath))
+    {
+        failures.Add("The checked-in DAP schema and its license are both required.");
+        return;
+    }
+
+    try
+    {
+        using var schema = JsonDocument.Parse(File.ReadAllBytes(schemaPath));
+        JsonElement root = schema.RootElement;
+        if (!root.TryGetProperty("title", out JsonElement title) ||
+            title.GetString() != "Debug Adapter Protocol" ||
+            !root.TryGetProperty("definitions", out JsonElement definitions) ||
+            !definitions.TryGetProperty("ProtocolMessage", out _) ||
+            !definitions.TryGetProperty("InitializeRequest", out _) ||
+            !definitions.TryGetProperty("DisconnectRequest", out _))
+        {
+            failures.Add("The checked-in DAP schema is incomplete or has an unexpected shape.");
+        }
+    }
+    catch (JsonException exception)
+    {
+        failures.Add($"The checked-in DAP schema is invalid JSON: {exception.Message}");
+    }
+}
+
+static async Task VerifyGeneratedDapProtocolAsync(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+        WorkingDirectory = repositoryRoot,
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false
+    };
+    startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("--file");
+    startInfo.ArgumentList.Add(Path.Join("scripts", "Generate-DapProtocol.cs"));
+    startInfo.ArgumentList.Add("--");
+    startInfo.ArgumentList.Add("--verify");
+    using Process process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("The DAP contract verifier did not start.");
+    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
+    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+    await process.WaitForExitAsync().ConfigureAwait(false);
+    string standardOutput = await standardOutputTask.ConfigureAwait(false);
+    string standardError = await standardErrorTask.ConfigureAwait(false);
+    if (process.ExitCode != 0)
+    {
+        failures.Add(
+            $"Generated DAP protocol verification failed: " +
+            $"{standardError.Trim()} {standardOutput.Trim()}".Trim());
+    }
+}
+
+static void VerifyCorDebugIdl(string repositoryRoot, ICollection<string> failures)
+{
+    string idlPath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.Debugger",
+        "Interop",
+        "cordebug.idl");
+    string licensePath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.Debugger",
+        "Interop",
+        "LICENSE.txt");
+    if (!File.Exists(idlPath) || !File.Exists(licensePath))
+    {
+        failures.Add("The checked-in ICorDebug IDL and its license are both required.");
+        return;
+    }
+
+    string idl = File.ReadAllText(idlPath);
+    if (!idl.Contains("interface ICorDebug : IUnknown", StringComparison.Ordinal) ||
+        !idl.Contains(
+            "interface ICorDebugProcess : ICorDebugController",
+            StringComparison.Ordinal) ||
+        !idl.Contains(
+            "interface ICorDebugManagedCallback : IUnknown",
+            StringComparison.Ordinal))
+    {
+        failures.Add("The checked-in ICorDebug runtime IDL is incomplete.");
+    }
+}
+
+static async Task VerifyGeneratedCorDebugInteropAsync(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+        WorkingDirectory = repositoryRoot,
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false
+    };
+    startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("--file");
+    startInfo.ArgumentList.Add(Path.Join("scripts", "Generate-CorDebugInterop.cs"));
+    startInfo.ArgumentList.Add("--");
+    startInfo.ArgumentList.Add("--verify");
+    using Process process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("The ICorDebug projection verifier did not start.");
+    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
+    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+    await process.WaitForExitAsync().ConfigureAwait(false);
+    string standardOutput = await standardOutputTask.ConfigureAwait(false);
+    string standardError = await standardErrorTask.ConfigureAwait(false);
+    if (process.ExitCode != 0)
+    {
+        failures.Add(
+            $"Generated ICorDebug projection verification failed: " +
+            $"{standardError.Trim()} {standardOutput.Trim()}".Trim());
     }
 }
 

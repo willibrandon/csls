@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-debugger-evaluator-worker</AssemblyName>
+    <RootNamespace>Csls.Debugger.Evaluator.Worker</RootNamespace>
+    <Description>Managed compiler host for language-aware debugger expression binding.</Description>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">false</PublishReadyToRun>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Evaluation/Csls.Debugger.Evaluation.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj" />
+  </ItemGroup>
+</Project>

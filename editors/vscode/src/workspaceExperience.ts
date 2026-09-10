@@ -11,7 +11,7 @@ export class WorkspaceExperience implements vscode.Disposable {
   private readonly runner: DotnetCommandRunner;
   private readonly tests: TestExplorer;
   private readonly disposables: vscode.Disposable[];
-  private disposed = false;
+  private disposalPromise: Promise<void> | undefined;
 
   constructor(
     sdkPath: string,
@@ -86,15 +86,12 @@ export class WorkspaceExperience implements vscode.Disposable {
     return this.tests.getErrors();
   }
 
-  dispose(): void {
-    if (this.disposed) {
-      return;
-    }
-
-    this.disposed = true;
-    for (const disposable of this.disposables.reverse()) {
-      disposable.dispose();
-    }
+  dispose(): Promise<void> {
+    // Start all disposal before awaiting so the executor can cancel a running discovery build.
+    this.disposalPromise ??= Promise.all(
+      this.disposables.reverse().map((disposable) => disposable.dispose()),
+    ).then(() => undefined);
+    return this.disposalPromise;
   }
 
   private async selectTarget(item?: SolutionTreeItem): Promise<string> {

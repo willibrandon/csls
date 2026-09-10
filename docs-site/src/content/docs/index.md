@@ -8,16 +8,15 @@ It uses Roslyn for language intelligence and ships as Native AOT .NET tools for
 Windows, Linux, and macOS.
 
 The language server works over standard input and output. A private Unix domain
-socket lets the CLI and MCP server use the same live workspace without starting
-another compiler process.
+socket lets the CLI and MCP server share the editor's live workspace and compiler
+process.
 
-Fresh, GNU Emacs with Eglot, Helix, and Neovim are exercised through real editor
-sessions in the test suite. VS Code and Zed run in their graphical integration
-hosts. The protocol also works with other LSP clients.
+Use csls with Fresh, GNU Emacs with Eglot, Helix, Neovim, VS Code, Zed, and other
+LSP clients.
 
 ![csls dashboard showing a live C# diagnostic](../../assets/screenshots/dashboard.svg)
 
 The dashboard shows the active workspace, diagnostics, requests, caches, logs,
-and traces. Click the screenshot to view the verified Hex1b capture at full size.
+and traces. Click the screenshot to view it at full size.
 
 [Install csls](./getting-started/) or [configure an editor](./editors/).

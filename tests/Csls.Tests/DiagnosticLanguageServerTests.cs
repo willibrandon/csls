@@ -359,11 +359,6 @@ public sealed class DiagnosticLanguageServerTests
             <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
             <AnalysisLevel>latest</AnalysisLevel>
           </PropertyGroup>
-          <ItemGroup>
-            <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers"
-                              Version="10.0.400"
-                              PrivateAssets="All" />
-          </ItemGroup>
         </Project>
         """;
 

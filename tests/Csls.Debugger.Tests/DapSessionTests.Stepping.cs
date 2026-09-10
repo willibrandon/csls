@@ -1,0 +1,286 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+
+namespace Csls.Debugger.Tests;
+
+/// <summary>
+/// Verifies source-level stepping through real managed caller and callee frames.
+/// </summary>
+public sealed partial class DapSessionTests
+{
+    /// <summary>
+    /// Steps over, into, and out through real CoreCLR source positions.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ManagedSourceStepsTraverseCallerAndCallee()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string sourcePath = Path.Join(
+            repositoryRoot,
+            "tests",
+            "Csls.TestProcessHost",
+            "DebuggerStepFixture.cs");
+        string[] sourceLines = await File.ReadAllLinesAsync(
+            sourcePath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        int breakpointLine = FindSourceLine(sourceLines, "int seed = 40;");
+        int callLine = FindSourceLine(sourceLines, "int answer = AddTwo(seed);");
+        int calleeEntryLine = FindSourceLine(sourceLines, "private static int AddTwo(int value)") + 1;
+        string waitPath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-debugger-step-{Guid.NewGuid():N}.signal");
+        try
+        {
+            DapTestClient client = await DapTestClient
+                .CreateAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+            int initializeSequence = await client.SendRequestAsync(
+                "initialize",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument initialize = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                initialize.RootElement,
+                initializeSequence,
+                "initialize",
+                success: true);
+
+            int launchSequence = await client.SendRequestAsync(
+                "launch",
+                writer => WriteLaunchArguments(
+                    writer,
+                    ResolveTestProcessHost(),
+                    ["--debugger-step-fixture", waitPath],
+                    wait: true,
+                    noDebug: false),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument initialized = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(initialized.RootElement, "initialized");
+
+            int breakpointsSequence = await client.SendRequestAsync(
+                "setBreakpoints",
+                writer => WriteSourceBreakpointArguments(writer, sourcePath, breakpointLine),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument breakpoints = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                breakpoints.RootElement,
+                breakpointsSequence,
+                "setBreakpoints",
+                success: true);
+
+            int configurationSequence = await client.SendRequestAsync(
+                "configurationDone",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            int threadId = await ReadInitialBreakpointStopAsync(
+                client,
+                configurationSequence,
+                launchSequence,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            (string frameName, string? framePath, int frameLine) = await ReadSourceFrameAsync(
+                client,
+                threadId,
+                sourcePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
+            Assert.AreEqual(breakpointLine, frameLine);
+
+            int modulesSequence = await client.SendRequestAsync(
+                "modules",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument modules = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(modules.RootElement, modulesSequence, "modules", success: true);
+            JsonElement[] moduleItems = [.. modules.RootElement
+                .GetProperty("body")
+                .GetProperty("modules")
+                .EnumerateArray()];
+            Assert.AreEqual(
+                moduleItems.Length,
+                modules.RootElement.GetProperty("body").GetProperty("totalModules").GetInt32());
+            Assert.IsGreaterThan(0, moduleItems.Length);
+            string processHost = ResolveTestProcessHost();
+            JsonElement fixtureModule = moduleItems.Single(module => DebuggerTestPath.AreEquivalent(
+                module.TryGetProperty("path", out JsonElement path)
+                    ? path.GetString()
+                    : null,
+                processHost));
+            Assert.IsGreaterThan(0, fixtureModule.GetProperty("id").GetInt32());
+            Assert.AreEqual(Path.GetFileName(processHost), fixtureModule.GetProperty("name").GetString());
+            Assert.AreEqual("Symbols loaded.", fixtureModule.GetProperty("symbolStatus").GetString());
+            string expectedSymbolPath = Path.ChangeExtension(processHost, ".pdb");
+            string? symbolPath = fixtureModule.GetProperty("symbolFilePath").GetString();
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(expectedSymbolPath, symbolPath),
+                $"Expected symbols '{expectedSymbolPath}', received '{symbolPath}'.");
+
+            threadId = await StepAndReadStopAsync(
+                client,
+                "next",
+                threadId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            (frameName, framePath, frameLine) = await ReadSourceFrameAsync(
+                client,
+                threadId,
+                sourcePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
+            Assert.AreEqual(callLine, frameLine);
+
+            threadId = await StepAndReadStopAsync(
+                client,
+                "stepIn",
+                threadId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            (frameName, framePath, frameLine) = await ReadSourceFrameAsync(
+                client,
+                threadId,
+                sourcePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.AddTwo", frameName);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
+            Assert.AreEqual(calleeEntryLine, frameLine);
+
+            threadId = await StepAndReadStopAsync(
+                client,
+                "stepOut",
+                threadId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            (frameName, framePath, frameLine) = await ReadSourceFrameAsync(
+                client,
+                threadId,
+                sourcePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
+            Assert.AreEqual(callLine, frameLine);
+
+            await File.WriteAllTextAsync(
+                waitPath,
+                string.Empty,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            int continueSequence = await client.SendRequestAsync(
+                "continue",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await ReadSuccessfulTerminationAsync(
+                client,
+                continueSequence,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    private static async Task<int> StepAndReadStopAsync(
+        DapTestClient client,
+        string command,
+        int threadId,
+        CancellationToken cancellationToken,
+        string expectedReason = "step")
+    {
+        int requestSequence = await client.SendRequestAsync(
+            command,
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("threadId", threadId);
+                writer.WriteEndObject();
+            },
+            cancellationToken).ConfigureAwait(false);
+        bool responseReceived = false;
+        bool continuedReceived = false;
+        int? stoppedThreadId = null;
+        while (!responseReceived || !continuedReceived || stoppedThreadId is null)
+        {
+            using JsonDocument message = await client
+                .ReadMessageAsync(cancellationToken)
+                .ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() == "response")
+            {
+                AssertResponse(root, requestSequence, command, success: true);
+                responseReceived = true;
+                continue;
+            }
+
+            string? eventName = root.GetProperty("event").GetString();
+            if (eventName is "exited" or "terminated")
+            {
+                Assert.Fail(
+                    $"The target ended before completing '{command}' on thread {threadId}. " +
+                    $"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            }
+
+            if (eventName == "continued")
+            {
+                Assert.IsTrue(
+                    root.GetProperty("body").GetProperty("allThreadsContinued").GetBoolean());
+                continuedReceived = true;
+            }
+            else if (eventName == "stopped")
+            {
+                JsonElement body = root.GetProperty("body");
+                Assert.IsTrue(responseReceived, client.ProtocolTranscript);
+                Assert.AreEqual(expectedReason, body.GetProperty("reason").GetString());
+                Assert.IsTrue(body.GetProperty("allThreadsStopped").GetBoolean());
+                stoppedThreadId = body.GetProperty("threadId").GetInt32();
+            }
+        }
+
+        return stoppedThreadId.Value;
+    }
+
+    private static async Task ReadSuccessfulTerminationAsync(
+        DapTestClient client,
+        int continueSequence,
+        CancellationToken cancellationToken)
+    {
+        bool responseReceived = false;
+        bool continuedReceived = false;
+        bool exitedReceived = false;
+        bool terminatedReceived = false;
+        while (!responseReceived || !continuedReceived || !exitedReceived || !terminatedReceived)
+        {
+            using JsonDocument message = await client
+                .ReadMessageAsync(cancellationToken)
+                .ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() == "response")
+            {
+                AssertResponse(root, continueSequence, "continue", success: true);
+                responseReceived = true;
+                continue;
+            }
+
+            string? eventName = root.GetProperty("event").GetString();
+            continuedReceived |= eventName == "continued";
+            Assert.AreNotEqual("stopped", eventName, root.GetRawText());
+            if (eventName == "exited")
+            {
+                Assert.AreEqual(0, root.GetProperty("body").GetProperty("exitCode").GetInt32());
+                exitedReceived = true;
+            }
+
+            terminatedReceived |= eventName == "terminated";
+        }
+    }
+
+}

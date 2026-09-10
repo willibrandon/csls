@@ -1,13 +1,13 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
+import { rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { Writable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import {
-  downloadAndUnzipVSCode,
   resolveCliArgsFromVSCodeExecutablePath,
   runTests,
-  SilentReporter,
 } from "@vscode/test-electron";
 
 process.env.DONT_PROMPT_WSL_INSTALL = "1";
@@ -17,15 +17,12 @@ const extensionPath = dirname(fileURLToPath(import.meta.url));
 const workspacePath = requireEnvironment("CSLS_VSCODE_WORKSPACE_PATH");
 const userDataPath = requireEnvironment("CSLS_VSCODE_USER_DATA_PATH");
 const extensionsPath = requireEnvironment("CSLS_VSCODE_EXTENSIONS_PATH");
-const cachePath = requireEnvironment("CSLS_VSCODE_CACHE_PATH");
+const executablePath = requireEnvironment("CSLS_VSCODE_EXECUTABLE_PATH");
 const remoteServerRoot = process.env.CSLS_VSCODE_REMOTE_SERVER_ROOT;
 const remoteDataPath = process.env.CSLS_VSCODE_REMOTE_DATA_PATH;
-const executablePath = await downloadAndUnzipVSCode({
-  cachePath,
-  reporter: new SilentReporter(),
-  timeout: 120_000,
-  version: "stable",
-});
+const debuggerUi = ["dist/results-view-suite.cjs", "dist/dump-suite.cjs"]
+  .includes(process.env.CSLS_VSCODE_SUITE ?? "");
+const devToolsEndpointPath = resolve(userDataPath, "debugger-devtools-endpoint");
 const extensionPackages = resolveExtensionPackages();
 if (remoteServerRoot === undefined) {
   for (const packagePath of extensionPackages) {
@@ -45,11 +42,11 @@ if (remoteServerRoot === undefined) {
 }
 
 await runTests({
-  cachePath,
   extensionDevelopmentPath: remoteServerRoot === undefined
     ? extensionPath
     : resolve(extensionPath, "remote-resolver"),
   extensionTestsEnv: {
+    ...(debuggerUi ? { CSLS_VSCODE_CDP_ENDPOINT_PATH: devToolsEndpointPath } : {}),
     ...copyEnvironment(
       "CSLS_VSCODE_EXPECTED_HOST",
       "CSLS_VSCODE_ORACLE_DIAGNOSTICS_TIMEOUT_MILLISECONDS",
@@ -78,12 +75,38 @@ await runTests({
     "--skip-release-notes",
     "--skip-welcome",
     "--user-data-dir=" + userDataPath,
+    ...(debuggerUi
+      ? ["--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0"]
+      : []),
     ...(remoteServerRoot === undefined
       ? []
       : ["--enable-proposed-api=csls-tests.csls-test-resolver"]),
   ],
+  ...(debuggerUi ? { stderr: observeDevToolsEndpoint(devToolsEndpointPath) } : {}),
   vscodeExecutablePath: executablePath,
 });
+
+function observeDevToolsEndpoint(endpointPath) {
+  let pendingText = "";
+  let published = false;
+  return new Writable({
+    write(chunk, _encoding, callback) {
+      process.stderr.write(chunk);
+      pendingText = (pendingText + chunk.toString()).slice(-8_192);
+      const endpoint = /DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+)/.exec(pendingText)?.[1];
+      if (published || endpoint === undefined) {
+        callback();
+        return;
+      }
+
+      published = true;
+      const temporaryPath = endpointPath + ".tmp";
+      writeFile(temporaryPath, endpoint, "utf8")
+        .then(() => rename(temporaryPath, endpointPath))
+        .then(() => callback(), callback);
+    },
+  });
+}
 
 function resolveExtensionPackages() {
   const serializedPackages = process.env.CSLS_VSCODE_EXTENSION_PATHS;

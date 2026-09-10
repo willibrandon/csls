@@ -1,4 +1,6 @@
 using Csls.Control.Contracts;
+using Csls.Debugger.Control;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -23,7 +25,15 @@ internal static class McpHost
     {
         var broker = new McpSessionBroker();
         await using ConfiguredAsyncDisposable brokerCleanup = broker.ConfigureAwait(false);
+        string? debuggerWorkerPath = McpDebuggerWorkerLocator.TryResolve();
+        string? debuggerDumpWorkerPath = DebuggerDumpWorkerLocator.TryResolve();
+        var debuggerBroker = new McpDebuggerSessionBroker(
+            debuggerWorkerPath,
+            debuggerDumpWorkerPath);
+        await using ConfiguredAsyncDisposable debuggerBrokerCleanup =
+            debuggerBroker.ConfigureAwait(false);
         var tools = new CslsMcpTools(broker);
+        var editTools = new CslsMcpEditTools(broker);
         var workspaceTools = new CslsMcpWorkspaceTools(broker);
         var requestTools = new CslsMcpRequestTools(broker);
         var resources = new CslsMcpResources(broker);
@@ -32,14 +42,20 @@ internal static class McpHost
         serializerOptions.TypeInfoResolverChain.Insert(
             0,
             McpJsonSerializerContext.Default);
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        // Session selection and configuration come from the protocol client.
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            DisableDefaults = true,
+            ContentRootPath = AppContext.BaseDirectory
+        });
+        builder.Configuration.AddEnvironmentVariables();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(options =>
         {
             options.FormatterName = ConsoleFormatterNames.Simple;
             options.LogToStandardErrorThreshold = LogLevel.Trace;
         });
-        builder.Services
+        IMcpServerBuilder mcpBuilder = builder.Services
             .AddMcpServer(options =>
             {
                 options.ServerInfo = new Implementation
@@ -47,20 +63,71 @@ internal static class McpHost
                     Name = "csls",
                     Title = "csls C# language intelligence",
                     Version = typeof(McpHost).Assembly.GetName().Version?.ToString() ?? "0.0.0",
-                    Description = "Language intelligence for explicitly selected csls workspaces and sessions."
+                    Description = "Language intelligence and supervised .NET debugging for explicit sessions."
                 };
-                options.ServerInstructions =
-                    "Except for list_sessions, every tool and resource requires exactly one " +
-                    "target selector: workspace, session, or socket. Use read-only inspection " +
-                    "tools before requesting edits. Document positions are zero-based UTF-16 " +
-                    "line and character offsets.";
+                if (debuggerBroker.IsAvailable)
+                {
+                    options.Capabilities ??= new ServerCapabilities();
+                    options.Capabilities.Resources ??= new ResourcesCapability();
+                    options.Capabilities.Resources.Subscribe = true;
+                }
+                const string commonInstructions =
+                    "Use read-only inspection tools before requesting edits. Document positions " +
+                    "are zero-based UTF-16 line and character offsets.";
+                options.ServerInstructions = debuggerBroker.IsAvailable
+                    ? "Language tools require exactly one workspace, session, or socket selector. " +
+                        "Debugger tools use only the explicit debugSession returned by a debugger " +
+                        "lifecycle tool; never infer a debugger target from a workspace or process. " +
+                        commonInstructions
+                    : "Except for list_sessions, every tool and resource requires exactly one " +
+                        "target selector: workspace, session, or socket. " +
+                        commonInstructions;
             })
             .WithStdioServerTransport()
             .WithTools(tools, serializerOptions)
+            .WithTools(editTools, serializerOptions)
             .WithTools(workspaceTools, serializerOptions)
             .WithTools(requestTools, serializerOptions)
             .WithResources(resources)
             .WithPrompts(prompts);
+
+        if (debuggerBroker.IsAvailable)
+        {
+            var debuggerSubscriptions = new McpDebuggerSubscriptions(debuggerBroker);
+            if (debuggerBroker.HasLiveWorker)
+            {
+                mcpBuilder.WithTools(
+                    new CslsMcpDebuggerLifecycleTools(debuggerBroker),
+                    serializerOptions);
+            }
+
+            if (debuggerBroker.HasDumpWorker)
+            {
+                mcpBuilder.WithTools(
+                    new CslsMcpDebuggerDumpTools(debuggerBroker),
+                    serializerOptions);
+            }
+
+            mcpBuilder
+                .WithTools(
+                    new CslsMcpDebuggerAuthorizationTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerSessionTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerExecutionTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerBreakpointTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerInspectionTools(debuggerBroker),
+                    serializerOptions)
+                .WithResources(new CslsMcpDebuggerResources(debuggerBroker));
+            mcpBuilder.WithPrompts(new CslsMcpDebuggerPrompts());
+            mcpBuilder.WithSubscriptionsListenHandler(debuggerSubscriptions.ListenAsync);
+        }
 
         using IHost host = builder.Build();
         await host.RunAsync(cancellationToken).ConfigureAwait(false);

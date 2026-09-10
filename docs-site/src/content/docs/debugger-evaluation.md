@@ -1,0 +1,296 @@
+---
+title: Debugger evaluation and inspection
+description: Inspect managed values, evaluate expressions, call target code, and assign values safely.
+---
+
+Every stopped-state result belongs to a monotonically increasing stop generation.
+Native frame bindings, scopes, variables, memory references, and execution targets
+are valid for their owning generation. Logical frame identifiers can survive
+debugger-owned evaluation when the same physical frame remains stopped; csls reacquires
+their native bindings. Application execution retires those identifiers, and MCP
+inspection always requires the exact current generation.
+
+## Threads, stacks, scopes, and variables
+
+The adapter enumerates real CoreCLR threads and managed frames. Portable PDB scopes
+supply argument and lexically active local names. Object expansion reads exact runtime
+types and walks the complete derived-to-base hierarchy, including base classes declared
+in another loaded assembly. Arrays are paged and retain their live rank and dimensions.
+
+Use `start` and `count` in a DAP `variables` request to read a page from a live
+array. Each response can contain up to 65,536 elements. The page limit applies to
+the returned elements, so a small page can inspect later elements in a larger array.
+Nested arrays expand through their own variable references. Page results preserve
+each dimension's runtime indices and lower bounds.
+
+Clients that advertise `supportsVariablePaging` receive array child counts in
+variables, evaluation, and assignment responses. Editors use these counts to
+fetch pages as you expand an array. MCP variable and evaluation results expose
+the same counts. A materialized Results View reports the complete array length
+and serves bounded pages from that snapshot.
+
+With Portable PDBs, C# and Visual Basic async locals retain their source names,
+closed generic types, and tuple element names across awaits. The Locals view
+follows each variable's recorded scope. Use the same source name for watch
+expressions, completion, and assignment before and after resumption.
+
+Stack requests use `startFrame` and `levels` to inspect deep callers a page at a
+time. DAP and private RPC return at most 4,096 frames per response; MCP pages contain
+at most 256. Continue requesting pages until one is shorter than requested.
+An exact `totalFrames` is supplied when enumeration reaches the end.
+
+Hot Reload local declarations and symbols follow the executing method version. Older
+active frames keep their original local types, names, and source positions; newly
+entered frames use the replacement declarations and symbols.
+Inspection, assignment, and subsequent stepping resolve those declarations across
+successive compiler updates. Newly added methods retain source locations, named
+arguments, and named-tuple argument metadata for inspection and assignment.
+
+Values expose `evaluateName` for valid source expressions. Expansion and evaluation
+share the same field and array identity.
+
+## Side-effect-free expressions
+
+DAP `evaluate`, breakpoint conditions, logpoint interpolation, and the MCP
+`debug_evaluate` tool share one language-neutral evaluator. C#, Visual Basic, and F#
+syntax is parsed in a supervised compiler worker selected from the frame's PDB language
+identity, then lowered to a bounded versioned plan consumed by the runtime engine.
+
+The side-effect-free subset includes:
+
+- literals, locals, arguments, and `this` or `Me`;
+- instance fields, simple field-backed instance properties, type-qualified static fields and constants, and managed array indexes;
+- built-in unary, binary, comparison, and short-circuit Boolean operators;
+- conditional selection;
+- explicit built-in primitive conversions; and
+- language-valid checked integral constants and numeric widening used by assignment.
+
+For a simple nonvirtual getter that returns an instance field, csls validates the
+current method body and its storage signatures, then reads the field in the debugger
+host. These reads preserve the stop generation, existing string identity, and the
+property's declared tuple element names. Subsequent reads use Hot Reload's current
+getter body and metadata.
+
+C# casts, Visual Basic `CType` and predefined conversions, and F# numeric conversion
+functions lower to the same runtime operation. An unknown Portable PDB language receives
+the portable CLR subset for locals, arguments, fields, and indexes.
+
+Reference type tests and casts use side-effect-free inspection. C# supports `is`,
+`as`, and explicit casts; Visual Basic supports `TypeOf ... Is`, `TypeOf ... IsNot`,
+`TryCast`, and `DirectCast`; F# supports `:?`, `:>`, and `:?>`. For example,
+`error is System.ArgumentException` tests the current object, while
+`(error as System.ArgumentException)` returns a typed null for a type mismatch.
+An invalid direct cast returns an evaluation error.
+
+Reference casts retain the same runtime object and preserve the expression's declared type,
+including typed nulls. Class casts select the named class's fields and methods,
+including hidden members, while virtual calls retain runtime dispatch. Reference
+compatibility uses loaded-module identities and closed generic arguments; ambiguous
+type names produce an evaluation error. Exact primitive unboxing reads an existing
+box directly in the stopped target.
+
+Explicit struct casts, such as `(System.ValueTuple<int, int>)boxedPair`, produce
+value snapshots from an exact matching runtime type. Expand the result to inspect
+its copied fields. Reference fields keep the identity of their referenced objects.
+Visual Basic uses `DirectCast` and F# uses `:?>` for the same unboxing operation.
+
+The private `debugger/evaluate` RPC and MCP `debug_evaluate` use this side-effect-free
+path to read stopped storage and compute results in the debugger host.
+
+## Explicit target-code evaluation
+
+DAP evaluation can explicitly call a qualified instance method or loaded-type static
+method when CoreCLR permits function evaluation at the selected frame. Explicit C#
+`new T(...)`, Visual Basic `New T(...)`, and F# `new T(...)` expressions can construct a
+loaded non-generic or closed generic runtime type, including nested generic and
+array type arguments.
+
+Evaluate an instance property directly, such as `customer.DisplayName`, to run its
+getter under `expressionEvaluationOptions.allowImplicitFuncEval`. Getter execution
+uses the same cancellation, deadline, and exception recovery as explicit calls.
+Results retain their declared tuple names and logical source frame. Use `setVariable`
+to assign primitive values or existing references to a returned object's fields.
+The assignment writes the retained object directly.
+
+Calls can select static methods, instance methods, and constructors added by Hot
+Reload to an existing type. The binder reads the current declarations and signatures,
+including subsequent updates, while the calling frame keeps its own method-version
+symbols. Added methods retain their declared return type for assignment checks.
+
+The binder reads metadata signatures, including inherited instance methods in
+another module. Arguments can be CLR primitives, `null`, current-generation object and
+array references, or literal and side-effect-free computed strings. Strings are
+allocated in the target with their exact UTF-16 length, including embedded NUL values.
+The binder validates type identity and resolves the overload before execution.
+
+Function evaluation runs on the selected managed thread with a five-second deadline.
+Evaluations run one at a time. Overlapping DAP requests queue in arrival order.
+Cancellation remains responsive during evaluation, inspection, and source downloads.
+Canceling a queued request removes it from the queue and returns `cancelled`.
+The queue holds at most 64 requests and 16 MiB
+of total wire payload; overflow produces an explicit request error.
+
+Cancellation and timeout call `ICorDebugEval.Abort` and await the completion callback.
+A returned value, target exception, or cooperative abort advances the stop generation
+because target code may allocate, collect, or mutate state. The same stopped
+physical frame keeps its logical identifier while csls reacquires native bindings and
+refreshes variable views. Resuming or stepping the application retires frame identifiers.
+A failed cooperative abort faults the session.
+
+MCP separates these semantics into `debug_execute_expression`, which requires
+an active time-bounded grant from `debug_agent_control_set` and the exact current
+generation. Invoked target code may change state outside the debuggee. The tool's
+annotations describe these effects as destructive, non-idempotent, and open-world.
+
+## Assignment
+
+DAP `setVariable` and `setExpression`, plus MCP `debug_variable_set` and
+`debug_expression_set`, write directly to a stopped local, argument, mutable static or instance field, or
+managed array element. The right-hand side uses the side-effect-free evaluator.
+
+Supported values are exact primitives, checked contextual integral literals,
+language-valid built-in numeric widening, explicit primitive conversions, `null`, and
+an existing compatible runtime reference. Direct storage writes preserve the
+generation and publish variable invalidation for aliased editor views.
+
+Reference compatibility uses declared source and destination types, including generic
+arguments and assembly load context. It supports identity, base-class, interface,
+generic variance, and array covariance conversions. Typed nulls retain their declared
+type, and covariant arrays enforce the actual element storage type. Responses
+reacquire the original physical storage to expose the replacement runtime value.
+
+An existing unboxed struct can be copied into a destination of the same loaded runtime
+type, including tuples and `Nullable<T>`. Copies preserve the entire value, including
+nullable presence and managed reference fields, and are limited to 1 MiB. Tuple names
+come from the destination declaration. Returned expandable values retain the original
+destination storage, with array indices evaluated before the write.
+
+For a boxed struct, use an explicit cast on the right-hand side, such as
+`(System.ValueTuple<int, int>)boxedPair`, to copy its value into matching storage.
+
+A C# `default` literal or Visual Basic `Nothing` can be assigned directly to reset
+the destination to its default value. Primitive and struct storage is cleared through
+CoreCLR's original value home, including nullable presence and managed reference
+fields. Object references become null. Ref-like values such as spans are cleared
+in place. These writes preserve the stop
+generation and destination tuple names. C# `null` remains distinct from Visual
+Basic's `Nothing` conversion to non-nullable value types.
+
+A C# `null` literal, including `(null)`, clears nullable value-type storage directly.
+The write clears both presence and payload, including managed reference fields,
+and preserves the stop generation. Nullable recognition uses loaded runtime identity;
+user-defined lookalike types retain their ordinary type display and assignment rules.
+Tuple element names also remain available through direct generic fields, including
+the contained value of a nullable tuple.
+
+Whole register-backed values use the runtime's write operation and report its result.
+Validation failures preserve existing Results View snapshots; an attempted runtime
+write retires them, including when the runtime reports a write failure. DAP clients
+that advertise `supportsInvalidatedEvent` receive variable refresh events after a
+write attempt. MCP resource subscriptions receive change notifications.
+
+String, call, and construction expressions can also supply an assignment value through
+explicitly authorized target execution. The debugger then reacquires the destination
+frame, applies the assignment, and returns the new generation. Calls retain their declared
+return type, including closed containing-type parameters. Cast declarations remain
+authoritative during assignment,
+and covariant arrays retain their actual element-storage restrictions. String assignment
+validates compatibility before allocation and preserves the source cast through the
+replacement generation. Assigning a boxed primitive to primitive storage requires an
+explicit exact unboxing conversion.
+
+## Completion
+
+DAP completion comes from the exact stopped frame.
+An explicit class cast limits member completion to that class and its base classes.
+Root completion includes locals, arguments, and language-appropriate literals. Member
+completion first resolves a side-effect-free receiver, then walks its exact CoreCLR type
+hierarchy and loaded metadata. An explicitly qualified loaded type supplies supported
+static members.
+
+Results are prefix-filtered, capped at 2,048 candidates, carry UTF-16 replacement
+spans, and use case-insensitive matching for Visual Basic. If `frameId` is omitted, the
+selected stopped thread's top managed frame is used.
+
+## Value presentation
+
+Set `expressionEvaluationOptions.showRawValues` to `true` in a DAP launch or
+live-process attach configuration to inspect physical runtime fields. This view
+includes fields marked `DebuggerBrowsable(Never)`, keeps root-hidden fields as
+named children, and exposes tuple `Item` and `Rest` storage. Objects and array
+elements use their runtime names and types. Source expressions and paging remain
+available for these fields.
+
+The default, `false`, applies debugger display attributes, tuple element names,
+type proxies, and enumerable presentation. The option is retained across restart.
+MCP `debug_session_start` and `debug_session_attach` accept the same
+`expressionEvaluationOptions` object. Terminal launch and attach select physical
+presentation with `--show-raw-values`.
+
+`expressionEvaluationOptions.allowImplicitFuncEval` controls automatic target-code
+execution during authorized inspection. The default, `true`, permits debugger
+proxy construction and property evaluation. Set it to `false` to inspect the
+original object's fields with debugger-host formatting, including field-based
+`DebuggerDisplay` values and tuple element names. Explicit expression calls and
+selected Results View expansion use their existing target-execution authorization.
+
+DAP and MCP launch and attach requests accept this option and retain it across
+restart. Terminal launch and attach expose it as `--allow-implicit-func-eval true`
+or `--allow-implicit-func-eval false`.
+
+All surfaces use one exact CoreCLR type formatter. It preserves generic arguments,
+array dimensions, tuple shape, nullable underlying types and values, enum storage and
+flags, and `decimal` scale. `DateTime`, `DateTimeOffset`, `TimeSpan`, and `Guid` are
+reconstructed from validated runtime fields and formatted invariantly in the debugger
+host. A local `DateTime` is labeled with its local kind.
+
+Strings and characters deterministically escape quotes, backslashes, NUL, standard
+controls, remaining control code points, and unpaired UTF-16 surrogates while preserving
+valid Unicode scalar pairs. Formatting runs in the debugger host.
+
+Object expansion honors `DebuggerBrowsableAttribute` on runtime fields. `Never` hides
+a field from the default view, `Collapsed` preserves ordinary expansion, and
+`RootHidden` flattens expandable children into the containing page. Null, scalar,
+cyclic, and depth-limited root-hidden values remain directly inspectable. A virtual
+Raw View exposes the original physical fields.
+
+`DebuggerDisplayAttribute` formats value, name, and type columns from bounded
+instance-field paths evaluated in the debugger host. Type, member, and assembly declarations
+are supported. Display labels and type overrides affect presentation; expressions and
+assignments bind actual source names and runtime types. Tuples retain authored element
+names where symbol metadata supplies them, with logical paging and a physical Raw View.
+
+`DebuggerTypeProxyAttribute` constructs the selected proxy through guarded function
+evaluation. Its visible fields and non-indexed properties share ordinal ordering,
+root-hidden members flatten into the view, and Static members groups accessible
+static values. Raw View preserves the original object. Proxy constructors and property
+getters can run arbitrary target code and advance the stop generation.
+
+Enumerable objects expose a lazy Results View when the target has loaded the runtime's
+enumeration debug view. Expanding the lazy row runs the
+selected `IEnumerable<T>` or `IEnumerable` implementation through guarded evaluation,
+materializes the enumeration into a non-lazy snapshot, and invalidates generation-owned
+scope, variable, and memory handles. Unchanged physical frames retain their logical identifiers.
+Pages, refreshed scopes, and expression inspection of the same receiver reuse that
+snapshot. Target execution or a direct debugger assignment retires the snapshot
+and its child and memory handles.
+Enumeration materializes the target sequence before paging. The row displays an
+execution warning and carries lazy and side-effect presentation hints. Empty results
+display an Empty message; target exceptions retain a usable stopped session. Arrays,
+strings, and successful debugger proxies use their existing presentations.
+
+MCP `debug_variables_get` reads stopped target storage and existing snapshots. Use
+`debug_variables_get_presented` with an active `debug_agent_control_set` grant and the
+exact generation to construct proxies or expand Results View. This tool returns the
+replacement generation after execution. Resolving Results View returns one replacement
+variable with the snapshot reference and child counts. Use that reference and generation
+with `debug_variables_get` or the variables resource for read-only snapshot paging.
+
+## Memory and disassembly
+
+Managed arrays expose an opaque memory reference for their owning generation.
+`readMemory` accepts signed offsets and returns at most 1 MiB per DAP request.
+
+Managed frames expose an instruction reference for exact-count ECMA-335 disassembly.
+The result includes encoded bytes, branch labels, metadata symbols, and Portable PDB
+source mappings. Managed IL inspection works across supported target architectures.

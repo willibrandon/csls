@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Contracts</AssemblyName>
+    <RootNamespace>Csls.Debugger.Contracts</RootNamespace>
+    <Description>Transport-safe contracts for csls debugger hosts and workers.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

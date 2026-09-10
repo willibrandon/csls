@@ -56,7 +56,9 @@ internal static class VsCodeExtensionPackage
     private static async Task<string> PackageAsync(string repositoryRoot)
     {
         string extensionRoot = Path.Join(repositoryRoot, "editors", "vscode");
-        await CompileExtensionAsync(extensionRoot).ConfigureAwait(false);
+        await CompileExtensionAsync(extensionRoot, "compile:node").ConfigureAwait(false);
+        await CompileExtensionAsync(
+            Path.Join(repositoryRoot, "tests", "vscode"), "compile:desktop").ConfigureAwait(false);
         string vscePath = Path.Join(
             extensionRoot,
             "node_modules",
@@ -159,7 +161,7 @@ internal static class VsCodeExtensionPackage
         }
     }
 
-    private static async Task CompileExtensionAsync(string extensionRoot)
+    private static async Task CompileExtensionAsync(string extensionRoot, string script)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -170,7 +172,7 @@ internal static class VsCodeExtensionPackage
             WorkingDirectory = extensionRoot
         };
         startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add("compile:node");
+        startInfo.ArgumentList.Add(script);
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException(
                 "The VS Code extension compiler did not start.");

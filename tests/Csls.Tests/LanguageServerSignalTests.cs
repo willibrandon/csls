@@ -184,8 +184,7 @@ public sealed class LanguageServerSignalTests
             arguments,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         Assert.IsNull(result.IsError);
-        Assert.IsTrue(result.StructuredContent.HasValue);
-        return result.StructuredContent.Value.Deserialize(
+        return McpAssertions.GetStructuredContent(result).Deserialize(
             ControlJsonSerializerContext.Default.ControlSessionInfo)
             ?? throw new InvalidDataException("MCP returned no session information.");
     }

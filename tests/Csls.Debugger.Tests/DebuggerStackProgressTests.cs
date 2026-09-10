@@ -1,0 +1,395 @@
+using Csls.Debugger.Contracts;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
+
+namespace Csls.Debugger.Tests;
+
+/// <summary>
+/// Verifies native stack cancellation and ownership through an isolated real-engine client.
+/// </summary>
+[TestClass]
+public sealed class DebuggerStackProgressTests
+{
+    private static readonly int[] s_pageCheckpoints = [256, 512, 768, 1000];
+
+    /// <summary>
+    /// Gets the framework-managed cancellation token and evidence output.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Resumes uncached forward pages from the last published activation while releasing each native walker.
+    /// </summary>
+    /// <param name="mode">Whether an intervening resumed walk is canceled before publication.</param>
+    [TestMethod]
+    [DataRow("observe")]
+    [DataRow("resume-cancel")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ForwardStackPagesResumeFromPublishedFrames(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        if (mode == "resume-cancel")
+        {
+            Assert.IsTrue(result.GetProperty("resumeCanceled").GetBoolean());
+            JsonElement canceled = result.GetProperty("resumeProgress");
+            Assert.AreEqual((int)DebugStackWalkState.Canceled, canceled.GetProperty("State").GetInt32());
+            Assert.AreEqual(256, canceled.GetProperty("InspectedFrames").GetInt32());
+            Assert.AreEqual(0, canceled.GetProperty("CapturedFrames").GetInt32());
+            Assert.AreEqual(1000, canceled.GetProperty("RetainedFrameBindings").GetInt32());
+            Assert.AreEqual(0, canceled.GetProperty("OwnedWalkInterfaces").GetInt32());
+        }
+
+        Assert.AreEqual(4001, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("deepProgress").GetProperty("CapturedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("deepProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        int tailCount = result.GetProperty("tail").GetProperty("StackFrames").GetArrayLength();
+        Assert.AreEqual(tailCount + 1, result.GetProperty("tailProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("tailProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Starts an uncached earlier page from the top and preserves the later published walk position.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task BackwardStackPagesPreserveForwardCheckpoint()
+    {
+        using JsonDocument document = await RunProbeAsync("backward", 2000, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(1001, result.GetProperty("backwardProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("backward").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(2001, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("deepProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Retires saved walk contexts when evaluation or source stepping resumes the target.
+    /// </summary>
+    /// <param name="mode">The target execution operation retiring stopped-state storage.</param>
+    [TestMethod]
+    [DataRow("evaluation")]
+    [DataRow("step")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TargetExecutionRetiresStackWalkCheckpoint(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.IsGreaterThan(result.GetProperty("stopped").GetProperty("StopGeneration").GetInt64(),
+            result.GetProperty("afterExecution").GetProperty("StopGeneration").GetInt64());
+        JsonElement next = result.GetProperty("afterExecutionPage").GetProperty("StackFrames")[0];
+        JsonElement previous = result.GetProperty("deep").GetProperty("StackFrames")[0];
+        if (mode == "evaluation")
+        {
+            Assert.IsTrue(result.GetProperty("executed").GetBoolean());
+            Assert.AreEqual("42", result.GetProperty("evaluation").GetString());
+            Assert.AreEqual(previous.GetProperty("Id").GetInt32(), next.GetProperty("Id").GetInt32());
+        }
+        else
+        {
+            Assert.AreEqual("step", result.GetProperty("afterExecution").GetProperty("StopReason").GetString());
+            Assert.AreNotEqual(previous.GetProperty("Id").GetInt32(), next.GetProperty("Id").GetInt32());
+        }
+
+        Assert.AreNotEqual(previous.GetProperty("InstructionReference").GetString(), next.GetProperty("InstructionReference").GetString());
+        Assert.AreEqual(5000, result.GetProperty("afterExecutionProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("afterExecutionProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Reuses retained deep bindings and observed totals with work bounded by the requested page.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task RetainedStackPagesAvoidRepeatedPrefixTraversal()
+    {
+        using JsonDocument document = await RunProbeAsync("observe", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        JsonElement deep = result.GetProperty("deep").GetProperty("StackFrames")[0];
+        JsonElement overlap = result.GetProperty("overlap").GetProperty("StackFrames")[0];
+        Assert.AreEqual(deep.GetProperty("Id").GetInt32(), overlap.GetProperty("Id").GetInt32());
+        Assert.AreEqual(deep.GetProperty("InstructionReference").GetString(), overlap.GetProperty("InstructionReference").GetString());
+        Assert.AreEqual(1, result.GetProperty("overlapProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("overlapProgress").GetProperty("CapturedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("overlapProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("emptyProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("empty").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(result.GetProperty("tail").GetProperty("TotalFrames").GetInt32(),
+            result.GetProperty("empty").GetProperty("TotalFrames").GetInt32());
+        Assert.IsTrue(result.GetProperty("sourceRefreshedBetweenRequests").GetBoolean());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Reuses source and exact-location presentation within a page while refreshing the next request.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeStackPagesReuseRequestScopedSymbolSnapshots()
+    {
+        using JsonDocument document = await RunProbeAsync("observe", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        TestContext.WriteLine($"Source instances: {result.GetProperty("pageSourceInstances")}; " +
+            $"name instances: {result.GetProperty("pageNameInstances")}; " +
+            $"actor allocations after first checkpoint: {result.GetProperty("traversalAllocatedBytesAfterFirstCheckpoint")} bytes.");
+        JsonElement frames = result.GetProperty("page").GetProperty("StackFrames");
+        Assert.AreEqual(1000, frames.GetArrayLength());
+        Assert.AreEqual(1, result.GetProperty("pageSourceInstances").GetInt32());
+        Assert.AreEqual(2, result.GetProperty("pageNameInstances").GetInt32());
+        Assert.IsTrue(result.GetProperty("sourceRefreshedBetweenRequests").GetBoolean());
+        string sourcePath = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "tests",
+            "Csls.TestProcessHost", "DebuggerDeepStackFixture.cs");
+        string[] lines = await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false);
+        int topLine = Array.FindIndex(lines, static line => line.Contains("return CompleteDescent(entered);", StringComparison.Ordinal)) + 1;
+        int callerLine = Array.FindIndex(lines, static line => line.Contains("int descendants = Descend", StringComparison.Ordinal)) + 1;
+        Assert.IsGreaterThan(0, topLine);
+        Assert.IsGreaterThan(0, callerLine);
+        Assert.AreNotEqual(topLine, callerLine);
+        for (int index = 0; index < frames.GetArrayLength(); index++)
+        {
+            JsonElement frame = frames[index];
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerDeepStackFixture.Descend", frame.GetProperty("Name").GetString());
+            Assert.AreEqual(index == 0 ? topLine : callerLine, frame.GetProperty("Line").GetInt32());
+            string? actualSourcePath = frame.GetProperty("Source").GetProperty("Path").GetString();
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, actualSourcePath),
+                $"Expected source file '{sourcePath}', received '{actualSourcePath}'.");
+        }
+
+        Assert.HasCount(1000, frames.EnumerateArray().Select(static frame => frame.GetProperty("Id").GetInt32()).Distinct());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Cancels at an actual traversal checkpoint and preserves published frames after rollback.
+    /// </summary>
+    /// <param name="startFrame">The requested offset into the real recursive stack.</param>
+    /// <param name="checkpoint">The observed traversal count that triggers cancellation.</param>
+    /// <param name="capturedFrames">The expected selected frames before cancellation.</param>
+    [TestMethod]
+    [TestCategory("DebuggerStress")]
+    [DataRow(90000, 256, 0)]
+    [DataRow(256, 512, 256)]
+    [DataRow(0, 256, 256)]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task NativeStackCancellationPreservesPublishedFrames(int startFrame, int checkpoint, int capturedFrames)
+    {
+        using JsonDocument document = await RunProbeAsync("cancel", startFrame, checkpoint).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.Contains("CanceledException", result.GetProperty("failureType").GetString()!);
+        DebugStackWalkProgress[] updates = ReadUpdates(result);
+        Assert.HasCount(checkpoint / 256 + 1, updates);
+        DebugStackWalkProgress walking = updates[^2];
+        Assert.AreEqual(DebugStackWalkState.Walking, walking.State);
+        Assert.AreEqual(result.GetProperty("stopped").GetProperty("StoppedThreadId").GetInt32(), walking.ThreadId);
+        Assert.AreEqual(checkpoint, walking.InspectedFrames);
+        Assert.AreEqual(capturedFrames, walking.CapturedFrames);
+        Assert.AreEqual(1 + capturedFrames - (startFrame == 0 ? 1 : 0), walking.RetainedFrameBindings);
+        Assert.AreEqual(3, walking.OwnedWalkInterfaces);
+        DebugStackWalkProgress terminal = updates[^1];
+        Assert.AreEqual(DebugStackWalkState.Canceled, terminal.State);
+        Assert.AreEqual(checkpoint, terminal.InspectedFrames);
+        Assert.AreEqual(capturedFrames, terminal.CapturedFrames);
+        Assert.AreEqual(1, terminal.RetainedFrameBindings);
+        Assert.AreEqual(0, terminal.OwnedWalkInterfaces);
+        Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        AssertRecovery(result, 100000);
+        TestContext.WriteLine($"Target depth 100000; native cancellation at {checkpoint} visited/{capturedFrames} captured; " +
+            $"frame bindings {walking.RetainedFrameBindings} -> {terminal.RetainedFrameBindings}; walk references 3 -> 0. " +
+            $"Isolated host private bytes {result.GetProperty("privateBytesBefore")} -> {result.GetProperty("privateBytesAfter")}.");
+    }
+
+    /// <summary>
+    /// Reports bounded traversal and truthful totals at the stack end and beyond it.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeStackProgressReportsBoundedPagesAndTotals()
+    {
+        using JsonDocument document = await RunProbeAsync("observe", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        DebugStackWalkProgress[] updates = ReadUpdates(result);
+        Assert.AreSequenceEqual(s_pageCheckpoints, updates.Select(static value => value.InspectedFrames));
+        Assert.IsTrue(updates[..^1].All(static value => value.State == DebugStackWalkState.Walking && value.OwnedWalkInterfaces == 3));
+        Assert.AreEqual(DebugStackWalkState.Completed, updates[^1].State);
+        Assert.AreEqual(0, updates[^1].OwnedWalkInterfaces);
+        Assert.AreEqual(1000, updates[^1].RetainedFrameBindings);
+        Assert.AreEqual(1000, result.GetProperty("page").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(JsonValueKind.Null, result.GetProperty("page").GetProperty("TotalFrames").ValueKind);
+        JsonElement tail = result.GetProperty("tail");
+        int total = tail.GetProperty("TotalFrames").GetInt32();
+        Assert.AreEqual(5000 + tail.GetProperty("StackFrames").GetArrayLength(), total);
+        Assert.IsLessThan(64, tail.GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(tail.GetProperty("StackFrames").GetArrayLength() + 1,
+            result.GetProperty("tailProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(total, result.GetProperty("empty").GetProperty("TotalFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("empty").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(0, result.GetProperty("emptyProgress").GetProperty("CapturedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("emptyProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        Assert.AreEqual(result.GetProperty("tailProgress").GetProperty("RetainedFrameBindings").GetInt32(),
+            result.GetProperty("emptyProgress").GetProperty("RetainedFrameBindings").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Reports rollback before failure notification, retaining both failures if the receiver also fails.
+    /// </summary>
+    /// <param name="mode">Whether failure reporting succeeds or its destination is closed.</param>
+    [TestMethod]
+    [DataRow("oversized")]
+    [DataRow("fail-failed")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeStackProgressFailureReportsReleasedBindings(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(mode == "oversized" ? nameof(InvalidOperationException) : nameof(AggregateException),
+            result.GetProperty("failureType").GetString());
+        Assert.Contains("4096", result.GetProperty("failureMessage").GetString()!);
+        if (mode == "fail-failed")
+        {
+            Assert.AreEqual(2, result.GetProperty("causes").GetArrayLength());
+            Assert.AreEqual(nameof(InvalidOperationException), result.GetProperty("causes")[0].GetString());
+            Assert.AreEqual(nameof(IOException), result.GetProperty("notificationCause").GetString());
+        }
+        DebugStackWalkProgress terminal = ReadUpdates(result)[^1];
+        Assert.AreEqual(DebugStackWalkState.Failed, terminal.State);
+        Assert.AreEqual(4097, terminal.InspectedFrames);
+        Assert.AreEqual(4096, terminal.CapturedFrames);
+        Assert.AreEqual(1, terminal.RetainedFrameBindings);
+        Assert.AreEqual(0, terminal.OwnedWalkInterfaces);
+        Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Releases unpublished bindings when an active or completed progress receiver fails.
+    /// </summary>
+    /// <param name="mode">The real client's failed progress behavior.</param>
+    /// <param name="state">The notification that the client rejects.</param>
+    /// <param name="innerType">The failure retained by the inspection error.</param>
+    [TestMethod]
+    [DataRow("fail-walking", DebugStackWalkState.Walking, nameof(IOException))]
+    [DataRow("fail-completed", DebugStackWalkState.Completed, nameof(IOException))]
+    [DataRow("cached-fail-completed", DebugStackWalkState.Completed, nameof(IOException))]
+    [DataRow("fail-canceled", DebugStackWalkState.Walking, nameof(OperationCanceledException))]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeStackProgressReceiverFailureRollsBack(string mode, DebugStackWalkState state, string innerType)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(nameof(InvalidOperationException), result.GetProperty("failureType").GetString());
+        Assert.AreEqual(innerType, result.GetProperty("innerType").GetString());
+        Assert.AreEqual(state, ReadUpdates(result)[^1].State);
+        if (mode == "cached-fail-completed")
+        {
+            DebugStackWalkProgress cached = Assert.ContainsSingle(ReadUpdates(result));
+            Assert.AreEqual(1, cached.InspectedFrames);
+            Assert.AreEqual(1, cached.CapturedFrames);
+            Assert.AreEqual(0, cached.OwnedWalkInterfaces);
+        }
+
+        Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("recovery").GetProperty("OwnedWalkInterfaces").GetInt32());
+        Assert.AreEqual(5000, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Preserves unexpected receiver errors and retires the receiver before reporting rollback.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnexpectedStackProgressFailurePreservesOriginalException()
+    {
+        using JsonDocument document = await RunProbeAsync("fail-unexpected", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(nameof(FormatException), result.GetProperty("failureType").GetString());
+        Assert.AreEqual("The progress destination rejected the payload format.", result.GetProperty("failureMessage").GetString());
+        Assert.AreEqual(JsonValueKind.Null, result.GetProperty("innerType").ValueKind);
+        Assert.Contains("StackProgressRecorder.Report", result.GetProperty("failureStack").GetString()!);
+        DebugStackWalkProgress update = Assert.ContainsSingle(ReadUpdates(result));
+        Assert.AreEqual(DebugStackWalkState.Walking, update.State);
+        Assert.AreEqual(256, update.InspectedFrames);
+        Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("recovery").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Avoids native work for an already-canceled request and preserves a page completed before cancellation.
+    /// </summary>
+    /// <param name="mode">The point at which the client cancels its request.</param>
+    [TestMethod]
+    [DataRow("pre-cancel")]
+    [DataRow("cancel-completed")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task StackCancellationBeforeStartAndAfterCompletionPreservesFrames(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        if (mode == "pre-cancel")
+        {
+            Assert.Contains("CanceledException", result.GetProperty("failureType").GetString()!);
+            Assert.IsEmpty(ReadUpdates(result));
+            Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        }
+        else
+        {
+            Assert.IsFalse(result.TryGetProperty("failureType", out _));
+            Assert.AreEqual(DebugStackWalkState.Completed, ReadUpdates(result)[^1].State);
+            Assert.AreEqual(1000, result.GetProperty("page").GetProperty("StackFrames").GetArrayLength());
+            Assert.AreEqual(1000, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        }
+
+        AssertRecovery(result, 5000);
+    }
+
+    private static DebugStackWalkProgress[] ReadUpdates(JsonElement result) =>
+        result.GetProperty("updates").Deserialize<DebugStackWalkProgress[]>() ?? throw new InvalidDataException("No traversal updates.");
+
+    private static void AssertRecovery(JsonElement result, int depth)
+    {
+        Assert.AreEqual(depth, result.GetProperty("depth").GetInt32());
+        Assert.AreEqual($"depth:{depth.ToString(CultureInfo.InvariantCulture)}", result.GetProperty("output").GetString());
+        Assert.AreEqual(0, result.GetProperty("exitCode").GetInt32());
+        Assert.AreEqual("breakpoint", result.GetProperty("stopped").GetProperty("StopReason").GetString());
+        Assert.AreEqual(result.GetProperty("stopped").GetProperty("StopGeneration").GetInt64(),
+            result.GetProperty("unchanged").GetProperty("StopGeneration").GetInt64());
+        Assert.AreEqual((int)DebugSessionState.Stopped, result.GetProperty("unchanged").GetProperty("State").GetInt32());
+        JsonElement original = result.GetProperty("top").GetProperty("StackFrames")[0];
+        JsonElement refreshed = result.GetProperty("refreshed").GetProperty("StackFrames")[0];
+        Assert.AreEqual(original.GetProperty("Id").GetInt32(), refreshed.GetProperty("Id").GetInt32());
+        Assert.AreEqual(original.GetProperty("InstructionReference").GetString(), refreshed.GetProperty("InstructionReference").GetString());
+        foreach (string property in new[] { "initialArguments", "afterArguments", "deepArguments" })
+        {
+            JsonElement arguments = result.GetProperty(property);
+            Assert.AreEqual((property == "deepArguments" ? depth - 1 : 0).ToString(CultureInfo.InvariantCulture),
+                arguments.EnumerateArray().Single(static value => value.GetProperty("Name").GetString() == "remaining").GetProperty("Value").GetString());
+            Assert.AreEqual((property == "deepArguments" ? 1 : depth).ToString(CultureInfo.InvariantCulture),
+                arguments.EnumerateArray().Single(static value => value.GetProperty("Name").GetString() == "entered").GetProperty("Value").GetString());
+        }
+    }
+
+    private async Task<JsonDocument> RunProbeAsync(string mode, int offset, int checkpoint)
+    {
+        string root = DebuggerTestEnvironment.FindRepositoryRoot();
+        string worker = Environment.GetEnvironmentVariable("CSLS_DEBUGGER_WORKER_TEST_PATH")
+            ?? Path.Join(root, "artifacts", "bin", "Csls.Debugger.Worker", "debug", "csls-debugger-worker.dll");
+        ProcessStartInfo startInfo = new("dotnet") { WorkingDirectory = root };
+        startInfo.ArgumentList.Add(Path.Join(root, "artifacts", "bin", "Csls.Debugger.StackProbe", "debug", "csls-debugger-stack-probe.dll"));
+        startInfo.ArgumentList.Add(root);
+        startInfo.ArgumentList.Add(mode);
+        startInfo.ArgumentList.Add(offset.ToString(CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add(checkpoint.ToString(CultureInfo.InvariantCulture));
+        DebuggerWorkerEnvironment.Configure(startInfo, worker);
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(startInfo, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        Assert.AreEqual(0, exitCode, error);
+        Assert.IsEmpty(error);
+        return JsonDocument.Parse(output);
+    }
+}

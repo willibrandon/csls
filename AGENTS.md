@@ -19,6 +19,8 @@
 - Never use a version pin to work around a CI, network, registry, release, or
   runner failure. Diagnose the failure instead.
 - Keep nullable references, analyzers, deterministic builds, and warnings-as-errors enabled.
+- Add a local analyzer and analyzer regression test for every CodeQL finding so
+  the same pattern fails before remote analysis.
 - Keep LSP and MCP stdout protocol-only; diagnostics and progress go to stderr.
 - Use System.CommandLine for CLI parsing, StreamJsonRpc for RPC, and Hex1b for terminal UI.
 - Core product direct dependencies are limited to the approved Microsoft packages and Hex1b.

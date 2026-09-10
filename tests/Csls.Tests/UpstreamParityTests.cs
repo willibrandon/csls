@@ -48,7 +48,7 @@ public sealed class UpstreamParityTests
                 "--autoLoadProjects",
                 "1",
                 "--logLevel",
-                "Error",
+                "Information",
                 "--telemetryLevel",
                 "off"
             ],
@@ -78,32 +78,49 @@ public sealed class UpstreamParityTests
         string oracleWorkspacePath = Path.Join(fixtureRoot, "oracle");
         Directory.CreateDirectory(cslsWorkspacePath);
         Directory.CreateDirectory(oracleWorkspacePath);
+        string diagnosticDirectory = Path.Join(EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "test-results", "terminal-editors", $"{oracleDisplayName}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(diagnosticDirectory);
+        string cslsLog = Path.Join(diagnosticDirectory, "csls.log");
+        string oracleLog = Path.Join(diagnosticDirectory, "oracle.log");
+        LspTestClient? oracleClient = useRoslynProtocol
+            ? new LspTestClient(legacyConfiguration: null, preferredConfiguration: null)
+            : null;
+        var elapsed = Stopwatch.StartNew();
+        string phase = "creating workspaces";
         try
         {
+            using var cslsOutput = new StreamWriter(cslsLog);
+            using var oracleOutput = new StreamWriter(oracleLog);
+            TestContext.AddResultFile(cslsLog);
+            TestContext.AddResultFile(oracleLog);
+            BeginPhase("restoring csls workspace");
             string cslsDocumentPath = await CreateWorkspaceAsync(
                 cslsWorkspacePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            BeginPhase("restoring oracle workspace");
             string oracleDocumentPath = await CreateWorkspaceAsync(
                 oracleWorkspacePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
+            BeginPhase("starting language servers");
             LspProcessSession csls = await LspProcessSession.StartAsync(
                 "csls-parity",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                cslsWorkspacePath).ConfigureAwait(false);
+                cslsWorkspacePath,
+                diagnosticOutput: cslsOutput).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cslsCleanup = csls.ConfigureAwait(false);
-            LspTestClient? oracleClient = useRoslynProtocol
-                ? new LspTestClient(legacyConfiguration: null, preferredConfiguration: null)
-                : null;
             LspProcessSession oracle = await LspProcessSession.StartAsync(
                 oracleDisplayName,
                 oraclePath,
                 oracleArguments,
                 oracleWorkspacePath,
-                oracleClient).ConfigureAwait(false);
+                oracleClient,
+                diagnosticOutput: oracleOutput).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable oracleCleanup = oracle.ConfigureAwait(false);
 
+            BeginPhase("initializing language servers");
             Task<JsonElement> cslsInitializeTask = csls.InitializeAsync(
                 cslsWorkspacePath,
                 TestContext.CancellationToken);
@@ -150,22 +167,26 @@ public sealed class UpstreamParityTests
                 GetTextDocumentSyncChange(oracleInitialize),
                 GetTextDocumentSyncChange(cslsInitialize));
 
+            BeginPhase("completing initialization");
             await Task.WhenAll(
                 csls.CompleteInitializationAsync(),
                 oracle.CompleteInitializationAsync()).ConfigureAwait(false);
             if (oracleClient is not null)
             {
+                BeginPhase("waiting for oracle workspace load");
                 await WaitForWorkspaceLoadAsync(
                     oracleClient,
                     TestContext.CancellationToken).ConfigureAwait(false);
             }
 
+            BeginPhase("opening documents");
             await Task.WhenAll(
                 csls.OpenDocumentAsync(cslsDocumentPath, DocumentText),
                 oracle.OpenDocumentAsync(oracleDocumentPath, DocumentText)).ConfigureAwait(false);
 
             if (useRoslynProtocol)
             {
+                BeginPhase("requesting oracle project contexts");
                 JsonElement? projectContexts = await oracle
                     .RequestRoslynProjectContextsAsync(
                         oracleDocumentPath,
@@ -190,6 +211,7 @@ public sealed class UpstreamParityTests
 
             if (useRoslynProtocol)
             {
+                BeginPhase("comparing document symbols");
                 Task<IReadOnlyList<DocumentSymbol>> cslsSymbolsTask =
                     csls.RequestDocumentSymbolsAsync(
                         cslsDocumentPath,
@@ -219,6 +241,7 @@ public sealed class UpstreamParityTests
                     "expected document symbols");
             }
 
+            BeginPhase("comparing hover");
             Task<JsonElement?> cslsHoverTask = csls.RequestHoverAsync(
                 cslsDocumentPath,
                 new Position(16, 10),
@@ -271,6 +294,7 @@ public sealed class UpstreamParityTests
 
             if (useRoslynProtocol)
             {
+                BeginPhase("comparing definitions");
                 Task<IReadOnlyList<Location>> cslsDefinitionsTask = csls.RequestDefinitionsAsync(
                     cslsDocumentPath,
                     new Position(16, 33),
@@ -287,6 +311,7 @@ public sealed class UpstreamParityTests
                 AssertSequenceEqual(oracleDefinitions, cslsDefinitions, "definitions");
                 AssertSequenceEqual(["2:20-2:27"], cslsDefinitions, "expected definitions");
 
+                BeginPhase("comparing references");
                 Task<IReadOnlyList<Location>> cslsReferencesTask = csls.RequestReferencesAsync(
                     cslsDocumentPath,
                     new Position(2, 22),
@@ -309,6 +334,7 @@ public sealed class UpstreamParityTests
                     "expected references");
             }
 
+            BeginPhase("shutting down language servers");
             Task<string> cslsShutdownTask = csls.ShutdownAsync(TestContext.CancellationToken);
             Task<string> oracleShutdownTask = oracle.ShutdownAsync(TestContext.CancellationToken);
             await Task.WhenAll(cslsShutdownTask, oracleShutdownTask).ConfigureAwait(false);
@@ -320,10 +346,42 @@ public sealed class UpstreamParityTests
                 "Unhandled exception",
                 await oracleShutdownTask.ConfigureAwait(false),
                 StringComparison.Ordinal);
+            Assert.AreEqual(await cslsShutdownTask.ConfigureAwait(false),
+                await File.ReadAllTextAsync(cslsLog, TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.AreEqual(await oracleShutdownTask.ConfigureAwait(false),
+                await File.ReadAllTextAsync(oracleLog, TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsNotEmpty(await oracleShutdownTask.ConfigureAwait(false),
+                "The oracle's startup and workspace diagnostics must be retained with the test result.");
+            if (oracleClient is not null)
+            {
+                Assert.IsNotEmpty(oracleClient.LogMessages,
+                    "The Roslyn oracle's window/logMessage notifications must be retained.");
+            }
+            BeginPhase("disposing language servers");
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            TestContext.WriteLine($"{oracleDisplayName}: {phase} ended at {elapsed.Elapsed}.");
+            try
+            {
+                if (oracleClient is not null)
+                {
+                    string protocolLog = Path.Join(diagnosticDirectory, "oracle-lsp.log");
+                    await File.WriteAllLinesAsync(protocolLog, oracleClient.LogMessages, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    TestContext.AddResultFile(protocolLog);
+                }
+            }
+            finally
+            {
+                await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
+        }
+
+        void BeginPhase(string next)
+        {
+            phase = next;
+            TestContext.WriteLine($"{oracleDisplayName}: {phase} at {elapsed.Elapsed}.");
         }
     }
 
@@ -395,18 +453,23 @@ public sealed class UpstreamParityTests
         }
         """;
 
-    private static async Task WaitForWorkspaceLoadAsync(
+    private async Task WaitForWorkspaceLoadAsync(
         LspTestClient client,
         CancellationToken cancellationToken)
     {
         WorkDoneProgressCreateParams creation = await client
             .ReadWorkDoneProgressCreationAsync(cancellationToken)
             .ConfigureAwait(false);
+        TestContext.WriteLine($"Oracle created workspace progress token {creation.Token}.");
         for (int progressCount = 0; progressCount < 10_000; progressCount++)
         {
             WorkDoneProgressParams progress = await client
                 .ReadWorkDoneProgressAsync(cancellationToken)
                 .ConfigureAwait(false);
+            if (progress.Value is WorkDoneProgressBegin or WorkDoneProgressEnd)
+            {
+                TestContext.WriteLine($"Oracle progress {progress.Token}: {progress.Value}.");
+            }
             if (string.Equals(progress.Token, creation.Token, StringComparison.Ordinal) &&
                 progress.Value is WorkDoneProgressEnd)
             {

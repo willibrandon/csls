@@ -9,9 +9,14 @@ namespace Csls.Tests;
 /// </summary>
 internal sealed class XDisplaySession : IAsyncDisposable
 {
+    private const int MaximumConcurrentDisplays = 6;
+    private static readonly SemaphoreSlim s_displaySlots = new(
+        MaximumConcurrentDisplays,
+        MaximumConcurrentDisplays);
     private readonly Process _process;
     private readonly FileStream _reservation;
     private readonly string _reservationPath;
+    private int _disposed;
 
     private XDisplaySession(
         Process process,
@@ -38,7 +43,38 @@ internal sealed class XDisplaySession : IAsyncDisposable
     internal static async Task<XDisplaySession> StartAsync(
         CancellationToken cancellationToken)
     {
+        await s_displaySlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await StartCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _ = s_displaySlots.Release();
+            throw;
+        }
+    }
+
+    private static async Task<XDisplaySession> StartCoreAsync(
+        CancellationToken cancellationToken)
+    {
         FileStream reservation = ReserveDisplay(out int displayNumber, out string reservationPath);
+        try
+        {
+            return await StartReservedDisplayAsync(reservation, displayNumber, reservationPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            await reservation.DisposeAsync().ConfigureAwait(false);
+            File.Delete(reservationPath);
+            throw;
+        }
+    }
+
+    private static async Task<XDisplaySession> StartReservedDisplayAsync(FileStream reservation,
+        int displayNumber, string reservationPath, CancellationToken cancellationToken)
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = "Xvfb",
@@ -54,6 +90,7 @@ internal sealed class XDisplaySession : IAsyncDisposable
             "-screen",
             "0",
             "1280x800x24",
+            "-noreset",
             "-nolisten",
             "tcp",
             "-ac"
@@ -62,36 +99,25 @@ internal sealed class XDisplaySession : IAsyncDisposable
             startInfo.ArgumentList.Add(argument);
         }
 
-        Process process;
+        Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Xvfb did not start.");
         try
         {
-            process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Xvfb did not start.");
-        }
-        catch
-        {
-            await reservation.DisposeAsync().ConfigureAwait(false);
-            File.Delete(reservationPath);
-            throw;
-        }
-
-        var standardError = new StringBuilder();
-        object standardErrorSync = new();
-        process.ErrorDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is null)
+            var standardError = new StringBuilder();
+            object standardErrorSync = new();
+            process.ErrorDataReceived += (_, eventArgs) =>
             {
-                return;
-            }
+                if (eventArgs.Data is null)
+                {
+                    return;
+                }
 
-            lock (standardErrorSync)
-            {
-                _ = standardError.AppendLine(eventArgs.Data);
-            }
-        };
-        process.BeginErrorReadLine();
-        try
-        {
+                lock (standardErrorSync)
+                {
+                    _ = standardError.AppendLine(eventArgs.Data);
+                }
+            };
+            process.BeginErrorReadLine();
             string? publishedDisplay = await process.StandardOutput.ReadLineAsync(
                 cancellationToken).ConfigureAwait(false);
             string expectedDisplay = displayNumber.ToString(CultureInfo.InvariantCulture);
@@ -121,15 +147,15 @@ internal sealed class XDisplaySession : IAsyncDisposable
         }
         catch
         {
-            if (!process.HasExited)
+            using (process)
             {
-                process.Kill(entireProcessTree: true);
-            }
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
 
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            process.Dispose();
-            await reservation.DisposeAsync().ConfigureAwait(false);
-            File.Delete(reservationPath);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
             throw;
         }
     }
@@ -137,15 +163,27 @@ internal sealed class XDisplaySession : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (!_process.HasExited)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            _process.Kill(entireProcessTree: true);
+            return;
         }
 
-        await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        _process.Dispose();
-        await _reservation.DisposeAsync().ConfigureAwait(false);
-        File.Delete(_reservationPath);
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+
+            await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            _process.Dispose();
+            await _reservation.DisposeAsync().ConfigureAwait(false);
+            File.Delete(_reservationPath);
+        }
+        finally
+        {
+            _ = s_displaySlots.Release();
+        }
     }
 
     private static FileStream ReserveDisplay(

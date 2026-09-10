@@ -26,6 +26,18 @@ export default defineConfig({
         { slug: "getting-started" },
         { slug: "editors" },
         { slug: "language-server" },
+        {
+          label: ".NET debugger",
+          items: [
+            { slug: "debugger", label: "Overview" },
+            { slug: "debugger-setup", label: "Setup and lifecycle" },
+            { slug: "debugger-breakpoints", label: "Breakpoints and stepping" },
+            { slug: "debugger-evaluation", label: "Evaluation and inspection" },
+            { slug: "debugger-symbols", label: "Symbols and source" },
+            { slug: "debugger-terminal-mcp", label: "Terminal and MCP" },
+            { slug: "debugger-compatibility", label: "Compatibility and security" },
+          ],
+        },
         { slug: "configuration" },
         { slug: "cli" },
         { slug: "dashboard" },
@@ -42,6 +54,7 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
+            { slug: "debugger-dap-reference", label: "DAP reference" },
             { slug: "cli-reference" },
             { slug: "mcp-reference" },
             { slug: "configuration-reference" },

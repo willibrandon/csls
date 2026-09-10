@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Evaluation</AssemblyName>
+    <RootNamespace>Csls.Debugger.Evaluation</RootNamespace>
+    <Description>Private process supervision and RPC for managed debugger evaluation.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+  </ItemGroup>
+</Project>

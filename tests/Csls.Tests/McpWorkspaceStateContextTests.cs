@@ -306,8 +306,7 @@ public sealed class McpWorkspaceStateContextTests
         CallToolResult result)
     {
         Assert.IsNull(result.IsError);
-        Assert.IsTrue(result.StructuredContent.HasValue);
-        JsonElement summary = result.StructuredContent.Value;
+        JsonElement summary = McpAssertions.GetStructuredContent(result);
         Assert.AreEqual(JsonValueKind.Object, summary.ValueKind);
         JsonProperty[] properties = [.. summary.EnumerateObject()];
         Assert.HasCount(s_summaryPropertyNames.Length, properties);

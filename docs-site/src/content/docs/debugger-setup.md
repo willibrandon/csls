@@ -1,0 +1,241 @@
+---
+title: Debugger setup and lifecycle
+description: Configure launch, attach, restart, and remote .NET debugging with csls.
+---
+
+The csls debugger ships with the `csls` tool. It uses the public CoreCLR debugging
+contracts bundled for the installed platform.
+
+## Check the installation
+
+Run the packaged component probe after installation or an update:
+
+```console
+csls debugger doctor
+```
+
+The command verifies the platform runtime shim and every native entry point required
+for launch and attach. Use the tool package that matches the current operating system
+and architecture.
+
+## Build before launch
+
+csls launches one concrete managed executable or assembly. Build the target first
+and use an absolute `program` path.
+
+When `program` is a managed `.dll`, csls uses the configured `runtimeHost` or the
+compatible `dotnet` host resolved from the environment. A platform executable is
+started directly. Arguments are passed directly as an array.
+
+## VS Code launch
+
+The csls extension registers the `coreclr` debug type. A minimal `.vscode/launch.json`
+entry is:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Launch",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "/absolute/path/to/bin/Debug/net10.0/App.dll",
+      "cwd": "/absolute/path/to/project",
+      "args": ["first argument"],
+      "env": {
+        "APP_ENVIRONMENT": "Development"
+      }
+    }
+  ]
+}
+```
+
+`cwd` defaults to the directory containing `program`. An environment property with a
+string value adds or replaces that variable; a `null` value removes it from the target
+environment. Set `runtimeHost` to an absolute host executable path to choose the
+`dotnet` host that runs the application.
+
+Set `noDebug` to `true` to run the target as an ordinary process.
+
+Set `stopAtEntry` to `true` to stop at the first executable entry-point statement.
+The default is `false`. Continue from that stop to run the application with its
+configured breakpoints. Restart applies the launch configuration's entry-stop setting.
+
+## Load environment variables from a file
+
+Set `envFile` in a launch configuration to load a UTF-8 environment file:
+
+```json
+{
+  "name": ".NET Launch",
+  "type": "coreclr",
+  "request": "launch",
+  "program": "/absolute/path/to/bin/Debug/net10.0/App.dll",
+  "cwd": "/absolute/path/to/project",
+  "envFile": ".env",
+  "env": {
+    "APP_ENVIRONMENT": "Development"
+  }
+}
+```
+
+Relative `envFile` paths resolve from `cwd`. Use a file of at most 1 MiB.
+For example:
+
+```dotenv
+# Application settings
+APP_ENVIRONMENT=Staging
+SERVICE_NAME="Local service"
+export GREETING='Hello π'
+```
+
+File assignments override inherited environment variables. Explicit `env` entries
+override file assignments; `null` removes a variable and `""` sets an empty value.
+Repeated assignments use the last value. Variable-name comparison follows the
+target operating system.
+
+Blank lines and `#` comment lines are accepted. An unquoted value can end with a
+comment introduced by whitespace followed by `#`. Single and double quotes
+preserve spaces and `#` characters. Double-quoted values accept `\n`, `\r`, and
+`\t` escapes. Quoted values can span lines; line breaks become `\n` in the value.
+Shell expressions such as `${NAME}` remain literal text.
+
+The debugger rereads the file on restart. Invalid assignments produce an error
+identifying the file and line while keeping the assignment value private.
+
+Zed uses the same `envFile` property. In the terminal, pass `--env-file <path>` to
+`csls debugger tui launch`; relative paths resolve from `--cwd`. MCP
+`debug_session_start` accepts `environmentFilePath`, with relative paths resolved
+from `workingDirectory` and explicit `environment` entries applied last.
+
+## VS Code attach
+
+Attach selects one already-running process by operating-system identifier:
+
+```json
+{
+  "name": ".NET Attach",
+  "type": "coreclr",
+  "request": "attach",
+  "processId": 12345
+}
+```
+
+The process must run CoreCLR, be accessible to the current user, and match the
+debugger host architecture. Disconnecting detaches and leaves the process running.
+Clients can explicitly request termination through an advertised, authorized operation.
+
+On Linux ARM64, native frame inspection also requires `ptrace` authorization.
+With Yama's restricted attach policy, the target can use `PR_SET_PTRACER` to
+authorize the debugger process and its descendants. The kernel also checks the
+target's credentials and dumpability.
+
+## Inspect a managed process dump
+
+Use an absolute `dumpPath` in an attach configuration to inspect managed threads,
+stack frames, modules, and captured arguments and locals:
+
+```json
+{
+  "name": ".NET Dump",
+  "type": "coreclr",
+  "request": "attach",
+  "dumpPath": "/absolute/path/to/application.dmp",
+  "binarySearchPaths": ["/absolute/path/to/application/bin"]
+}
+```
+
+Choose either `dumpPath` or `processId` for an attachment. `runtimeIndex` selects
+a zero-based managed runtime in the dump and defaults to `0`. An optional
+`dacPath` supplies the absolute path to the matching runtime Data Access Component.
+`binarySearchPaths` supplies ordered, existing absolute local directories containing
+the captured application's binaries and adjacent symbols. The debugger checks image
+and symbol identities before using them. Add the original build output directory,
+or a directory containing a matching copy, when inspecting a dump on another machine.
+The dump worker runs in its own process; closing the session releases that worker
+and the dump file. Windows runtime discovery searches local .NET installations
+and validates image identity before loading a matching DAC.
+
+Values whose storage was filtered during dump capture display an availability
+diagnostic in the Variables view. Retained values remain available for inspection.
+
+Expand captured arrays in the Variables view to inspect their elements. Array
+entries show the captured length and use the runtime's indices, including each
+dimension's lower bound. Nested arrays expand through their own entries. Editors
+can request pages of up to 4,096 elements from large arrays; repeated pages retain
+their variable identities throughout the dump session.
+
+Expand captured objects and structs to inspect their physical instance fields,
+including private fields and fields inherited from generic base types. Object
+fields use named pages; array elements use indexed pages. Boxed structs, fields
+containing arrays, and arrays containing objects each expand from their captured
+storage. Editors present dump values as read-only.
+
+## Zed launch and attach
+
+The Zed extension registers the `csls` adapter. Put a launch entry in `debug.json`:
+
+```json
+[
+  {
+    "label": ".NET Launch",
+    "adapter": "csls",
+    "request": "launch",
+    "program": "/absolute/path/to/bin/Debug/net10.0/App.dll",
+    "cwd": "/absolute/path/to/project",
+    "args": ["first argument"]
+  }
+]
+```
+
+For attach, use `"request": "attach"` and a positive `"processId"`. Zed starts the
+configured csls binary with `debugger dap`.
+
+A dump entry uses `"request": "attach"` with `"dumpPath"`, plus the same optional
+`runtimeIndex`, `dacPath`, and `binarySearchPaths` properties shown above.
+
+## Runtime behavior options
+
+Configure source stepping and module policy with these options:
+
+| Property | Default | Behavior |
+| --- | --- | --- |
+| `justMyCode` | `true` | Treat symbol-bearing, unoptimized modules as user code and skip other modules during source stepping. |
+| `enableStepFiltering` | `true` | Skip property accessors, CLR operators, and members marked with debugger step-filter attributes. |
+| `suppressJITOptimizations` | `false` | During launch, request unoptimized JIT code for modules with validated symbols. |
+| `enableHotReload` | `false` | During launch, prepare symbol-bearing modules for compiler-driven Hot Reload. |
+
+With `suppressJITOptimizations: true`, csls requests unoptimized JIT code during module load.
+The `modules` response reports the effective policy through `isOptimized` and
+`symbolStatus`.
+
+CoreCLR applies the Edit and Continue policy during module load.
+Set `enableHotReload` on a launch to receive compiler-produced Hot Reload
+updates. Module inspection reports `isHotReloadEnabled`, `hotReloadGeneration`, and a
+bounded `symbolStatus` diagnostic.
+
+## Restart and ownership
+
+The standard DAP `restart` request accepts the latest nested launch or attach
+configuration. Logical breakpoints survive restart. Refresh frames, variables,
+memory, instructions, and execution targets after restarting. Each replacement
+target uses a newer stop generation.
+
+A restarted launch terminates the debugger-owned process tree and creates a new one. A
+restarted attach detaches and reattaches to the independently running process.
+If the editor or adapter exits unexpectedly, csls terminates launched process trees
+and detaches from attached processes.
+
+## Remote and container targets
+
+Run `csls debugger dap` in the environment where the target runs and transport its
+standard streams through the editor's existing SSH, container, or remote channel.
+Paths in the DAP configuration are paths in the
+target environment; use `sourceFileMap` when build-time source paths differ from editor
+paths.
+
+Continue with [breakpoints and stepping](../debugger-breakpoints/) or configure
+[symbols and source retrieval](../debugger-symbols/).
+The generated [DAP reference](../debugger-dap-reference/) lists supported
+requests, advertised capabilities, and editor configuration properties.

@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Csls.Debugger.Tests" />
     <PackageReference Include="Hex1b" />
     <PackageReference Include="Microsoft.NET.StringTools"
                       ExcludeAssets="runtime"

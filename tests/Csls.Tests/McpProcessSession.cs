@@ -1,3 +1,4 @@
+using Csls.Support;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
@@ -30,6 +31,11 @@ internal sealed class McpProcessSession : IAsyncDisposable
     internal McpClient Client { get; }
 
     /// <summary>
+    /// Gets the owned launcher process for exact process and handle lifetime assertions.
+    /// </summary>
+    internal Process LauncherProcess => _process;
+
+    /// <summary>
     /// Starts the production MCP launcher and connects the official stream transport.
     /// </summary>
     /// <param name="repositoryRoot">The repository working directory.</param>
@@ -37,13 +43,19 @@ internal sealed class McpProcessSession : IAsyncDisposable
     /// <param name="mcpWorkerPath">The managed MCP worker path.</param>
     /// <param name="serverWorkerPath">The optional language-server worker path.</param>
     /// <param name="cancellationToken">The startup cancellation token.</param>
+    /// <param name="debuggerWorkerPath">The optional debugger worker path.</param>
+    /// <param name="debuggerDumpWorkerPath">The optional debugger dump worker path.</param>
+    /// <param name="diagnosticOutput">Receives server stderr as it arrives; defaults to the test's error output.</param>
     /// <returns>The connected real-process MCP session.</returns>
     internal static async Task<McpProcessSession> StartAsync(
         string repositoryRoot,
         string mcpPath,
         string mcpWorkerPath,
         string? serverWorkerPath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? debuggerWorkerPath = null,
+        string? debuggerDumpWorkerPath = null,
+        TextWriter? diagnosticOutput = null)
     {
         string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
         Dictionary<string, string?> environment =
@@ -54,6 +66,16 @@ internal sealed class McpProcessSession : IAsyncDisposable
         if (serverWorkerPath is not null)
         {
             environment["CSLS_SERVER_WORKER_PATH"] = serverWorkerPath;
+        }
+
+        if (debuggerWorkerPath is not null)
+        {
+            environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
+        }
+
+        if (debuggerDumpWorkerPath is not null)
+        {
+            environment["CSLS_DEBUGGER_DUMP_WORKER_PATH"] = debuggerDumpWorkerPath;
         }
 
         bool isManagedLauncher = string.Equals(
@@ -82,7 +104,10 @@ internal sealed class McpProcessSession : IAsyncDisposable
 
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The production MCP launcher did not start.");
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(
+        Task<string> standardErrorTask = ProcessOutputCapture.ReadAsync(
+            process.StandardError.BaseStream,
+            process.StandardError.CurrentEncoding,
+            diagnosticOutput ?? Console.Error,
             CancellationToken.None);
         var transport = new StreamClientTransport(
             process.StandardInput.BaseStream,
@@ -105,16 +130,18 @@ internal sealed class McpProcessSession : IAsyncDisposable
         Process process,
         Task<string> standardErrorTask)
     {
-        await process.StandardInput.DisposeAsync().ConfigureAwait(false);
-        if (!process.HasExited)
+        using (process)
         {
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        }
+            await process.StandardInput.DisposeAsync().ConfigureAwait(false);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
 
-        ValueTask<string> standardErrorCompletion = new(standardErrorTask);
-        await standardErrorCompletion.ConfigureAwait(false);
-        process.Dispose();
+            ValueTask<string> standardErrorCompletion = new(standardErrorTask);
+            await standardErrorCompletion.ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -160,24 +187,26 @@ internal sealed class McpProcessSession : IAsyncDisposable
             return;
         }
 
-        Task disconnectCompletion = Volatile.Read(ref _disconnectState) == 0
-            ? DisconnectAsync(TimeSpan.FromSeconds(30), CancellationToken.None)
-            : Task.CompletedTask;
-        await disconnectCompletion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-
-        if (!_process.HasExited)
+        using (_process)
         {
-            _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        }
+            Task disconnectCompletion = Volatile.Read(ref _disconnectState) == 0
+                ? DisconnectAsync(TimeSpan.FromSeconds(30), CancellationToken.None)
+                : Task.CompletedTask;
+            await disconnectCompletion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
-        await Client.DisposeAsync().ConfigureAwait(false);
-        ValueTask<string> standardErrorCompletion = new(_standardErrorTask);
-        await standardErrorCompletion.ConfigureAwait(false);
-        _process.Dispose();
-        if (disconnectCompletion.IsFaulted)
-        {
-            await disconnectCompletion.ConfigureAwait(false);
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+                await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            await Client.DisposeAsync().ConfigureAwait(false);
+            ValueTask<string> standardErrorCompletion = new(_standardErrorTask);
+            await standardErrorCompletion.ConfigureAwait(false);
+            if (disconnectCompletion.IsFaulted)
+            {
+                await disconnectCompletion.ConfigureAwait(false);
+            }
         }
     }
 }

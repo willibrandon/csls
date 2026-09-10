@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Evaluator.FSharp</AssemblyName>
+    <RootNamespace>Csls.Debugger.Evaluator.FSharp</RootNamespace>
+    <Description>Official F# compiler-service expression provider for the debugger.</Description>
+    <LangVersion>latest</LangVersion>
+    <NoWarn></NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="FSharpExpressionLowerer.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Compiler.Service" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+  </ItemGroup>
+</Project>

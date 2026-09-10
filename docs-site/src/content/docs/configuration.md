@@ -26,8 +26,7 @@ server contract and records the current defaults.
 }
 ```
 
-`enableAnalyzers` defaults to `true`. Disable it to return compiler diagnostics
-without running analyzers referenced by the loaded project.
+`enableAnalyzers` defaults to `true`. Set it to `false` for compiler-only diagnostics.
 
 `formatOnSave` defaults to `false`. Set it to `true` when the client should request
 server formatting edits before saving C#, Razor, or cshtml files.

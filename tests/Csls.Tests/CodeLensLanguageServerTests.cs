@@ -12,6 +12,9 @@ namespace Csls.Tests;
 [TestClass]
 public sealed class CodeLensLanguageServerTests
 {
+    private static readonly TimeSpan s_codeLensRefreshObservationPeriod =
+        TimeSpan.FromMilliseconds(500);
+
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
@@ -188,7 +191,13 @@ public sealed class CodeLensLanguageServerTests
             CodeLens unresolvedAfterRemoval = await lsp.ResolveCodeLensAsync(
                 oneReference with { Command = null },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(unresolvedAfterRemoval.Command);
+            Assert.IsNotNull(unresolvedAfterRemoval.Command);
+            Assert.AreEqual("0 references", unresolvedAfterRemoval.Command.Title);
+            Assert.AreEqual(
+                "csls.client.peekReferences",
+                unresolvedAfterRemoval.Command.Command);
+            Assert.IsNotNull(unresolvedAfterRemoval.Command.Arguments);
+            Assert.HasCount(2, unresolvedAfterRemoval.Command.Arguments);
             Assert.IsNull(unresolvedAfterRemoval.Data);
             Assert.AreEqual(oneReference.Range, unresolvedAfterRemoval.Range);
 
@@ -255,6 +264,81 @@ public sealed class CodeLensLanguageServerTests
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Cancels a queued client refresh as soon as the real server begins shutting down.
+    /// </summary>
+    [TestMethod]
+    public async Task ShutdownRetiresQueuedCodeLensRefresh()
+    {
+        const string source =
+            "namespace Fixture; sealed class Target { void Called() { } }\n";
+        string fixturePath = CreateFixturePath("shutdown");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = await WriteFixtureAsync(fixturePath, source)
+                .ConfigureAwait(false);
+            var client = new LspTestClient(
+                legacyConfiguration: null,
+                preferredConfiguration: null);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath, client)
+                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "workspace": {
+                    "codeLens": {
+                      "refreshSupport": true
+                    }
+                  },
+                  "textDocument": {
+                    "codeLens": {},
+                    "diagnostic": {}
+                  }
+                }
+                """);
+            await lsp.InitializeAsync(
+                fixturePath,
+                capabilities.RootElement,
+                "Visual Studio Code",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, source).ConfigureAwait(false);
+            await lsp.ChangeDocumentAsync(
+                documentPath,
+                version: 2,
+                [new TextDocumentContentChangeEvent { Text = Environment.NewLine + source }])
+                .ConfigureAwait(false);
+            await client.WaitForCodeLensRefreshAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            await lsp.ChangeDocumentAsync(
+                documentPath,
+                version: 3,
+                [new TextDocumentContentChangeEvent
+                {
+                    Text = Environment.NewLine + Environment.NewLine + source
+                }])
+                .ConfigureAwait(false);
+            await lsp.RequestShutdownAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await Task.Delay(
+                s_codeLensRefreshObservationPeriod,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(1, client.CodeLensRefreshRequestCount);
+            string diagnostics = await lsp.ExitAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "CodeLens refresh request failed",
+                diagnostics,
+                StringComparison.Ordinal);
         }
         finally
         {

@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, relative } from "node:path";
 import * as vscode from "vscode";
 import { DotnetProjectInspector } from "./dotnetProjectInspector.js";
 import type { MtpTestListDocument } from "./mtpTestListDocument.js";
 import { ProcessExecutor } from "./processExecutor.js";
+import { TestDiscoveryWorkspace } from "./testDiscoveryWorkspace.js";
 import type { TestItemMetadata } from "./testItemMetadata.js";
 import { TrxTestResultParser } from "./trxTestResultParser.js";
 
@@ -15,6 +16,8 @@ export class TestExplorer implements vscode.Disposable {
   private readonly inspector: DotnetProjectInspector;
   private readonly metadata = new Map<string, TestItemMetadata>();
   private readonly parser = new TrxTestResultParser();
+  private readonly discoveryWorkspace = new TestDiscoveryWorkspace();
+  private disposalPromise: Promise<void> | undefined;
   private operationPromise: Promise<void> = Promise.resolve();
   private refreshCancellation: vscode.CancellationTokenSource | undefined;
   private refreshRequested = false;
@@ -63,29 +66,23 @@ export class TestExplorer implements vscode.Disposable {
   }
 
   async refresh(cancellationToken?: vscode.CancellationToken): Promise<void> {
+    if (this.disposed) {
+      throw new vscode.CancellationError();
+    }
+
     if (this.refreshPromise !== undefined) {
       return this.refreshPromise;
     }
 
-    const refreshCancellation = new vscode.CancellationTokenSource();
-    const cancellation = cancellationToken?.onCancellationRequested(() => {
-      refreshCancellation.cancel();
-    });
-    this.refreshCancellation = refreshCancellation;
-    this.refreshPromise = this.enqueueOperation(
-      () => this.refreshCore(refreshCancellation.token),
-    ).finally(() => {
-      cancellation?.dispose();
-      refreshCancellation.dispose();
-      if (this.refreshCancellation === refreshCancellation) {
-        this.refreshCancellation = undefined;
-      }
+    if (this.refreshTimer !== undefined) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
 
+    this.refreshPromise = this.enqueueOperation(
+      () => this.refreshUntilCurrent(cancellationToken),
+    ).finally(() => {
       this.refreshPromise = undefined;
-      if (this.refreshRequested && !this.disposed) {
-        this.refreshRequested = false;
-        this.refreshInBackground();
-      }
     });
     return this.refreshPromise;
   }
@@ -159,7 +156,11 @@ export class TestExplorer implements vscode.Disposable {
     return errors;
   }
 
-  dispose(): void {
+  dispose(): Promise<void> {
+    if (this.disposalPromise !== undefined) {
+      return this.disposalPromise;
+    }
+
     this.disposed = true;
     this.refreshCancellation?.cancel();
     if (this.refreshTimer !== undefined) {
@@ -169,6 +170,36 @@ export class TestExplorer implements vscode.Disposable {
 
     for (const disposable of this.disposables.reverse()) {
       disposable.dispose();
+    }
+
+    this.disposalPromise = this.operationPromise.then(() => this.discoveryWorkspace.dispose());
+    return this.disposalPromise;
+  }
+
+  private async refreshUntilCurrent(cancellationToken?: vscode.CancellationToken): Promise<void> {
+    do {
+      this.refreshRequested = false;
+      const refreshCancellation = new vscode.CancellationTokenSource();
+      const cancellation = cancellationToken?.onCancellationRequested(() => {
+        refreshCancellation.cancel();
+      });
+      this.refreshCancellation = refreshCancellation;
+      try {
+        this.throwIfRefreshCanceled(cancellationToken);
+        await this.refreshCore(refreshCancellation.token);
+      } finally {
+        cancellation?.dispose();
+        refreshCancellation.dispose();
+        this.refreshCancellation = undefined;
+      }
+
+      this.throwIfRefreshCanceled(cancellationToken);
+    } while (this.refreshRequested);
+  }
+
+  private throwIfRefreshCanceled(cancellationToken?: vscode.CancellationToken): void {
+    if (this.disposed || cancellationToken?.isCancellationRequested === true) {
+      throw new vscode.CancellationError();
     }
   }
 
@@ -228,7 +259,8 @@ export class TestExplorer implements vscode.Disposable {
     }
 
     const projectItem = this.createProjectItem(project);
-    const discoveryDirectory = await mkdtemp(join(tmpdir(), "csls-test-discovery-"));
+    const discoveryDirectory = await this.discoveryWorkspace.getProjectDirectory(project.path);
+    const discoveryResultsDirectory = await mkdtemp(join(discoveryDirectory, "results-"));
     try {
       const artifactsDirectory = join(discoveryDirectory, "artifacts");
       const build = await this.executor.execute(
@@ -267,8 +299,6 @@ export class TestExplorer implements vscode.Disposable {
         throw new Error("The isolated test discovery build did not produce a target path.");
       }
 
-      const discoveryResultsDirectory = join(discoveryDirectory, "results");
-      await mkdir(discoveryResultsDirectory);
       const discovery = await this.executor.execute(
         [
           isolatedProperties.TargetPath,
@@ -333,7 +363,7 @@ export class TestExplorer implements vscode.Disposable {
 
       return projectItem;
     } finally {
-      await rm(discoveryDirectory, { force: true, recursive: true });
+      await rm(discoveryResultsDirectory, { force: true, recursive: true });
     }
   }
 
@@ -499,7 +529,13 @@ export class TestExplorer implements vscode.Disposable {
   }
 
   private enqueueOperation<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
-    const result = this.operationPromise.then(operation, operation);
+    const result = this.operationPromise.then(() => {
+      if (this.disposed) {
+        throw new vscode.CancellationError();
+      }
+
+      return operation();
+    });
     this.operationPromise = result.then(
       () => undefined,
       () => undefined,

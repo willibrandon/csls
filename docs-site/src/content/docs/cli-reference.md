@@ -20,7 +20,7 @@ Options:
 
 Commands:
   lsp            Run the Language Server Protocol over standard I/O.
-  debugger       Manage the Microsoft .NET debugger used by editor integrations.
+  debugger       Run native .NET debugging and editor debugger integration.
   sessions       Inspect live csls language-server sessions.
   dashboard      Inspect language-server state in the Hex1b dashboard.
   doctor <path>  Inspect SDK selection and load the workspace through a transient csls session. [default: .]
@@ -49,7 +49,7 @@ Options:
 
 ```text
 Description:
-  Manage the Microsoft .NET debugger used by editor integrations.
+  Run native .NET debugging and editor debugger integration.
 
 Usage:
   csls debugger [command] [options]
@@ -58,7 +58,9 @@ Options:
   -?, -h, --help  Show help and usage information
 
 Commands:
-  install  Install the verified Microsoft .NET debugger for the active platform.
+  dap     Run the csls Debug Adapter Protocol host over standard I/O.
+  tui     Debug managed applications in an interactive terminal.
+  doctor  Verify the packaged native .NET runtime-debugging components.
 ```
 
 ## csls sessions
@@ -227,19 +229,47 @@ Commands:
   init  Create a reusable csls agent skill file.
 ```
 
-## csls debugger install
+## csls debugger dap
 
 ```text
 Description:
-  Install the verified Microsoft .NET debugger for the active platform.
+  Run the csls Debug Adapter Protocol host over standard I/O.
 
 Usage:
-  csls debugger install [options]
+  csls debugger dap [options]
 
 Options:
-  --output <directory> (REQUIRED)  Private directory used to store the verified debugger.
-  --archive <path>                 Use a previously downloaded official debugger archive.
-  -?, -h, --help                   Show help and usage information
+  -?, -h, --help  Show help and usage information
+```
+
+## csls debugger tui
+
+```text
+Description:
+  Debug managed applications in an interactive terminal.
+
+Usage:
+  csls debugger tui [command] [options]
+
+Options:
+  -?, -h, --help  Show help and usage information
+
+Commands:
+  launch <program> <arguments>  Launch a managed target and stop at entry or an initial source breakpoint.
+  attach <process-id>           Attach to and pause a running CoreCLR process.
+```
+
+## csls debugger doctor
+
+```text
+Description:
+  Verify the packaged native .NET runtime-debugging components.
+
+Usage:
+  csls debugger doctor [options]
+
+Options:
+  -?, -h, --help  Show help and usage information
 ```
 
 ## csls sessions list
@@ -748,7 +778,7 @@ Arguments:
 
 Options:
   --tab-size <number>  Indentation width from 1 through 32. [default: 4]
-  --tabs               Use tabs instead of spaces for indentation.
+  --tabs               Use tabs for indentation.
   --session <pid>      Language-server process identifier; inferred when exactly one session is live.
   --workspace <path>   Select this workspace or start a transient session when none is live.
   --apply              Explicitly apply the one-use plan after all preconditions pass.
@@ -792,9 +822,56 @@ Usage:
   csls agent init [options]
 
 Options:
-  --path <path>   Write the skill file to this path instead of ./SKILL.md.
+  --path <path>   Write the skill file to this path.
   --force         Replace an existing skill file.
-  --stdout        Write the skill content to standard output instead of a file.
+  --stdout        Write the skill content to standard output.
   --json          Write the versioned machine-readable response envelope.
   -?, -h, --help  Show help and usage information
+```
+
+## csls debugger tui launch
+
+```text
+Description:
+  Launch a managed target and stop at entry or an initial source breakpoint.
+
+Usage:
+  csls debugger tui launch <program> [<arguments>...] [options]
+
+Arguments:
+  <program>    Managed executable or assembly path.
+  <arguments>  Arguments passed to the managed target.
+
+Options:
+  --source <path>                          Source document containing the initial breakpoint.
+  --line <number>                          One-based line for the initial source breakpoint.
+  --stop-at-entry                          Stop at the first executable entry-point statement.
+  --cwd <path>                             Target working directory. [default: .]
+  --env-file <path>                        UTF-8 environment file, absolute or relative to --cwd.
+  --runtime <path>                         Optional dotnet host path used to run a managed assembly.
+  --require-exact-source <true|false>      Require local source to match its debug symbols.
+  --show-raw-values                        Inspect physical fields using raw value presentation.
+  --allow-implicit-func-eval <true|false>  Allow automatic debugger proxy construction and property evaluation.
+  --source-file-map <build=local>          Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                           Show help and usage information
+```
+
+## csls debugger tui attach
+
+```text
+Description:
+  Attach to and pause a running CoreCLR process.
+
+Usage:
+  csls debugger tui attach <process-id> [options]
+
+Arguments:
+  <process-id>  Running managed process identifier.
+
+Options:
+  --require-exact-source <true|false>      Require local source to match its debug symbols.
+  --show-raw-values                        Inspect physical fields using raw value presentation.
+  --allow-implicit-func-eval <true|false>  Allow automatic debugger proxy construction and property evaluation.
+  --source-file-map <build=local>          Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                           Show help and usage information
 ```

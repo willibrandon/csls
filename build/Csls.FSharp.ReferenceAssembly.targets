@@ -1,0 +1,21 @@
+<Project>
+  <Target Name="_CslsRefreshFSharpReferenceAssembly"
+          AfterTargets="CopyFilesToOutputDirectory"
+          Condition="'$(MSBuildProjectExtension)' == '.fsproj' and
+                     '$(DesignTimeBuild)' != 'true' and
+                     '$(ProduceReferenceAssembly)' == 'true' and
+                     '$(CopyBuildOutputToOutputDirectory)' == 'true' and
+                     '$(SkipCopyBuildProduct)' != 'true' and
+                     Exists('@(IntermediateRefAssembly)') and Exists('$(TargetRefPath)')">
+    <!-- Compare contents because F# signature IDs can remain unchanged across assembly-version changes. -->
+    <GetFileHash Files="@(IntermediateRefAssembly)">
+      <Output TaskParameter="Hash" PropertyName="_CslsFSharpIntermediateReferenceHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(TargetRefPath)">
+      <Output TaskParameter="Hash" PropertyName="_CslsFSharpPublishedReferenceHash" />
+    </GetFileHash>
+    <Copy SourceFiles="@(IntermediateRefAssembly)"
+          DestinationFiles="$(TargetRefPath)"
+          Condition="'$(_CslsFSharpIntermediateReferenceHash)' != '$(_CslsFSharpPublishedReferenceHash)'" />
+  </Target>
+</Project>

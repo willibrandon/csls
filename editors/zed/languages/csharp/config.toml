@@ -1,6 +1,7 @@
 name = "CSharp"
 code_fence_block_name = "csharp"
 grammar = "c_sharp"
+debuggers = ["csls"]
 path_suffixes = ["cs", "csx"]
 line_comments = ["// ", "/// "]
 autoclose_before = ";:.,=}])>"

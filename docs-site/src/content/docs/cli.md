@@ -5,7 +5,7 @@ description: Inspect and use live or transient csls language-server sessions.
 
 ## Workspace doctor
 
-Inspect the SDK and Roslyn workspace that csls will use without starting an editor:
+Inspect a workspace from the terminal:
 
 ```console
 csls doctor
@@ -16,7 +16,7 @@ csls doctor src/MyApp --binlog artifacts/doctor.binlog
 The command selects the SDK from the target directory, starts a transient csls
 server, loads the real MSBuild workspace, and reports projects, documents,
 diagnostics, build hosts, and startup logs. Source errors are reported as warnings
-because the language server can still serve a project that does not compile.
+while language services remain available.
 Startup, SDK, project-load, and requested-build failures return a nonzero exit code.
 `--binlog` also runs `dotnet build` and writes an MSBuild binary log for detailed
 evaluation and build analysis.
@@ -34,7 +34,7 @@ csls sessions watch --json
 
 `sessions watch` writes an initial snapshot and then reports each added, updated,
 or removed session until canceled. JSON mode writes one complete response envelope
-per line, so agents can process the stream without waiting for it to close. Each
+per line, so agents can process each event as it arrives. Each
 event includes its sequence, the changed session, and the current bounded session
 snapshot.
 
@@ -97,7 +97,7 @@ csls trace stop --session 12345 --json
 
 Each retained entry includes its correlation identifier, protocol operation,
 workspace generation, duration, completion state, and cancellation state. A new
-trace replaces the previous trace. Trace data is not written to disk.
+trace replaces the previous trace.
 
 ## Safe edits
 
@@ -116,10 +116,10 @@ csls edit code-action Program.cs --kind refactor --line 20 --character 15 --appl
 Missing-using quick fixes search the loaded project and its references, then keep
 only imports that make the unresolved type bind to the intended Roslyn symbol.
 The same command implements the interface selected by the supplied position.
-Source actions such as `source.organizeImports` do not require a target position.
+Source actions such as `source.organizeImports` operate on the whole document.
 
 Every machine-readable command supports `--json`. Its response uses a versioned
-envelope so scripts and agents can reject shapes they do not understand.
+envelope that scripts and agents can validate before reading the result.
 System.CommandLine response files and completion directives are available for
 shell integrations and larger agent invocations.
 
@@ -145,5 +145,5 @@ After installing the separate `csls-mcp` tool, configure the MCP client to run:
 csls-mcp
 ```
 
-The MCP server has no startup selector. Each target-dependent tool and resource
-instead requires exactly one `workspace`, `session`, or `socket` field.
+Each target-dependent language-service tool and resource selects exactly one
+`workspace`, `session`, or `socket` field.

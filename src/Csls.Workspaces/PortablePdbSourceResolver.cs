@@ -355,18 +355,19 @@ internal static class PortablePdbSourceResolver
             return [];
         }
 
-        if (peReader.TryOpenAssociatedPortablePdb(
+        bool openedAssociatedPdb = peReader.TryOpenAssociatedPortablePdb(
             assemblyPath,
             OpenFileIfPresent,
             out MetadataReaderProvider? associatedProvider,
-            out _))
+            out _);
+        using (associatedProvider)
         {
-            using (associatedProvider)
+            if (openedAssociatedPdb && associatedProvider is not null)
             {
                 return await ResolveDocumentsAsync(
                     project,
                     peReader.GetMetadataReader(),
-                    associatedProvider!.GetMetadataReader(),
+                    associatedProvider.GetMetadataReader(),
                     entityHandle,
                     cancellationToken).ConfigureAwait(false);
             }

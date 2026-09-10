@@ -392,6 +392,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
         catch (Exception exception)
         {
+            LanguageServerLogger.LogWorkspaceLoadFailure(_logger, exception);
+            _interactiveWorkspaceReady.TrySetException(exception);
             _workspaceReady.TrySetException(exception);
             Interlocked.CompareExchange(
                 ref _workspacePhase,
@@ -458,6 +460,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.ShuttingDown);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
+        BeginCodeLensRefreshStop();
         _scheduler.BeginStop();
         return Task.FromResult<object?>(null);
     }
@@ -469,6 +472,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _workspaceReady.TrySetCanceled();
         _interactiveWorkspaceReady.TrySetCanceled();
+        BeginCodeLensRefreshStop();
         _scheduler.BeginStop();
         _exitRequested.TrySetResult();
         return Task.CompletedTask;
@@ -1692,7 +1696,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         RequestMode requestMode,
         CancellationToken cancellationToken)
     {
-        if (requestMode == RequestMode.ReadWrite)
+        if (requestMode == RequestMode.ReadWrite || requestName == "workspace/inspect")
         {
             return Task.CompletedTask;
         }

@@ -22,14 +22,14 @@ Repeat `--filter` to select several benchmark groups. The dry job validates benc
 construction in pull requests. Scheduled and release runs retain machine-readable
 reports, code size, and disassembly. Pull requests also run stable base and candidate
 benchmarks on the same runner. A regression fails only when the candidate median is
-more than 10 percent slower and its measurements no longer overlap the baseline
+more than 10 percent slower and its measurements fall entirely outside the baseline
 interquartile range.
 
 ## End-to-end measurements
 
 `Csls.EndToEndPerformance` runs outside the measured tools. It publishes the real
 Native AOT `csls` and `csls-mcp` launchers, loads a real solution, and drives the
-production interfaces instead of calling implementation classes.
+production interfaces.
 
 ```console
 dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime linux-x64
@@ -48,15 +48,39 @@ report records the OS, CPU, memory limit, architecture, runtime, SDK, workspace,
 probe document, analyzer assemblies, commands, cache state, and iteration count. CI
 runs it on Windows, Linux, and macOS. Scheduled runs use three iterations.
 
+## Debugger measurements
+
+Run the debugger workload from a csls source checkout, passing the absolute path
+to your published csls installation:
+
+```console
+dotnet run --project benchmarks/Csls.EndToEndPerformance --configuration Release -- debugger --server /absolute/path/to/csls --fixture-source benchmarks/Csls.EndToEndPerformance/DebuggerPerformanceTarget.cs --iterations 3 --samples 5
+```
+
+Each iteration starts a fresh debugger, launches the compiled target, and stops at
+its source breakpoint. The workload measures thread and stack inspection, locals,
+array paging, expression evaluation, target output, and shutdown. It verifies the
+source location and values as part of each measured operation.
+
+Reports under `artifacts/end-to-end-performance` separate first and repeated
+requests and include executable hashes, machine and SDK details, resident memory,
+process-tree CPU time, and Windows/Linux private memory. Resource snapshots include
+the debugger, target, and evaluator. Launch-to-breakpoint timing includes breakpoint
+setup.
+
+Use `--operation-budget-ms` to set the maximum median for each operation,
+`--timeout-seconds` to set the session deadline, and `--output` to select a new
+report path. A completed run that exceeds its budget retains the report and returns
+exit code 1. Compare runs with the same binaries, build configuration, sampling
+options, and machine conditions.
+
 ## Native AOT size
 
 Each runtime package enables Native AOT compiler statistics for the `csls` and
 `csls-mcp` launchers. [Dotsider](https://dotsider.dev/) compares those reports
 with the stored runtime baseline and enforces the package size budget. Managed
-workers are measured through package verification and end-to-end memory rather than
-being folded into the native launcher total.
+workers are measured separately through package verification and end-to-end memory.
 
 When changing a hot path, keep the BenchmarkDotNet report, the end-to-end JSON
-report, and the Native AOT size result together. A faster microbenchmark does not
-justify slower startup, extra worker processes, higher ready-state memory, or a
-change in language behavior.
+report, and the Native AOT size result together. Evaluate startup time, worker
+count, ready-state memory, and language behavior alongside the microbenchmark result.

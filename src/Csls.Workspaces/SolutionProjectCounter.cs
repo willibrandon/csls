@@ -93,21 +93,18 @@ internal static class SolutionProjectCounter
         }
 
         int position = assignmentIndex + 1;
-        if (!TryReadQuotedField(remainder, ref position, out _, out _) ||
+        if (!TryReadQuotedField(remainder, ref position, out _) ||
             !TryConsumeComma(remainder, ref position) ||
             !TryReadQuotedField(
                 remainder,
                 ref position,
-                out int projectPathStart,
-                out int projectPathLength) ||
+                out Range projectPathRange) ||
             !TryConsumeComma(remainder, ref position))
         {
             return false;
         }
 
-        ReadOnlySpan<char> projectPathSpan = remainder.Slice(
-            projectPathStart,
-            projectPathLength);
+        ReadOnlySpan<char> projectPathSpan = remainder[projectPathRange];
         if (!projectPathSpan.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -120,18 +117,16 @@ internal static class SolutionProjectCounter
     private static bool TryReadQuotedField(
         ReadOnlySpan<char> input,
         ref int position,
-        out int valueStart,
-        out int valueLength)
+        out Range valueRange)
     {
         SkipWhitespace(input, ref position);
-        valueStart = 0;
-        valueLength = 0;
+        valueRange = default;
         if ((uint)position >= (uint)input.Length || input[position] != '"')
         {
             return false;
         }
 
-        valueStart = ++position;
+        int valueStart = ++position;
         while (position < input.Length)
         {
             if (input[position] != '"')
@@ -146,7 +141,7 @@ internal static class SolutionProjectCounter
                 continue;
             }
 
-            valueLength = position - valueStart;
+            valueRange = valueStart..position;
             position++;
             return true;
         }

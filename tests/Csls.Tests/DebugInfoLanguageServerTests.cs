@@ -1,6 +1,7 @@
 using Csls.Protocol;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Csls.Tests;
 
@@ -106,48 +107,121 @@ public sealed class DebugInfoLanguageServerTests
     }
 
     /// <summary>
-    /// Acknowledges shutdown while the real repository workspace is still loading.
+    /// Cancels a real configuration request and acknowledges shutdown during repository initialization.
     /// </summary>
     [TestMethod]
     public async Task ShutdownRespondsWhileRepositoryWorkspaceLoads()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = ResolveWorkerPath(repositoryRoot);
+        var client = new LspTestClient(legacyConfiguration: null, preferredConfiguration: null);
+        Task configurationCanceled = client.HoldConfigurationResponseUntilCanceledAsync();
         LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-shutdown-during-load-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            repositoryRoot).ConfigureAwait(false);
+            repositoryRoot,
+            client).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
 
-        await lsp.InitializeAsync(
+        try
+        {
+            using var capabilities = JsonDocument.Parse("""{"workspace":{"configuration":true}}""");
+            await lsp.InitializeAsync(
+                repositoryRoot,
+                capabilities.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+
+            using var loadingTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                TestContext.CancellationToken);
+            loadingTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            await client.WaitForConfigurationRequestAsync(1, loadingTimeout.Token).ConfigureAwait(false);
+            CSharpDebugInfo loading = await lsp.RequestDebugInfoAsync(loadingTimeout.Token).ConfigureAwait(false);
+            Assert.AreEqual("Loading", loading.Workspace.Phase);
+            Assert.AreEqual(0L, loading.Workspace.Generation);
+            CSharpDebugRequestInfo initialized = Assert.ContainsSingle(
+                loading.RequestQueue.Requests.Where(
+                    static request => request.Name == "initialized"));
+            Assert.AreEqual("Running", initialized.Phase);
+            Assert.IsFalse(configurationCanceled.IsCompleted);
+
+            using var shutdownTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                TestContext.CancellationToken);
+            shutdownTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            await lsp.RequestShutdownAsync(shutdownTimeout.Token).ConfigureAwait(false);
+            await configurationCanceled.WaitAsync(shutdownTimeout.Token).ConfigureAwait(false);
+            CSharpDebugInfo shuttingDown = await lsp.RequestDebugInfoAsync(
+                shutdownTimeout.Token).ConfigureAwait(false);
+            Assert.AreEqual("ShuttingDown", shuttingDown.Workspace.Phase);
+            Assert.AreEqual("Stopping", shuttingDown.RequestQueue.Mode);
+            string diagnostics = await lsp.ExitAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            client.ReleaseConfigurationResponse();
+        }
+    }
+
+    /// <summary>
+    /// Delivers client cancellation to a running Roslyn analyzer without closing the LSP connection.
+    /// </summary>
+    [TestMethod]
+    public async Task ClientCancellationReachesRunningAnalyzer()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
-        await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
+            "csls-client-cancellation-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [ResolveWorkerPath(repositoryRoot)],
+            fixture.RootPath).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(fixture.RootPath, TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(fixture.DocumentPath, CancellationProbeFixture.DocumentText)
+            .ConfigureAwait(false);
 
-        using var loadingTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+        using var requestSource = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.CancellationToken);
-        loadingTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-        CSharpDebugInfo loading = await WaitForPhaseAsync(
-            lsp,
-            "Loading",
-            loadingTimeout.Token).ConfigureAwait(false);
-        Assert.AreEqual(0L, loading.Workspace.Generation);
-        Assert.IsEmpty(loading.Workspace.Folders);
-        CSharpDebugRequestInfo initialized = Assert.ContainsSingle(
-            loading.RequestQueue.Requests.Where(
-                static request => request.Name == "initialized"));
-        Assert.AreEqual("Running", initialized.Phase);
-
-        using var shutdownTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-            TestContext.CancellationToken);
-        shutdownTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-        await lsp.RequestShutdownAsync(shutdownTimeout.Token).ConfigureAwait(false);
-        CSharpDebugInfo shuttingDown = await lsp.RequestDebugInfoAsync(
-            shutdownTimeout.Token).ConfigureAwait(false);
-        Assert.AreEqual("ShuttingDown", shuttingDown.Workspace.Phase);
-        string diagnostics = await lsp.ExitAsync(
+        Task<DocumentDiagnosticReport> diagnostic = lsp.RequestDiagnosticsAsync(
+            fixture.DocumentPath,
+            previousResultId: null,
+            requestSource.Token);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "started",
+            TimeSpan.FromSeconds(60),
             TestContext.CancellationToken).ConfigureAwait(false);
+        CSharpDebugInfo running = await lsp.RequestDebugInfoAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        CSharpDebugRequestInfo activeDiagnostic = Assert.ContainsSingle(
+            running.RequestQueue.Requests.Where(
+                static request => request.Name == "textDocument/diagnostic"));
+        Assert.AreEqual("Running", activeDiagnostic.Phase);
+
+        await requestSource.CancelAsync().ConfigureAwait(false);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
+            await diagnostic.WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken)
+                .ConfigureAwait(false)).ConfigureAwait(false);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(10),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        string lifecycle = await File.ReadAllTextAsync(
+            fixture.MarkerPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("started\ncanceled\n", lifecycle);
+
+        CSharpDebugInfo afterCancellation = await lsp.RequestDebugInfoAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("Dispatching", afterCancellation.RequestQueue.Mode);
+        string diagnostics = await lsp.ShutdownAsync(TestContext.CancellationToken).ConfigureAwait(false);
         Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
     }
 

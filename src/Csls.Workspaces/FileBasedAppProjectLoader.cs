@@ -476,7 +476,12 @@ internal static class FileBasedAppProjectLoader
         }
 
         XNamespace projectNamespace = root.Name.Namespace;
-        var directoryPaths = new XElement(projectNamespace + "PropertyGroup");
+        var directoryPaths = new XElement(
+            projectNamespace + "PropertyGroup",
+            new XElement(projectNamespace + "EnableSourceControlManagerQueries", "false"),
+            new XElement(projectNamespace + "EnableSourceLink", "false"),
+            new XElement(projectNamespace + "PublishRepositoryUrl", "false"),
+            new XElement(projectNamespace + "EmbedUntrackedSources", "false"));
         AddPathPropertyIfPresent(
             directoryPaths,
             projectNamespace,
@@ -502,10 +507,7 @@ internal static class FileBasedAppProjectLoader
             projectNamespace,
             "ProjectAssetsFile",
             projectAssetsPath);
-        if (directoryPaths.HasElements)
-        {
-            root.AddFirst(directoryPaths);
-        }
+        root.AddFirst(directoryPaths);
 
         return document.ToString(SaveOptions.DisableFormatting);
     }

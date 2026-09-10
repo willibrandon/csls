@@ -41,12 +41,11 @@ name = "c-sharp"
 language-servers = ["csls"]
 ```
 
-Run `hx --health c-sharp` if Helix cannot find the command.
+Run `hx --health c-sharp` to check Helix's language-server configuration.
 
 ![Helix showing Roslyn hover information from csls](../../assets/screenshots/helix-hover.svg)
 
-Click the screenshot to view it at full size. It is captured from the same real
-Helix and Hex1b session used by the integration test.
+Click the screenshot to view the hover information at full size.
 
 ## Neovim
 
@@ -70,7 +69,7 @@ Register `csls` with Eglot before opening a C# buffer:
              '((csharp-mode csharp-ts-mode) . ("csls" "lsp")))
 ```
 
-Run `M-x eglot` if the current C# mode does not start Eglot automatically.
+Run `M-x eglot` to start Eglot for the current C# buffer.
 
 ## Zed
 
@@ -99,8 +98,8 @@ Use a local build while developing the server:
 }
 ```
 
-`code_lens` can also be set to `menu` to put reference counts in the code-action
-menu instead of above declarations. Selecting a reference lens opens Zed's native
+Set `code_lens` to `on` for reference counts above declarations, or `menu` for
+counts in the code-action menu. Selecting a reference lens opens Zed's native
 location view.
 
 ## VS Code
@@ -114,15 +113,8 @@ Reference counts appear above supported C# declarations and open VS Code's nativ
 references popup when selected.
 
 VS Code for the Web runs csls in a WebAssembly worker and synchronizes the virtual
-workspace without requiring a local .NET installation. Language features and the
-Solution view work in the browser. Commands that start local processes remain on
-desktop and remote workspace hosts.
-
-The repository runs one feature contract against desktop, remote, Chromium,
-Firefox, and WebKit extension hosts. The contract covers hover, completion,
-definition, reference CodeLens, semantic tokens, configurable inlay hints,
-diagnostics after edits, formatting, rename, code actions, created files, and
-server restart.
+workspace. Language features and the Solution view run entirely in the browser.
+Desktop and remote workspace hosts also provide commands that start local processes.
 
 ## Other clients
 
@@ -134,4 +126,4 @@ csls lsp
 
 Use the workspace folder URI during `initialize`. The server discovers `.slnx`,
 `.sln`, `.csproj`, and file-based app entry points below that folder. Multi-root
-clients can add and remove folders without restarting the server.
+clients can add and remove folders during a live server session.
