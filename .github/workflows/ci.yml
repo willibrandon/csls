@@ -353,6 +353,8 @@ jobs:
 
       - name: Run debugger tests
         id: debugger-tests
+        # Leave time inside the job limit to restore authorization and retain hang evidence.
+        timeout-minutes: 3
         env:
           CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
         # Record active tests and process IDs before an idle run reaches the job limit.
