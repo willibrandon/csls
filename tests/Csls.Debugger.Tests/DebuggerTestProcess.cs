@@ -52,6 +52,7 @@ internal static class DebuggerTestProcess
         {
             throw new PlatformNotSupportedException("Native collector observation requires Windows.");
         }
+        cancellationToken.ThrowIfCancellationRequested();
         startInfo.RedirectStandardInput |= observeNativeExceptions;
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;

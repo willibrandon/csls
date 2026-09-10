@@ -12,6 +12,33 @@ namespace Csls.Debugger.Tests;
 public sealed class DebuggerTestProcessTests : DapTestContext
 {
     /// <summary>
+    /// Preserves caller cancellation before starting another owned child process.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CanceledCaptureDoesNotStartProcess()
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        await operation.CancelAsync().ConfigureAwait(false);
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        start.ArgumentList.Add("--debugger-process-tree-child");
+        start.ArgumentList.Add("leaf");
+        int? startedProcessId = null;
+
+        OperationCanceledException canceled = await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+            await DebuggerTestProcess.RunAsync(start, operation.Token,
+                observeProcess: (process, _, _) =>
+                {
+                    startedProcessId = process.Id;
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false)).ConfigureAwait(false);
+
+        Assert.AreEqual(operation.Token, canceled.CancellationToken);
+        Assert.IsNull(startedProcessId, "A canceled capture must not start another child process.");
+    }
+
+    /// <summary>
     /// Propagates synchronous and asynchronous observer failures after reaping the independently retained child.
     /// </summary>
     /// <param name="asynchronous">Whether the observer fails after yielding its execution.</param>
