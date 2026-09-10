@@ -141,13 +141,12 @@ internal static class DebuggerProcessDiagnostics
             Directory.CreateDirectory(directory);
             testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
             await CaptureWaitStatesAsync(processes, testContext, cancellation.Token).ConfigureAwait(false);
-            // Observe filesystem timing before stack profilers suspend the captured processes.
-            await CaptureFileActivityAsync(processes, directory, testContext, cancellation.Token).ConfigureAwait(false);
+            // A queued filesystem tracer must not consume the deadline before independent samples start.
             await Task.WhenAll(processes.SelectMany(processId => new[]
             {
                 CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
                 CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token)
-            }).Append(CaptureKernelStacksAsync(processes, directory, testContext, cancellation.Token))
+            }).Append(CaptureFileAndKernelActivityAsync(processes, directory, testContext, cancellation.Token))
                 .Append(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)))
                 .ConfigureAwait(false);
         }
@@ -252,6 +251,13 @@ internal static class DebuggerProcessDiagnostics
         }
     }
 
+    private static async Task CaptureFileAndKernelActivityAsync(
+        List<int> processes, string directory, TestContext testContext, CancellationToken cancellationToken)
+    {
+        await CaptureFileActivityAsync(processes, directory, testContext, cancellationToken).ConfigureAwait(false);
+        await CaptureKernelStacksAsync(processes, directory, testContext, cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task CaptureFileActivityAsync(
         List<int> processes, string directory, TestContext testContext, CancellationToken cancellationToken)
     {
@@ -345,13 +351,19 @@ internal static class DebuggerProcessDiagnostics
         startInfo.ArgumentList.Add("-file");
         startInfo.ArgumentList.Add(path);
         testContext.WriteLine($"Sampling process {processId} into {path}.");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo, cancellationToken,
-            line => testContext.WriteLine($"sample {processId}: {line}")).ConfigureAwait(false);
-        testContext.WriteLine($"Native stack capture for {processId} exited with {exitCode}: {output}{error}");
-        if (File.Exists(path))
+        try
         {
-            testContext.AddResultFile(path);
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+                startInfo, cancellationToken,
+                line => testContext.WriteLine($"sample {processId}: {line}")).ConfigureAwait(false);
+            testContext.WriteLine($"Native stack capture for {processId} exited with {exitCode}: {output}{error}");
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                testContext.AddResultFile(path);
+            }
         }
     }
 }
