@@ -110,10 +110,10 @@ public sealed class RequestActivityStateTests
             }
         }
 
-        Assert.IsNotNull(completion);
-        Assert.IsNotNull(retirement);
-        Assert.IsTrue(await completion.ConfigureAwait(false));
-        Assert.IsTrue(await retirement.ConfigureAwait(false));
+        Task<bool> completed = Assert.IsInstanceOfType<Task<bool>>(completion);
+        Task<bool> retired = Assert.IsInstanceOfType<Task<bool>>(retirement);
+        Assert.IsTrue(await completed.ConfigureAwait(false));
+        Assert.IsTrue(await retired.ConfigureAwait(false));
         Assert.IsFalse(request.Complete(status, exception: null));
         Assert.IsFalse(request.CompleteQueuedCancellation(() => Interlocked.Increment(ref queuedCompletions)));
         Assert.AreEqual(queued ? 1 : 0, queuedCompletions);

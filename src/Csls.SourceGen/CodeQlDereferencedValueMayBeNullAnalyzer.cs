@@ -25,14 +25,14 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
     public const string NullablePropertyDiagnosticId = "CSLS0023";
 
     /// <summary>
-    /// Identifies asserted nullable locals that require a typed capture before unwrapping.
+    /// Identifies asserted nullable locals that require a typed capture before access.
     /// </summary>
     public const string NullableLocalDiagnosticId = "CSLS0028";
 
     private static readonly DiagnosticDescriptor s_nullableLocalRule = new(
         NullableLocalDiagnosticId,
-        "Capture asserted nullable locals as their underlying type",
-        "Capture asserted nullable local '{0}' with a typed assertion, pattern, or null-coalescing throw before unwrapping it",
+        "Capture asserted nullable locals before access",
+        "Capture asserted nullable local '{0}' with a typed assertion, pattern, or null-coalescing throw before accessing it",
         "CodeQuality",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -74,7 +74,79 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
             AnalyzeSuppression,
             SyntaxKind.SuppressNullableWarningExpression);
         context.RegisterSyntaxNodeAction(AnalyzeNullableProperty, SyntaxKind.SimpleMemberAccessExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeNullableReference,
+            SyntaxKind.SimpleMemberAccessExpression, SyntaxKind.ElementAccessExpression);
     }
+
+    private static void AnalyzeNullableReference(SyntaxNodeAnalysisContext context)
+    {
+        ExpressionSyntax receiver = context.Node is MemberAccessExpressionSyntax member
+            ? member.Expression : ((ElementAccessExpressionSyntax)context.Node).Expression;
+        while (receiver is ParenthesizedExpressionSyntax parentheses)
+        {
+            receiver = parentheses.Expression;
+        }
+
+        if (context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol is
+            ILocalSymbol { Type.IsReferenceType: true, NullableAnnotation: NullableAnnotation.Annotated } local &&
+            HasPrecedingNullAssertion(context.Node, local, context) &&
+            HasEarlierNullTest(context.Node, local, context))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(s_nullableLocalRule, context.Node.GetLocation(), local.Name));
+        }
+    }
+
+    private static bool HasEarlierNullTest(SyntaxNode access, ILocalSymbol local, SyntaxNodeAnalysisContext context)
+    {
+        SyntaxNode? scope = access.Ancestors().FirstOrDefault(static node => node is
+            AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or
+            AccessorDeclarationSyntax or BaseMethodDeclarationSyntax);
+        if (scope is null)
+        {
+            return false;
+        }
+
+        foreach (SyntaxNode node in scope.DescendantNodes(static node => node is not
+            (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)))
+        {
+            if (node.SpanStart >= access.SpanStart)
+            {
+                continue;
+            }
+
+            ExpressionSyntax? tested = node switch
+            {
+                ConditionalAccessExpressionSyntax conditional => conditional.Expression,
+                IsPatternExpressionSyntax pattern when pattern.Pattern.DescendantNodesAndSelf()
+                    .Any(static child => child.IsKind(SyntaxKind.NullLiteralExpression)) => pattern.Expression,
+                BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.EqualsExpression) ||
+                    binary.IsKind(SyntaxKind.NotEqualsExpression) =>
+                    binary.Left.IsKind(SyntaxKind.NullLiteralExpression) ? binary.Right :
+                    binary.Right.IsKind(SyntaxKind.NullLiteralExpression) ? binary.Left : null,
+                _ => null
+            };
+            if (tested is not null && SymbolEquals(tested, local, context) &&
+                !HasInterveningWrite(scope, node, access, local, context))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool HasInterveningWrite(SyntaxNode scope, SyntaxNode test, SyntaxNode access,
+        ILocalSymbol local, SyntaxNodeAnalysisContext context) =>
+        scope.DescendantNodes(static node => node is not
+            (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+            .Where(node => node.SpanStart >= test.Span.End && node.Span.End <= access.SpanStart)
+            .Any(node => node switch
+            {
+                AssignmentExpressionSyntax assignment => assignment.Left.DescendantNodesAndSelf()
+                    .OfType<IdentifierNameSyntax>().Any(identifier => SymbolEquals(identifier, local, context)),
+                ArgumentSyntax argument when !argument.RefOrOutKeyword.IsKind(SyntaxKind.None) =>
+                    SymbolEquals(argument.Expression, local, context),
+                _ => false
+            });
 
     private static void AnalyzeNullableProperty(SyntaxNodeAnalysisContext context)
     {
@@ -103,7 +175,7 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
         }
     }
 
-    private static bool HasPrecedingNullAssertion(MemberAccessExpressionSyntax access, ILocalSymbol local,
+    private static bool HasPrecedingNullAssertion(SyntaxNode access, ILocalSymbol local,
         SyntaxNodeAnalysisContext context)
     {
         foreach (SyntaxNode ancestor in access.Ancestors())

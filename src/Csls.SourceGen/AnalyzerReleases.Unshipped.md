@@ -26,7 +26,7 @@ CSLS0024 | Reliability | Error | Catch-all handlers filter failures or rethrow t
 CSLS0025 | CodeQuality | Error | Directly nested conditions are combined without changing alternative branches
 CSLS0026 | CodeQuality | Error | Hidden visible fields explicitly distinguish base storage
 CSLS0027 | CodeQuality | Error | Repeated string accumulation uses a string builder
-CSLS0028 | CodeQuality | Error | Asserted nullable locals use typed captures before unwrapping
+CSLS0028 | CodeQuality | Error | Asserted nullable locals use typed captures before unwrapping values or accessing previously null-tested references
 CSLS0029 | CodeQuality | Error | Captured exceptions use explicit guards before rethrowing
 CSLS0030 | CodeQuality | Error | Shared fields are written through static members
 CSLS0031 | CodeQuality | Error | Dictionary guards retrieve values in the same lookup

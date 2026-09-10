@@ -69,15 +69,15 @@ public sealed class DebuggerRpcClientTests
                 () => client.ConnectAsync(TestContext.CancellationToken)).ConfigureAwait(false);
             if (borrowed)
             {
-                Assert.IsNotNull(stream);
-                Assert.IsTrue(stream.CanRead);
-                Assert.IsTrue(stream.CanWrite);
+                NetworkStream borrowedStream = Assert.IsInstanceOfType<NetworkStream>(stream);
+                Assert.IsTrue(borrowedStream.CanRead);
+                Assert.IsTrue(borrowedStream.CanWrite);
                 byte[] marker = [0x42];
                 await peer.WriteAsync(marker, TestContext.CancellationToken).ConfigureAwait(false);
                 byte[] received = new byte[1];
-                await stream.ReadExactlyAsync(received, TestContext.CancellationToken).ConfigureAwait(false);
+                await borrowedStream.ReadExactlyAsync(received, TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreSequenceEqual(marker, received);
-                await stream.WriteAsync(received, TestContext.CancellationToken).ConfigureAwait(false);
+                await borrowedStream.WriteAsync(received, TestContext.CancellationToken).ConfigureAwait(false);
             }
             else
             {

@@ -69,8 +69,9 @@ internal static class DumpMachORegisterAssertions
                 }
                 else
                 {
-                    Assert.IsNotNull(ordinals);
-                    id = Assert.ContainsSingle(ordinals.Where(pair => pair.Value == thread)).Key;
+                    IReadOnlyDictionary<uint, uint> capturedOrdinals = ordinals
+                        ?? throw new AssertFailedException("The native core has no thread-identity mapping.");
+                    id = Assert.ContainsSingle(capturedOrdinals.Where(pair => pair.Value == thread)).Key;
                 }
                 AssertThread(target.DataReader, stream, cursor + size, id, cancellationToken);
                 thread++;
