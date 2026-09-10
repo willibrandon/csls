@@ -14,14 +14,22 @@ namespace Csls.Debugger.Tests;
 public sealed class DumpObjectTests : DapTestContext
 {
     /// <summary>
-    /// Preserves exact field storage, generic base types, boxed structs and mixed object-array paths.
+    /// Preserves exact field storage, generic base types, boxed structs and mixed object-array paths in a heap dump.
     /// </summary>
-    /// <param name="captureType">The actual runtime dump-writer policy.</param>
     [TestMethod]
-    [DataRow(DumpType.WithHeap)]
-    [DataRow(DumpType.Full)]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task CapturedObjectsPreservePhysicalFields(DumpType captureType)
+    public Task CapturedObjectsPreservePhysicalFields() =>
+        AssertCapturedObjectsPreservePhysicalFieldsAsync(DumpType.WithHeap);
+
+    /// <summary>
+    /// Preserves exact field storage, generic base types, boxed structs and mixed object-array paths in a full dump.
+    /// </summary>
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public Task CapturedFullObjectsPreservePhysicalFields() =>
+        AssertCapturedObjectsPreservePhysicalFieldsAsync(DumpType.Full);
+
+    private async Task AssertCapturedObjectsPreservePhysicalFieldsAsync(DumpType captureType)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
             TestContext.CancellationToken, captureArrayShapes: true, captureType: captureType,

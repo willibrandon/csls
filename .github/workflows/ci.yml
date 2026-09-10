@@ -245,11 +245,11 @@ jobs:
           - suite: dumps
             name: Debugger dump inspection
             minimum_tests: 40
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.Dump&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.Dump&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedFullObjectsPreservePhysicalFields
           - suite: physical-capture
             name: Debugger physical dump capture
             minimum_tests: 2
-            filter: FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields
+            filter: (FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields|FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedFullObjectsPreservePhysicalFields)
           - suite: protocol
             name: Debugger protocol
             minimum_tests: 70

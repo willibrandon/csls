@@ -122,9 +122,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
                 DumpType selectedCaptureType = captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage);
-                Log(OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full
-                    ? "Requesting complete native macOS core for the full inspection profile."
-                    : $"Requesting {selectedCaptureType} dump.");
+                Log($"Requesting {selectedCaptureType} dump.");
                 await DebuggerDumpCaptureGate.RunMemoryCaptureAsync(
                     selectedCaptureType,
                     CaptureAsync,
@@ -134,17 +132,9 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
 
                 async Task CaptureAsync()
                 {
-                    if (OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full)
-                    {
-                        await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        var diagnostics = new DiagnosticsClient(target.Id);
-                        await diagnostics.WriteDumpAsync(selectedCaptureType, dump, logDumpGeneration: false, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
+                    var diagnostics = new DiagnosticsClient(target.Id);
+                    await diagnostics.WriteDumpAsync(selectedCaptureType, dump, logDumpGeneration: false, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
             catch (Exception exception) when (exception is DiagnosticsClientException or IOException)
