@@ -105,6 +105,7 @@ public sealed partial class DapSessionTests
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
             environment: crashReports.Variables).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-async-step-out-fixture", pipeName, kind], ResolveAsyncIteratorProgram(configuration),
             suppressJitOptimizations: true).ConfigureAwait(false);
