@@ -66,6 +66,7 @@ internal sealed partial class CorDebugDebuggee
         var api = new ICorDebugStepperAbi(stepper);
         if (kind == DebugStepKind.Out)
         {
+            _stepTrace?.Write($"runtime step kind={kind}");
             return api.StepOut();
         }
 
@@ -73,11 +74,13 @@ internal sealed partial class CorDebugDebuggee
             thread,
             _sourceBreakpoints.FindModule,
             out IReadOnlyList<ManagedStepRange> ranges,
-            out _))
+            out bool currentIsHidden))
         {
+            _stepTrace?.Write($"runtime step kind={kind} symbols=False");
             return api.Step(kind == DebugStepKind.Into ? 1 : 0);
         }
 
+        _stepTrace?.Write($"runtime ranges kind={kind} hidden={currentIsHidden} ranges={string.Join(",", ranges.Select(range => FormattableString.Invariant($"0x{range.StartOffset:X}-0x{range.EndOffset:X}")))}");
         uint[] nativeRanges = new uint[checked(ranges.Count * 2)];
         for (int index = 0; index < ranges.Count; index++)
         {

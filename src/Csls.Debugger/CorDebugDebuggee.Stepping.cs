@@ -174,6 +174,7 @@ internal sealed partial class CorDebugDebuggee
             int stepResult = target is null
                 ? StartStep(stepper, thread, kind)
                 : StartGuardedTargetStep(stepper, target);
+            _stepTrace?.Write($"runtime step result kind={kind} result=0x{stepResult:X8}");
             CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
             _activeStepperIdentity = ComAbi.GetIdentity(stepper);
             _activeStepper = stepper;

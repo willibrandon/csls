@@ -60,16 +60,22 @@ public sealed partial class DapSessionTests
             $"csls-debugger-step-filter-{Guid.NewGuid():N}.signal");
         try
         {
+            string traceDirectory = Path.Join(FindRepositoryRoot(), "artifacts", "test-results");
+            Directory.CreateDirectory(traceDirectory);
+            string tracePath = Path.Join(traceDirectory, $"property-step-{Guid.NewGuid():N}.log");
             DapTestClient client = await DapTestClient
-                .CreateAsync(TestContext.CancellationToken)
+                .CreateAsync(TestContext.CancellationToken,
+                    new Dictionary<string, string?> { ["CSLS_DEBUGGER_STEP_TRACE"] = tracePath })
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int threadId = await StartStepFilteringTargetAsync(
                 client,
                 callerPath,
                 callLine,
                 waitPath,
                 enableStepFiltering).ConfigureAwait(false);
+            TestContext.AddResultFile(tracePath);
             threadId = await StepAndReadStopAsync(
                 client,
                 "stepIn",
@@ -84,6 +90,9 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(expectedLine, frameLine);
             await CompleteStepFilteringTargetAsync(client, waitPath).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+            string stepTrace = await File.ReadAllTextAsync(tracePath, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("runtime ranges kind=Into", stepTrace);
+            Assert.Contains("runtime step result kind=Into result=0x00000000", stepTrace);
         }
         finally
         {
