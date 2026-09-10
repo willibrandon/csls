@@ -159,6 +159,8 @@ public sealed class DumpMachODataReaderTests : DapTestContext
     [DataRow("duplicate-general", "repeats its Intel general register state")]
     [DataRow("duplicate-floating", "repeats its Intel floating-point register state")]
     [DataRow("missing-general", "has no general register state")]
+    [DataRow("nonzero-padding", "alignment padding is not zero")]
+    [DataRow("unnecessary-padding", "header exceeds its command")]
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task InvalidNativeIntelRegisterRecordsAreRejected(string mutation, string message)
     {
@@ -174,9 +176,15 @@ public sealed class DumpMachODataReaderTests : DapTestContext
             "duplicate-general" => [(7, 176, 4, 42), (4, 168, 0, 0)],
             "duplicate-floating" => [(7, 176, 4, 42), (8, 532, 5, 131), (5, 524, 0, 0)],
             "missing-general" => [(8, 532, 5, 131)],
+            "nonzero-padding" => [(4, 168, 0, 0), (5, 524, 0, 0)],
+            "unnecessary-padding" => [(4, 168, 0, 0)],
             _ => throw new ArgumentOutOfRangeException(nameof(mutation))
         };
         int size = 8 + records.Sum(static record => 8 + record.Bytes);
+        if (mutation is "nonzero-padding" or "unnecessary-padding")
+        {
+            size += 4;
+        }
         byte[] bytes = new byte[32 + size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0xfeedfacf);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 0x01000007);
@@ -193,6 +201,10 @@ public sealed class DumpMachODataReaderTests : DapTestContext
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position + 8), innerFlavor);
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position + 12), innerCount);
             position += 8 + length;
+        }
+        if (mutation == "nonzero-padding")
+        {
+            bytes[^1] = 1;
         }
         string path = Path.GetTempFileName();
         try

@@ -24,6 +24,7 @@ internal static class DumpMachOThreadContexts
         bool general = false;
         bool floating = false;
         bool wrapped = false;
+        long start = position;
         Span<byte> header = stackalloc byte[8];
         Span<byte> payload = stackalloc byte[532];
         while (position < end)
@@ -31,6 +32,17 @@ internal static class DumpMachOThreadContexts
             cancellationToken.ThrowIfCancellationRequested();
             if (end - position < header.Length)
             {
+                // Native structure writers can round the completed register records up to eight bytes.
+                if (general && end - position == 4 && (position - start) % 8 == 4)
+                {
+                    stream.Position = position;
+                    stream.ReadExactly(header[..4]);
+                    if (BinaryPrimitives.ReadUInt32LittleEndian(header) != 0)
+                    {
+                        throw new InvalidDataException("The Mach-O thread-state alignment padding is not zero.");
+                    }
+                    break;
+                }
                 throw new InvalidDataException("The Mach-O thread-state header exceeds its command.");
             }
             stream.Position = position;
