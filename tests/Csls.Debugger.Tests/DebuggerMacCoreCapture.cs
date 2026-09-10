@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace Csls.Debugger.Tests;
@@ -9,7 +8,7 @@ namespace Csls.Debugger.Tests;
 /// Captures complete native macOS core files from test-owned managed targets.
 /// </summary>
 [SupportedOSPlatform("macos")]
-internal static partial class DebuggerMacCoreCapture
+internal static class DebuggerMacCoreCapture
 {
     /// <summary>
     /// Signs an owned collector copy and captures every accessible target memory region with its native thread identities.
@@ -35,7 +34,6 @@ internal static partial class DebuggerMacCoreCapture
             await RunAsync("/usr/bin/codesign",
                 ["--force", "--sign", "-", "--entitlements", entitlements, collector], progress, diagnosticContext, cancellationToken)
                 .ConfigureAwait(false);
-            await ReadSharedCacheAsync(progress, cancellationToken).ConfigureAwait(false);
             // Cache the captured pages for immediate offline inspection. The collector writes chunks smaller than 2 GiB.
             await RunAsync(collector,
                 ["-s", "-x", "full", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
@@ -58,39 +56,6 @@ internal static partial class DebuggerMacCoreCapture
             File.Delete(entitlements);
         }
     }
-
-    private static async Task ReadSharedCacheAsync(Action<string> progress, CancellationToken cancellationToken)
-    {
-        // The path belongs to dyld's process configuration; copy it without freeing the borrowed pointer.
-        string cachePath = Marshal.PtrToStringUTF8(GetSharedCachePath())
-            ?? throw new InvalidOperationException("The current process has no shared-cache path.");
-        string directory = Path.GetDirectoryName(cachePath)
-            ?? throw new InvalidOperationException("The shared-cache path has no directory.");
-        string[] files = [cachePath, .. Directory.EnumerateFiles(directory, Path.GetFileName(cachePath) + ".*")
-            .Where(static path => !path.EndsWith(".symbols", StringComparison.Ordinal) &&
-                !path.EndsWith(".map", StringComparison.Ordinal)).Order(StringComparer.Ordinal)];
-        byte[] buffer = new byte[1024 * 1024];
-        long started = Stopwatch.GetTimestamp();
-        long total = 0;
-        foreach (string file in files)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            progress($"Reading shared-cache input {Path.GetFileName(file)}.");
-            // Sequential reads populate the file cache before the native writer faults mapped input pages.
-            using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read,
-                bufferSize: 0, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            int read;
-            while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
-            {
-                total += read;
-            }
-        }
-        progress(FormattableString.Invariant(
-            $"Read {total} shared-cache input bytes in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms."));
-    }
-
-    [LibraryImport("/usr/lib/system/libdyld.dylib", EntryPoint = "dyld_shared_cache_file_path")]
-    private static partial nint GetSharedCachePath();
 
     private static async Task RunAsync(string executable, string[] arguments, Action<string> progress,
         TestContext? diagnosticContext, CancellationToken cancellationToken,
