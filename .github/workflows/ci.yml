@@ -287,12 +287,35 @@ jobs:
       matrix:
         suite: [standard, dumps-platform, dumps-state, dumps-symbols, dumps-values, physical-capture, protocol, protocol-breakpoints, protocol-capture, capture-normal, capture-triage, capture-heap, capture-full, protocol-values, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, assignment-array, presentation-results, presentation-proxy, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
+        exclude:
+          - suite: standard
+            rid: osx-x64
+          - suite: protocol-lifecycle
+            rid: osx-x64
+          - suite: type-inspection
+            rid: osx-x64
+          - suite: stepping
+            rid: osx-x64
         include:
           # Complementary filters partition the required debugger suites.
           - suite: standard
             name: Debugger tests
             minimum_tests: 70
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump
+          - suite: standard-core
+            name: Debugger core tests
+            minimum_tests: 200
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: standard-runtime
+            name: Debugger runtime tests
+            minimum_tests: 50
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&(FullyQualifiedName~Csls.Debugger.Tests.DebuggerRpc|FullyQualifiedName~Csls.Debugger.Tests.DebuggerWorkerProcessTests|FullyQualifiedName~Csls.Debugger.Tests.RuntimeActivationTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerPerformanceTests)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: dumps-platform
             name: Debugger platform dump inspection
             minimum_tests: 40
@@ -349,6 +372,34 @@ jobs:
             name: Debugger process requests
             minimum_tests: 40
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&(FullyQualifiedName~Launch|FullyQualifiedName~Restart|FullyQualifiedName~Attach|FullyQualifiedName~Disconnect|FullyQualifiedName~Terminate|FullyQualifiedName~Cancel|FullyQualifiedName~Process|FullyQualifiedName~Threads|FullyQualifiedName~Running)
+          - suite: protocol-lifecycle-launch-environment
+            name: Debugger launch environment requests
+            minimum_tests: 80
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName~Launch&(FullyQualifiedName~Environment|FullyQualifiedName~Loader)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: protocol-lifecycle-launch-core
+            name: Debugger launch requests
+            minimum_tests: 20
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName~Launch&FullyQualifiedName!~Environment&FullyQualifiedName!~Loader
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: protocol-lifecycle-attach
+            name: Debugger attach and restart requests
+            minimum_tests: 15
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&(FullyQualifiedName~Attach|FullyQualifiedName~Restart)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: protocol-lifecycle-control
+            name: Debugger process control requests
+            minimum_tests: 20
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~Attach&FullyQualifiedName!~Restart&(FullyQualifiedName~Disconnect|FullyQualifiedName~Terminate|FullyQualifiedName~Cancel|FullyQualifiedName~Process|FullyQualifiedName~Threads|FullyQualifiedName~Running)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: protocol-inspection
             name: Debugger protocol inspection
             minimum_tests: 40
@@ -361,10 +412,38 @@ jobs:
             name: Debugger type inspection
             minimum_tests: 40
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests|FullyQualifiedName~ReferenceConversions|FullyQualifiedName~ReferenceTypeExpressions|FullyQualifiedName~RawStringReferences)
+          - suite: type-inspection-dumps
+            name: Debugger dump type inspection
+            minimum_tests: 20
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: type-inspection-references
+            name: Debugger reference type inspection
+            minimum_tests: 50
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&(FullyQualifiedName~ReferenceConversions|FullyQualifiedName~ReferenceTypeExpressions|FullyQualifiedName~RawStringReferences)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: stepping
             name: Debugger stepping
             minimum_tests: 50
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
+          - suite: stepping-async
+            name: Debugger async stepping
+            minimum_tests: 30
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Iterator)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: stepping-sync
+            name: Debugger source stepping
+            minimum_tests: 15
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&FullyQualifiedName!~Async&FullyQualifiedName!~Iterator&FullyQualifiedName~Step
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: stepping-thread-start
             name: Debugger async thread startup
             minimum_tests: 32
