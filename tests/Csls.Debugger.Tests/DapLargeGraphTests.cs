@@ -119,7 +119,8 @@ public sealed partial class DapLargeGraphTests : DapTestContext
             ProcessTreeSnapshot after = await ProcessTreeReader.CaptureAsync(client.HostProcessId, TestContext.CancellationToken)
                 .ConfigureAwait(false);
             long afterMemory = ReadAdapterMemory(after, target, "after repeated pages");
-            Assert.AreSequenceEqual(before.ProcessIds, after.ProcessIds);
+            Assert.IsEmpty(after.ProcessIds.Except(before.ProcessIds),
+                "Repeated bounded pages must not retain additional owned processes.");
             Assert.IsLessThanOrEqualTo(AdapterGrowthBudget, afterMemory - beforeMemory,
                 "Repeated bounded pages must not copy the target graph into the adapter.");
 
