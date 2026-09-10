@@ -176,6 +176,28 @@ jobs:
           --output artifacts/bin/Csls.Debugger.TestSupervisor/debug
           '/bl:artifacts/binlogs/debugger-test-supervisor-{}.binlog'
 
+      - name: Publish portable debugger thread-start oracle provisioner
+        run: >-
+          dotnet publish scripts/Provision-NetcoredbgOracle.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.NetcoredbgOracle/debug
+          '/bl:artifacts/binlogs/debugger-thread-start-oracle-{}.binlog'
+
+      - name: Publish portable stack-overflow capture
+        run: >-
+          dotnet publish scripts/Capture-DebuggerStackOverflow.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.StackOverflowCapture/debug
+          '/bl:artifacts/binlogs/debugger-stack-overflow-capture-{}.binlog'
+
       - name: Pack debugger test binaries
         run: >-
           tar --create --file artifacts/debugger-test-binaries.tar
@@ -477,8 +499,8 @@ jobs:
         id: thread-start-oracle
         if: always() && matrix.rid == 'linux-arm64' && matrix.suite == 'stepping-thread-start' && steps.debugger-tests.outcome != 'skipped'
         run: >-
-          dotnet run --file scripts/Provision-NetcoredbgOracle.cs
-          /bl:artifacts/binlogs/thread-start-oracle-{}.binlog -- --github-env
+          dotnet artifacts/bin/Csls.Debugger.NetcoredbgOracle/debug/Provision-NetcoredbgOracle.dll
+          --github-env
 
       - name: Compare independent managed thread startup
         if: always() && steps.thread-start-oracle.outcome == 'success'
@@ -498,7 +520,7 @@ jobs:
       - name: Capture native stack-overflow failure
         if: failure() && matrix.rid == 'win-x64' && matrix.suite == 'stress' && steps.debugger-tests.outcome == 'failure'
         run: >-
-          dotnet run --file scripts/Capture-DebuggerStackOverflow.cs --
+          dotnet artifacts/bin/Csls.Debugger.StackOverflowCapture/debug/Capture-DebuggerStackOverflow.dll
           --fixture artifacts/bin/Csls.TestProcessHost/debug/csls-test-process-host.dll
           --output artifacts/test-results
 
