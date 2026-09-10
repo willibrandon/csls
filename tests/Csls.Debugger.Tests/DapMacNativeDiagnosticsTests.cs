@@ -4,13 +4,13 @@ using System.Globalization;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Verifies concurrent macOS diagnostics retain native stacks and preserve owned process streams.
+/// Verifies concurrent macOS diagnostics retain native stacks and memory maps while preserving owned process streams.
 /// </summary>
 [TestClass]
 public sealed class DapMacNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
-    /// Captures independent native processes concurrently and verifies their sampled identities and subsequent input.
+    /// Captures independent native processes concurrently and verifies their stack and memory-map identities and subsequent input.
     /// </summary>
     [TestMethod]
     [OSCondition(OperatingSystems.OSX)]
@@ -44,6 +44,11 @@ public sealed class DapMacNativeDiagnosticsTests : DapTestContext
             Assert.Contains($"[{process.Id.ToString(CultureInfo.InvariantCulture)}]", report);
             Assert.Contains("Call graph:", report);
             Assert.Contains("read", report);
+            string memoryMap = await File.ReadAllTextAsync(Path.Join(directory, $"process-{process.Id}.vmmap.txt"),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("Memory map exit code: 0", memoryMap);
+            Assert.Contains($"[{process.Id.ToString(CultureInfo.InvariantCulture)}]", memoryMap);
+            Assert.Contains("REGION TYPE", memoryMap);
             Assert.IsFalse(process.HasExited);
             await AssertEchoAsync(process, "after-capture").ConfigureAwait(false);
             process.StandardInput.Close();

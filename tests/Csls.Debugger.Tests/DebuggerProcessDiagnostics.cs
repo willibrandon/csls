@@ -142,11 +142,14 @@ internal static class DebuggerProcessDiagnostics
             testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
             await CaptureWaitStatesAsync(processes, testContext, cancellation.Token).ConfigureAwait(false);
             // A queued filesystem tracer must not consume the deadline before independent samples start.
-            await Task.WhenAll(processes.SelectMany(processId => new[]
+            var captures = new List<Task>();
+            foreach (int processId in processes)
             {
-                CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
-                CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token)
-            }).Append(CaptureFileAndKernelActivityAsync(processes, directory, testContext, cancellation.Token))
+                captures.Add(CaptureProcessAsync(processId, directory, testContext, cancellation.Token));
+                captures.Add(DebuggerMacMemoryMap.CaptureAsync(processId, directory, testContext, cancellation.Token));
+                captures.Add(CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token));
+            }
+            await Task.WhenAll(captures.Append(CaptureFileAndKernelActivityAsync(processes, directory, testContext, cancellation.Token))
                 .Append(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)))
                 .ConfigureAwait(false);
         }
