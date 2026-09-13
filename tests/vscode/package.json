@@ -35,7 +35,7 @@
     "test:process-lifecycle": "node --test process-lifecycle.test.mjs"
   },
   "devDependencies": {
-    "@playwright/browser-chromium": "1.62.1",
+    "@playwright/browser-chromium": "1.63.0",
     "@playwright/browser-firefox": "1.62.1",
     "@playwright/browser-webkit": "1.62.1",
     "@types/node": "24.13.3",
