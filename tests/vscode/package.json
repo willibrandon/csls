@@ -39,7 +39,7 @@
     "@playwright/browser-firefox": "1.62.1",
     "@playwright/browser-webkit": "1.62.1",
     "@types/node": "24.13.3",
-    "@types/vscode": "1.134.0",
+    "@types/vscode": "1.137.0",
     "@vscode/test-electron": "3.1.0",
     "@vscode/test-web": "0.0.81",
     "esbuild": "0.28.2",
