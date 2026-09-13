@@ -7,7 +7,7 @@
 
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageVersion Include="Hex1b" Version="0.165.0" />
+    <PackageVersion Include="Hex1b" Version="0.166.0" />
     <PackageVersion Include="Microsoft.Build" Version="18.9.6" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.9.6" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
