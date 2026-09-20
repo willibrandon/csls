@@ -30,6 +30,10 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
             variables["DOTNET_EnableCrashReportOnly"] = dumpType.HasValue ? "0" : "1";
             variables["DOTNET_DbgMiniDumpType"] = ((int)(dumpType ?? DumpType.Normal)).ToString(CultureInfo.InvariantCulture);
             variables["DOTNET_DbgMiniDumpName"] = Path.Join(DirectoryPath, dumpType.HasValue ? "process-%p.dmp" : "process-%p");
+            if (OperatingSystem.IsMacOS() && dumpType.HasValue)
+            {
+                variables["MallocNanoZone"] = "0";
+            }
         }
 
         Variables = variables;
