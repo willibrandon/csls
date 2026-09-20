@@ -18,7 +18,7 @@ internal static partial class DebuggerBlockingWait
     {
         if (OperatingSystem.IsWindows())
         {
-            WaitOnWindows(announcement);
+            BlockOnWindows(announcement);
             return;
         }
 
@@ -42,7 +42,7 @@ internal static partial class DebuggerBlockingWait
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WaitOnWindows(string announcement)
+    private static void BlockOnWindows(string announcement)
     {
         using var readiness = new EventWaitHandle(false, EventResetMode.ManualReset);
         using var gate = new EventWaitHandle(false, EventResetMode.ManualReset);
