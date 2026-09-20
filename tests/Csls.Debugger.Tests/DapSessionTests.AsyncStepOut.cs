@@ -37,13 +37,20 @@ public sealed partial class DapSessionTests
         Task connection = pipe.WaitForConnectionAsync(TestContext.CancellationToken);
         var crashReports = new DebuggerCrashReportCapture(TestContext, DumpType.Normal);
         await using ConfiguredAsyncDisposable reportDisposal = crashReports.ConfigureAwait(false);
+        string traceDirectory = Path.Join(FindRepositoryRoot(), "artifacts", "test-results");
+        Directory.CreateDirectory(traceDirectory);
+        string tracePath = Path.Join(traceDirectory, $"async-step-out-{Guid.NewGuid():N}.log");
+        var environment = crashReports.Variables.ToDictionary(
+            pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        environment["CSLS_DEBUGGER_STEP_TRACE"] = tracePath;
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
-            environment: crashReports.Variables).ConfigureAwait(false);
+            environment: environment).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
         string mode = scheduled ? "--debugger-scheduled-async-step-out-fixture" : "--debugger-async-step-out-fixture";
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             [mode, pipeName, kind], ResolveAsyncIteratorProgram(configuration),
             suppressJitOptimizations: true).ConfigureAwait(false);
+        TestContext.AddResultFile(tracePath);
         await connection.ConfigureAwait(false);
 
         Task<int> stepping = StepAndReadStopAsync(client, "next", initialThread, TestContext.CancellationToken);

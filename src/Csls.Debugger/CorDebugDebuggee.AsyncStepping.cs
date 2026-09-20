@@ -21,16 +21,30 @@ internal sealed partial class CorDebugDebuggee
 
         nint stateMachineHandle = TryCreateStateMachineHandle(thread);
         _ = ComAbi.AddRef(plan.Module);
+        nint yieldBreakpoint = 0;
+        nint yieldIdentity = 0;
+        nint resumeBreakpoint = 0;
+        nint resumeIdentity = 0;
         try
         {
-            (nint breakpoint, nint identity) = CreateAsyncBreakpoint(
+            (yieldBreakpoint, yieldIdentity) = CreateAsyncBreakpoint(
                 plan.Module,
                 plan.MethodToken,
                 plan.AwaitPoint.YieldOffset);
+            if (stateMachineHandle != 0)
+            {
+                (resumeBreakpoint, resumeIdentity) = CreateAsyncBreakpoint(
+                    plan.Module,
+                    plan.AwaitPoint.ResumeMethodToken,
+                    plan.AwaitPoint.ResumeOffset);
+            }
+
             _asyncStep = new ManagedAsyncStep
             {
-                Breakpoint = breakpoint,
-                Identity = identity,
+                YieldBreakpoint = yieldBreakpoint,
+                YieldIdentity = yieldIdentity,
+                ResumeBreakpoint = resumeBreakpoint,
+                ResumeIdentity = resumeIdentity,
                 Module = plan.Module,
                 StateMachineHandle = stateMachineHandle,
                 InitialThreadId = threadId,
@@ -38,10 +52,16 @@ internal sealed partial class CorDebugDebuggee
                 ResumeMethodToken = plan.AwaitPoint.ResumeMethodToken,
                 ResumeOffset = plan.AwaitPoint.ResumeOffset
             };
-            _stepTrace?.Write($"await plan thread={threadId} method=0x{plan.MethodToken:X8} yield=0x{plan.AwaitPoint.YieldOffset:X} resume-method=0x{plan.AwaitPoint.ResumeMethodToken:X8} resume-offset=0x{plan.AwaitPoint.ResumeOffset:X} handle={stateMachineHandle != 0}");
+            yieldBreakpoint = 0;
+            yieldIdentity = 0;
+            resumeBreakpoint = 0;
+            resumeIdentity = 0;
+            _stepTrace?.Write($"await plan thread={threadId} method=0x{plan.MethodToken:X8} yield=0x{plan.AwaitPoint.YieldOffset:X} resume-method=0x{plan.AwaitPoint.ResumeMethodToken:X8} resume-offset=0x{plan.AwaitPoint.ResumeOffset:X} handle={stateMachineHandle != 0} resume-guard={stateMachineHandle != 0}");
         }
         catch
         {
+            ReleaseUnclaimedBreakpoint(resumeBreakpoint, resumeIdentity);
+            ReleaseUnclaimedBreakpoint(yieldBreakpoint, yieldIdentity);
             ReleaseStateMachineHandle(stateMachineHandle);
             _ = ComAbi.Release(plan.Module);
             throw;
@@ -61,12 +81,14 @@ internal sealed partial class CorDebugDebuggee
         nint identity = ComAbi.GetIdentity(breakpoint);
         try
         {
-            if (identity != step.Identity)
+            bool isYield = identity == step.YieldIdentity;
+            bool isResume = step.ResumeIdentity != 0 && identity == step.ResumeIdentity;
+            if (!isYield && !isResume)
             {
                 return ManagedTargetBreakpointDecision.Unrecognized;
             }
 
-            if (!step.WaitsForResume)
+            if (isYield)
             {
                 _stepTrace?.Write($"yield reached thread={threadId} selected-thread={step.InitialThreadId}");
                 if (threadId != step.InitialThreadId)
@@ -77,7 +99,7 @@ internal sealed partial class CorDebugDebuggee
                 ReleaseActiveStepper(deactivate: true);
                 try
                 {
-                    ReplaceWithAsyncResumeBreakpoint(step);
+                    ArmAsyncResumeBreakpoint(step);
                     _stepTrace?.Write($"resume armed thread={threadId}");
                 }
                 catch
@@ -89,6 +111,12 @@ internal sealed partial class CorDebugDebuggee
                 return ManagedTargetBreakpointDecision.Continue;
             }
 
+            if (!step.WaitsForResume && threadId == step.InitialThreadId)
+            {
+                _stepTrace?.Write($"resume guard ignored initial execution thread={threadId}");
+                return ManagedTargetBreakpointDecision.Continue;
+            }
+
             if (step.StateMachineHandle != 0 &&
                 !StateMachineMatches(threadId, step.StateMachineHandle))
             {
@@ -96,7 +124,8 @@ internal sealed partial class CorDebugDebuggee
                 return ManagedTargetBreakpointDecision.Continue;
             }
 
-            _stepTrace?.Write($"resume matched thread={threadId}");
+            _stepTrace?.Write($"resume matched thread={threadId} yield-observed={step.WaitsForResume}");
+            ReleaseActiveStepper(deactivate: true);
             ReleaseAsyncStep();
             _asyncConsumerStep.Clear();
             _asyncCallerStep.Clear();
@@ -183,15 +212,21 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static void ReplaceWithAsyncResumeBreakpoint(ManagedAsyncStep step)
+    private static void ArmAsyncResumeBreakpoint(ManagedAsyncStep step)
     {
-        (nint breakpoint, nint identity) = CreateAsyncBreakpoint(
-            step.Module,
-            step.ResumeMethodToken,
-            step.ResumeOffset);
-        ReleaseAsyncBreakpoint(step);
-        step.Breakpoint = breakpoint;
-        step.Identity = identity;
+        if (step.ResumeBreakpoint == 0)
+        {
+            (step.ResumeBreakpoint, step.ResumeIdentity) = CreateAsyncBreakpoint(
+                step.Module,
+                step.ResumeMethodToken,
+                step.ResumeOffset);
+        }
+
+        nint yieldBreakpoint = step.YieldBreakpoint;
+        nint yieldIdentity = step.YieldIdentity;
+        step.YieldBreakpoint = 0;
+        step.YieldIdentity = 0;
+        ReleaseAsyncBreakpoint(yieldBreakpoint, yieldIdentity);
         step.WaitsForResume = true;
     }
 
@@ -204,20 +239,24 @@ internal sealed partial class CorDebugDebuggee
         }
 
         _stepTrace?.Write($"release await runtime={runtimeAvailable} resume={step.WaitsForResume}");
-        ReleaseAsyncBreakpoint(step, runtimeAvailable);
+        ReleaseAsyncBreakpoint(step.ResumeBreakpoint, step.ResumeIdentity, runtimeAvailable);
+        ReleaseAsyncBreakpoint(step.YieldBreakpoint, step.YieldIdentity, runtimeAvailable);
         ReleaseStateMachineHandle(step.StateMachineHandle, runtimeAvailable);
         _ = ComAbi.Release(step.Module);
     }
 
-    private static void ReleaseAsyncBreakpoint(ManagedAsyncStep step, bool runtimeAvailable = true)
+    private static void ReleaseAsyncBreakpoint(
+        nint breakpoint,
+        nint identity,
+        bool runtimeAvailable = true)
     {
-        if (runtimeAvailable)
+        if (runtimeAvailable && breakpoint != 0)
         {
-            _ = new ICorDebugBreakpointAbi(step.Breakpoint).Activate(bActive: 0);
+            _ = new ICorDebugBreakpointAbi(breakpoint).Activate(bActive: 0);
         }
 
-        _ = ComAbi.Release(step.Identity);
-        _ = ComAbi.Release(step.Breakpoint);
+        ReleaseCom(identity);
+        ReleaseCom(breakpoint);
     }
 
     private static unsafe nint TryCreateStateMachineHandle(nint thread)
@@ -339,6 +378,42 @@ internal sealed partial class CorDebugDebuggee
         {
             ReleaseCom(current);
             ReleaseCom(thread);
+        }
+    }
+
+    private unsafe bool IsAsyncStateMachineSuspended(nint stateMachineHandle)
+    {
+        nint state = 0;
+        nint generic = 0;
+        try
+        {
+            var reader = new ManagedContinuationObjectReader(
+                _sourceBreakpoints.FindModule,
+                DereferenceValue);
+            state = reader.ReadField(stateMachineHandle, "<>1__state");
+            if (state == 0 ||
+                !ComAbi.TryQueryInterface(state, ICorDebugGenericValueAbi.InterfaceId, out generic))
+            {
+                return false;
+            }
+
+            int value = 0;
+            int result = new ICorDebugGenericValueAbi(generic).GetValue((nint)(&value));
+            value = Volatile.Read(ref value);
+            _stepTrace?.Write($"async state after return result=0x{result:X8} value={value}");
+            return result >= 0 && value >= 0;
+        }
+        catch (Exception exception) when (
+            DebugSymbolReader.IsReadFailure(exception) ||
+            exception is InvalidOperationException or ArgumentException)
+        {
+            _stepTrace?.Write($"async state after return unavailable: {exception.Message}");
+            return false;
+        }
+        finally
+        {
+            ReleaseCom(generic);
+            ReleaseCom(state);
         }
     }
 

@@ -97,6 +97,10 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 RedirectStandardError = true
             };
             startInfo.Environment["DOTNET_GCHeapHardLimit"] = "0x8000000";
+            if (OperatingSystem.IsMacOS())
+            {
+                startInfo.Environment["MallocNanoZone"] = "0";
+            }
             startInfo.ArgumentList.Add(program);
             foreach (string argument in arguments ??
                 [captureArrayShapes ? "--debugger-dump-arrays"

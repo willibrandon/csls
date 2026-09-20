@@ -130,6 +130,14 @@ internal sealed partial class CorDebugDebuggee
 
             ReleaseActiveStepper(deactivate: false);
             ReleaseTargetBreakpoint();
+            if (reason == 1 &&
+                _asyncStep is { WaitsForResume: false, ResumeBreakpoint: not 0 } pendingAsyncStep &&
+                IsAsyncStateMachineSuspended(pendingAsyncStep.StateMachineHandle))
+            {
+                _stepTrace?.Write($"step returned after async suspension; continuation guard retained");
+                return false;
+            }
+
             ReleaseAsyncStep();
             _asyncConsumerStep.Clear();
             // STEP_RETURN can arrive in a runtime wrapper before the authored caller resumes.

@@ -3,19 +3,29 @@ using Csls.Debugger.Contracts;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Owns one temporary runtime breakpoint used to follow an asynchronous continuation.
+/// Owns the temporary runtime breakpoints used to follow an asynchronous continuation.
 /// </summary>
 internal sealed class ManagedAsyncStep
 {
     /// <summary>
-    /// Gets or sets the owned runtime breakpoint pointer.
+    /// Gets or sets the owned yield breakpoint pointer.
     /// </summary>
-    internal required nint Breakpoint { get; set; }
+    internal required nint YieldBreakpoint { get; set; }
 
     /// <summary>
-    /// Gets or sets the owned canonical breakpoint identity.
+    /// Gets or sets the owned canonical yield breakpoint identity.
     /// </summary>
-    internal required nint Identity { get; set; }
+    internal required nint YieldIdentity { get; set; }
+
+    /// <summary>
+    /// Gets or sets the owned continuation breakpoint pointer.
+    /// </summary>
+    internal nint ResumeBreakpoint { get; set; }
+
+    /// <summary>
+    /// Gets or sets the owned canonical continuation breakpoint identity.
+    /// </summary>
+    internal nint ResumeIdentity { get; set; }
 
     /// <summary>
     /// Gets or initializes the owned runtime module pointer.
