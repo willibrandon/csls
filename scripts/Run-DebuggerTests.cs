@@ -3,8 +3,10 @@
 #:property LangVersion=14.0
 #:property Nullable=enable
 #:property TreatWarningsAsErrors=true
+#:property AllowUnsafeBlocks=true
 #:property RootNamespace=Csls
 #:include Support/ProcessOutputCapture.cs
+#:include Support/UnixProcessSession.cs
 
 using Csls.Support;
 using System.ComponentModel;
@@ -125,7 +127,7 @@ static void StartWatchdog(Process testProcess, TimeSpan deadline, string results
     watchdogInfo.ArgumentList.Add(supervisor.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
     watchdogInfo.ArgumentList.Add(testProcess.Id.ToString(CultureInfo.InvariantCulture));
     watchdogInfo.ArgumentList.Add(testProcess.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
-    watchdogInfo.ArgumentList.Add(((int)deadline.TotalSeconds + 15).ToString(CultureInfo.InvariantCulture));
+    watchdogInfo.ArgumentList.Add(((int)deadline.TotalSeconds).ToString(CultureInfo.InvariantCulture));
     watchdogInfo.ArgumentList.Add(resultsDirectory);
 
     using Process watchdog = Process.Start(watchdogInfo)
@@ -143,6 +145,14 @@ static async Task<int> RunWatchdogAsync(string[] arguments)
     {
         await ReportAsync("The debugger test watchdog received invalid arguments.").ConfigureAwait(false);
         return 2;
+    }
+
+    int sessionError = UnixProcessSession.DetachCurrentProcess();
+    if (sessionError != 0)
+    {
+        await ReportAsync(
+            $"The debugger test watchdog could not create an independent Unix session: " +
+            $"{new Win32Exception(sessionError).Message}").ConfigureAwait(false);
     }
 
     var deadline = TimeSpan.FromSeconds(timeoutSeconds);

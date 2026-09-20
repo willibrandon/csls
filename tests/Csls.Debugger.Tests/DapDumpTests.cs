@@ -66,14 +66,11 @@ public sealed class DapDumpTests : DapTestContext
     /// Inspects captured values through the isolated worker while preserving paging, ownership, and read-only state.
     /// </summary>
     /// <param name="includeHeap">Whether the dump retains the heap string referenced by the frame.</param>
-    /// <param name="supportsPaging">Whether the editor advertises variable paging.</param>
     [TestMethod]
-    [DataRow(false, true)]
-    [DataRow(true, true)]
-    [DataRow(false, false)]
-    [DataRow(true, false)]
+    [DataRow(false)]
+    [DataRow(true)]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task DumpScopesAndVariablesPreserveCapturedValues(bool includeHeap, bool supportsPaging)
+    public async Task DumpScopesAndVariablesPreserveCapturedValues(bool includeHeap)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
             TestContext.CancellationToken, captureFrameValues: true, includeHeap, isolateModule: true,
@@ -83,186 +80,195 @@ public sealed class DapDumpTests : DapTestContext
             ?? throw new InvalidOperationException("The fixture has no directory.");
         string relocatedDirectory = originalDirectory + "-relocated";
         Directory.Move(originalDirectory, relocatedDirectory);
-        DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
-        _ = await RequestAsync(client, "initialize", writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteBoolean("supportsVariablePaging", supportsPaging);
-            writer.WriteEndObject();
-        }).ConfigureAwait(false);
-        int threadId = await OpenDumpAsync(client, fixture.DumpPath, initialize: false,
-            binarySearchPaths: [relocatedDirectory]).ConfigureAwait(false);
-        JsonElement stack = await ReadStackAsync(client, threadId, start: 0, levels: 100).ConfigureAwait(false);
-        if (!stack.GetProperty("stackFrames").EnumerateArray().Any(item => item.GetProperty("name").GetString()
-            ?.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true))
-        {
-            await LogDumpThreadsAsync(client).ConfigureAwait(false);
-            TestContext.WriteLine(client.ProtocolTranscript);
-        }
-        JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
-            .Where(item => item.GetProperty("name").GetString()?.Contains(
-                "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true),
-            $"Initial dump thread {threadId}: {stack}");
-        int frameId = frame.GetProperty("id").GetInt32();
-        JsonElement scopes = await RequestAsync(client, "scopes", writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("frameId", frameId);
-            writer.WriteEndObject();
-        }).ConfigureAwait(false);
-        JsonElement scopeArray = scopes.GetProperty("scopes");
-        Assert.AreEqual(2, scopeArray.GetArrayLength());
-        Assert.AreEqual("Arguments", scopeArray[0].GetProperty("name").GetString());
-        Assert.AreEqual("Locals", scopeArray[1].GetProperty("name").GetString());
-        int arguments = scopeArray[0].GetProperty("variablesReference").GetInt32();
-        int locals = scopeArray[1].GetProperty("variablesReference").GetInt32();
-        Assert.AreNotEqual(arguments, locals);
-        JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
-        Assert.AreEqual(8, values.GetArrayLength());
-        Assert.AreEqual("number", values[2].GetProperty("name").GetString());
-        Assert.AreEqual("int", values[2].GetProperty("type").GetString());
-        Assert.AreEqual("string", values[3].GetProperty("type").GetString());
-        bool filtered = OperatingSystem.IsWindows() && !includeHeap;
-        if (filtered)
-        {
-            AssertFilteredValue(values[2]);
-        }
-        else
-        {
-            Assert.AreEqual("42", values[2].GetProperty("value").GetString());
-        }
-        if (includeHeap)
-        {
-            Assert.AreEqual("\"answer\"", values[3].GetProperty("value").GetString());
-        }
-        else
-        {
-            string? unavailable = values[3].GetProperty("value").GetString();
-            Assert.IsNotNull(unavailable);
-            Assert.Contains("Captured value unavailable", unavailable);
-            Assert.Contains("readOnly", values[3].GetProperty("presentationHint").GetProperty("attributes")
-                .EnumerateArray().Select(attribute => attribute.GetString()));
-        }
 
-        JsonElement localValues = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
-        foreach (JsonElement value in localValues.EnumerateArray())
+        async Task InspectAsync(bool supportsPaging)
         {
-            Assert.Contains("readOnly", value.GetProperty("presentationHint").GetProperty("attributes")
-                .EnumerateArray().Select(attribute => attribute.GetString()));
-        }
-        Assert.AreEqual("localNumber", localValues[0].GetProperty("name").GetString());
-        Assert.AreEqual("int", localValues[0].GetProperty("type").GetString());
-        Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
-        if (filtered)
-        {
-            AssertFilteredValue(localValues[0]);
-            AssertFilteredValue(localValues[1]);
-        }
-        else
-        {
-            Assert.AreEqual("43", localValues[0].GetProperty("value").GetString());
-            Assert.AreEqual("44", localValues[1].GetProperty("value").GetString());
-        }
-        if (includeHeap)
-        {
-            JsonElement arraySlot = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
-            JsonElement array = supportsPaging ? arraySlot[0] : Assert.ContainsSingle(arraySlot.EnumerateArray()
-                .Where(value => value.GetProperty("name").GetString() == "localArray"));
-            Assert.AreEqual("localArray", array.GetProperty("name").GetString());
-            int arrayReference = array.GetProperty("variablesReference").GetInt32();
-            Assert.IsGreaterThan(0, arrayReference);
+            DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
+            _ = await RequestAsync(client, "initialize", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteBoolean("supportsVariablePaging", supportsPaging);
+                writer.WriteEndObject();
+            }).ConfigureAwait(false);
+            int threadId = await OpenDumpAsync(client, fixture.DumpPath, initialize: false,
+                binarySearchPaths: [relocatedDirectory]).ConfigureAwait(false);
+            JsonElement stack = await ReadStackAsync(client, threadId, start: 0, levels: 100).ConfigureAwait(false);
+            if (!stack.GetProperty("stackFrames").EnumerateArray().Any(item => item.GetProperty("name").GetString()
+                ?.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true))
+            {
+                await LogDumpThreadsAsync(client).ConfigureAwait(false);
+                TestContext.WriteLine(client.ProtocolTranscript);
+            }
+            JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
+                .Where(item => item.GetProperty("name").GetString()?.Contains(
+                    "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true),
+                $"Initial dump thread {threadId}: {stack}");
+            int frameId = frame.GetProperty("id").GetInt32();
+            JsonElement scopes = await RequestAsync(client, "scopes", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("frameId", frameId);
+                writer.WriteEndObject();
+            }).ConfigureAwait(false);
+            JsonElement scopeArray = scopes.GetProperty("scopes");
+            Assert.AreEqual(2, scopeArray.GetArrayLength());
+            Assert.AreEqual("Arguments", scopeArray[0].GetProperty("name").GetString());
+            Assert.AreEqual("Locals", scopeArray[1].GetProperty("name").GetString());
+            int arguments = scopeArray[0].GetProperty("variablesReference").GetInt32();
+            int locals = scopeArray[1].GetProperty("variablesReference").GetInt32();
+            Assert.AreNotEqual(arguments, locals);
+            JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
+            Assert.AreEqual(8, values.GetArrayLength());
+            Assert.AreEqual("number", values[2].GetProperty("name").GetString());
+            Assert.AreEqual("int", values[2].GetProperty("type").GetString());
+            Assert.AreEqual("string", values[3].GetProperty("type").GetString());
+            bool filtered = OperatingSystem.IsWindows() && !includeHeap;
+            if (filtered)
+            {
+                AssertFilteredValue(values[2]);
+            }
+            else
+            {
+                Assert.AreEqual("42", values[2].GetProperty("value").GetString());
+            }
+            if (includeHeap)
+            {
+                Assert.AreEqual("\"answer\"", values[3].GetProperty("value").GetString());
+            }
+            else
+            {
+                string? unavailable = values[3].GetProperty("value").GetString();
+                Assert.IsNotNull(unavailable);
+                Assert.Contains("Captured value unavailable", unavailable);
+                Assert.Contains("readOnly", values[3].GetProperty("presentationHint").GetProperty("attributes")
+                    .EnumerateArray().Select(attribute => attribute.GetString()));
+            }
+
+            JsonElement localValues = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
+            foreach (JsonElement value in localValues.EnumerateArray())
+            {
+                Assert.Contains("readOnly", value.GetProperty("presentationHint").GetProperty("attributes")
+                    .EnumerateArray().Select(attribute => attribute.GetString()));
+            }
+            Assert.AreEqual("localNumber", localValues[0].GetProperty("name").GetString());
+            Assert.AreEqual("int", localValues[0].GetProperty("type").GetString());
+            Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
+            if (filtered)
+            {
+                AssertFilteredValue(localValues[0]);
+                AssertFilteredValue(localValues[1]);
+            }
+            else
+            {
+                Assert.AreEqual("43", localValues[0].GetProperty("value").GetString());
+                Assert.AreEqual("44", localValues[1].GetProperty("value").GetString());
+            }
+            if (includeHeap)
+            {
+                JsonElement arraySlot = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
+                JsonElement array = supportsPaging ? arraySlot[0] : Assert.ContainsSingle(arraySlot.EnumerateArray()
+                    .Where(value => value.GetProperty("name").GetString() == "localArray"));
+                Assert.AreEqual("localArray", array.GetProperty("name").GetString());
+                int arrayReference = array.GetProperty("variablesReference").GetInt32();
+                Assert.IsGreaterThan(0, arrayReference);
+                if (supportsPaging)
+                {
+                    Assert.AreEqual(3, array.GetProperty("indexedVariables").GetInt32());
+                }
+                JsonElement children = await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed").ConfigureAwait(false);
+                Assert.AreEqual(supportsPaging ? 1 : 3, children.GetArrayLength());
+                JsonElement second = children[supportsPaging ? 0 : 1];
+                Assert.AreEqual("[1]", second.GetProperty("name").GetString());
+                Assert.AreEqual("42", second.GetProperty("value").GetString());
+                Assert.AreEqual("int", second.GetProperty("type").GetString());
+                Assert.AreEqual(0, second.GetProperty("variablesReference").GetInt32());
+                Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, arrayReference, 0, 1, filter: "named")
+                    .ConfigureAwait(false)).GetArrayLength());
+                Assert.AreEqual(children.GetRawText(), (await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed")
+                    .ConfigureAwait(false)).GetRawText());
+                JsonElement objectSlot = await ReadDumpVariablesAsync(client, locals, 7, 1).ConfigureAwait(false);
+                JsonElement capturedObject = supportsPaging ? objectSlot[0] : Assert.ContainsSingle(objectSlot.EnumerateArray()
+                    .Where(value => value.GetProperty("name").GetString() == "localObject"));
+                Assert.AreEqual("localObject", capturedObject.GetProperty("name").GetString());
+                int objectReference = capturedObject.GetProperty("variablesReference").GetInt32();
+                Assert.IsGreaterThan(0, objectReference);
+                if (supportsPaging)
+                {
+                    Assert.AreEqual(4, capturedObject.GetProperty("namedVariables").GetInt32());
+                }
+                JsonElement fieldPage = await ReadDumpVariablesAsync(client, objectReference, 2, 1).ConfigureAwait(false);
+                Assert.AreEqual(supportsPaging ? 1 : 4, fieldPage.GetArrayLength());
+                JsonElement pair = fieldPage[supportsPaging ? 0 : 2];
+                Assert.AreEqual("Pair", pair.GetProperty("name").GetString());
+                Assert.AreEqual("(int, string)", pair.GetProperty("type").GetString());
+                int pairReference = pair.GetProperty("variablesReference").GetInt32();
+                Assert.IsGreaterThan(0, pairReference);
+                JsonElement pairFields = await ReadDumpVariablesAsync(client, pairReference, 0, 0).ConfigureAwait(false);
+                Assert.AreSequenceEqual(["Item1", "Item2"], pairFields.EnumerateArray()
+                    .Select(value => value.GetProperty("name").GetString()));
+                Assert.AreSequenceEqual(["42", "\"answer!\""], pairFields.EnumerateArray()
+                    .Select(value => value.GetProperty("value").GetString()));
+                Assert.Contains("readOnly", pair.GetProperty("presentationHint").GetProperty("attributes")
+                    .EnumerateArray().Select(attribute => attribute.GetString()));
+                Assert.IsFalse(pair.TryGetProperty("evaluateName", out _));
+                Assert.IsFalse(pair.TryGetProperty("memoryReference", out _));
+                Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, objectReference, 0, 1, filter: "indexed")
+                    .ConfigureAwait(false)).GetArrayLength());
+                Assert.AreEqual(fieldPage.GetRawText(), (await ReadDumpVariablesAsync(client, objectReference, 2, 1)
+                    .ConfigureAwait(false)).GetRawText());
+            }
+            else
+            {
+                JsonElement arrayPage = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
+                JsonElement array = Assert.ContainsSingle(arrayPage.EnumerateArray()
+                    .Where(value => value.GetProperty("name").GetString() == "localArray"));
+                string? unavailable = array.GetProperty("value").GetString();
+                Assert.IsNotNull(unavailable);
+                Assert.Contains("Captured value unavailable", unavailable);
+                Assert.AreEqual(0, array.GetProperty("variablesReference").GetInt32());
+                Assert.Contains("readOnly", array.GetProperty("presentationHint").GetProperty("attributes")
+                    .EnumerateArray().Select(attribute => attribute.GetString()));
+            }
+            JsonElement next = await ReadDumpVariablesAsync(client, locals, 1, 1).ConfigureAwait(false);
             if (supportsPaging)
             {
-                Assert.AreEqual(3, array.GetProperty("indexedVariables").GetInt32());
+                Assert.AreEqual(2, localValues.GetArrayLength());
+                Assert.AreEqual(1, next.GetArrayLength());
+                Assert.AreEqual(localValues[1].GetRawText(), next[0].GetRawText());
+                Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, locals, int.MaxValue, 1)
+                    .ConfigureAwait(false)).GetArrayLength());
             }
-            JsonElement children = await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed").ConfigureAwait(false);
-            Assert.AreEqual(supportsPaging ? 1 : 3, children.GetArrayLength());
-            JsonElement second = children[supportsPaging ? 0 : 1];
-            Assert.AreEqual("[1]", second.GetProperty("name").GetString());
-            Assert.AreEqual("42", second.GetProperty("value").GetString());
-            Assert.AreEqual("int", second.GetProperty("type").GetString());
-            Assert.AreEqual(0, second.GetProperty("variablesReference").GetInt32());
-            Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, arrayReference, 0, 1, filter: "named")
-                .ConfigureAwait(false)).GetArrayLength());
-            Assert.AreEqual(children.GetRawText(), (await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed")
-                .ConfigureAwait(false)).GetRawText());
-            JsonElement objectSlot = await ReadDumpVariablesAsync(client, locals, 7, 1).ConfigureAwait(false);
-            JsonElement capturedObject = supportsPaging ? objectSlot[0] : Assert.ContainsSingle(objectSlot.EnumerateArray()
-                .Where(value => value.GetProperty("name").GetString() == "localObject"));
-            Assert.AreEqual("localObject", capturedObject.GetProperty("name").GetString());
-            int objectReference = capturedObject.GetProperty("variablesReference").GetInt32();
-            Assert.IsGreaterThan(0, objectReference);
-            if (supportsPaging)
+            else
             {
-                Assert.AreEqual(4, capturedObject.GetProperty("namedVariables").GetInt32());
+                Assert.IsGreaterThan(2, localValues.GetArrayLength());
+                Assert.AreEqual(localValues.GetRawText(), next.GetRawText());
             }
-            JsonElement fieldPage = await ReadDumpVariablesAsync(client, objectReference, 2, 1).ConfigureAwait(false);
-            Assert.AreEqual(supportsPaging ? 1 : 4, fieldPage.GetArrayLength());
-            JsonElement pair = fieldPage[supportsPaging ? 0 : 2];
-            Assert.AreEqual("Pair", pair.GetProperty("name").GetString());
-            Assert.AreEqual("(int, string)", pair.GetProperty("type").GetString());
-            int pairReference = pair.GetProperty("variablesReference").GetInt32();
-            Assert.IsGreaterThan(0, pairReference);
-            JsonElement pairFields = await ReadDumpVariablesAsync(client, pairReference, 0, 0).ConfigureAwait(false);
-            Assert.AreSequenceEqual(["Item1", "Item2"], pairFields.EnumerateArray()
-                .Select(value => value.GetProperty("name").GetString()));
-            Assert.AreSequenceEqual(["42", "\"answer!\""], pairFields.EnumerateArray()
-                .Select(value => value.GetProperty("value").GetString()));
-            Assert.Contains("readOnly", pair.GetProperty("presentationHint").GetProperty("attributes")
-                .EnumerateArray().Select(attribute => attribute.GetString()));
-            Assert.IsFalse(pair.TryGetProperty("evaluateName", out _));
-            Assert.IsFalse(pair.TryGetProperty("memoryReference", out _));
-            Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, objectReference, 0, 1, filter: "indexed")
+
+            Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, locals, 0, 1, filter: "indexed")
                 .ConfigureAwait(false)).GetArrayLength());
-            Assert.AreEqual(fieldPage.GetRawText(), (await ReadDumpVariablesAsync(client, objectReference, 2, 1)
-                .ConfigureAwait(false)).GetRawText());
-        }
-        else
-        {
-            JsonElement arrayPage = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
-            JsonElement array = Assert.ContainsSingle(arrayPage.EnumerateArray()
-                .Where(value => value.GetProperty("name").GetString() == "localArray"));
-            string? unavailable = array.GetProperty("value").GetString();
-            Assert.IsNotNull(unavailable);
-            Assert.Contains("Captured value unavailable", unavailable);
-            Assert.AreEqual(0, array.GetProperty("variablesReference").GetInt32());
-            Assert.Contains("readOnly", array.GetProperty("presentationHint").GetProperty("attributes")
-                .EnumerateArray().Select(attribute => attribute.GetString()));
-        }
-        JsonElement next = await ReadDumpVariablesAsync(client, locals, 1, 1).ConfigureAwait(false);
-        if (supportsPaging)
-        {
-            Assert.AreEqual(2, localValues.GetArrayLength());
-            Assert.AreEqual(1, next.GetArrayLength());
-            Assert.AreEqual(localValues[1].GetRawText(), next[0].GetRawText());
-            Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, locals, int.MaxValue, 1)
-                .ConfigureAwait(false)).GetArrayLength());
-        }
-        else
-        {
-            Assert.IsGreaterThan(2, localValues.GetArrayLength());
-            Assert.AreEqual(localValues.GetRawText(), next.GetRawText());
+            _ = await ReadDumpVariablesAsync(client, int.MaxValue, 0, 1, success: false).ConfigureAwait(false);
+            _ = await ReadDumpVariablesAsync(client, locals, -1, 1, success: false).ConfigureAwait(false);
+            _ = await ReadDumpVariablesAsync(client, locals, 0, 1, filter: "invalid", success: false).ConfigureAwait(false);
+            _ = await RequestAsync(client, "setVariable", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("variablesReference", locals);
+                writer.WriteString("name", "localNumber");
+                writer.WriteString("value", "99");
+                writer.WriteEndObject();
+            }, success: false).ConfigureAwait(false);
+            JsonElement recovered = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
+            Assert.AreEqual(localValues.GetRawText(), recovered.GetRawText());
+            Assert.IsNull(client.TargetProcessId);
+            await CloseDumpAsync(client).ConfigureAwait(false);
         }
 
-        Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, locals, 0, 1, filter: "indexed")
-            .ConfigureAwait(false)).GetArrayLength());
-        _ = await ReadDumpVariablesAsync(client, int.MaxValue, 0, 1, success: false).ConfigureAwait(false);
-        _ = await ReadDumpVariablesAsync(client, locals, -1, 1, success: false).ConfigureAwait(false);
-        _ = await ReadDumpVariablesAsync(client, locals, 0, 1, filter: "invalid", success: false).ConfigureAwait(false);
-        _ = await RequestAsync(client, "setVariable", writer =>
+        foreach (bool supportsPaging in new[] { true, false })
         {
-            writer.WriteStartObject();
-            writer.WriteNumber("variablesReference", locals);
-            writer.WriteString("name", "localNumber");
-            writer.WriteString("value", "99");
-            writer.WriteEndObject();
-        }, success: false).ConfigureAwait(false);
-        JsonElement recovered = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
-        Assert.AreEqual(localValues.GetRawText(), recovered.GetRawText());
-        Assert.IsNull(client.TargetProcessId);
-        await CloseDumpAsync(client).ConfigureAwait(false);
+            await InspectAsync(supportsPaging).ConfigureAwait(false);
+        }
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
     }
