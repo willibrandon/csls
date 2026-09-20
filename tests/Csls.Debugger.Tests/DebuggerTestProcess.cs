@@ -184,19 +184,7 @@ internal static class DebuggerTestProcess
             }
             finally
             {
-                if (!process.HasExited)
-                {
-                    try
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                    catch (InvalidOperationException) when (process.HasExited)
-                    {
-                        await DebuggerProcessExit.WaitAsync(process, CancellationToken.None)
-                            .ConfigureAwait(false);
-                    }
-                }
-                await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
+                await TerminateAsync(process).ConfigureAwait(false);
 
                 var operations = Task.WhenAll(output, error, nativeEvents, exit, processObservation, outputDrainObservation);
                 await operations.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -225,6 +213,46 @@ internal static class DebuggerTestProcess
             trace?.WriteLine(record);
             progress?.Invoke(record);
         }
+    }
+
+    private static async Task TerminateAsync(Process process)
+    {
+        if (!process.HasExited)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (AggregateException treeFailure)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill();
+                    }
+                }
+                catch (InvalidOperationException) when (process.HasExited)
+                {
+                    await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (System.ComponentModel.Win32Exception processFailure)
+                {
+                    if (!process.HasExited)
+                    {
+                        throw new AggregateException(
+                            "The process tree and its retained root could not be terminated.",
+                            treeFailure,
+                            processFailure);
+                    }
+                }
+            }
+            catch (InvalidOperationException) when (process.HasExited)
+            {
+                await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
     }
 
     private static async Task<string> ReadOutputAsync(StreamReader reader, Action<string>? progress,
