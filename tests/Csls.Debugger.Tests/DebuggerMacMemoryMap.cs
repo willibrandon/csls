@@ -11,7 +11,7 @@ namespace Csls.Debugger.Tests;
 internal static class DebuggerMacMemoryMap
 {
     /// <summary>
-    /// Captures the process memory map within the existing diagnostic deadline.
+    /// Captures process memory regions within the existing diagnostic deadline.
     /// </summary>
     /// <param name="processId">The process whose ownership was established by the diagnostic caller.</param>
     /// <param name="directory">The diagnostic directory that retains the report.</param>
@@ -31,7 +31,6 @@ internal static class DebuggerMacMemoryMap
             start.ArgumentList.Add("/usr/bin/vmmap");
         }
         start.ArgumentList.Add("-w");
-        start.ArgumentList.Add("-pages");
         start.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
         try
         {
