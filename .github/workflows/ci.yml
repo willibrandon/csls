@@ -666,6 +666,16 @@ jobs:
             name: Debugger stress
             minimum_tests: 2
             filter: TestCategory=DebuggerStress
+          # Give the populated four-GiB target its own Windows runner memory budget.
+          - suite: stress
+            rid: win-x64
+            filter: TestCategory=DebuggerStress&FullyQualifiedName!=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
+          - suite: stress-large-graph
+            name: Debugger four-GiB graph stress
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
+            os: windows-latest
+            rid: win-x64
           # Keep the macOS x64 stress processes bounded while preserving every stress case.
           - suite: stress-values
             name: Debugger breakpoint and value stress
