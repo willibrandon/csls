@@ -11,7 +11,7 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DebuggerReferenceAssemblyTests
 {
-    private static readonly string[] s_fixtureFiles = ["DebuggerGenericFixture.fs", "DebuggerFixtureValue.fs", "Program.fs"];
+    private static readonly string[] s_fixtureFiles = ["ReferenceIdentity.fs"];
 
     /// <summary>
     /// Gets the framework-owned cancellation context.
@@ -35,7 +35,7 @@ public sealed class DebuggerReferenceAssemblyTests
                 new XAttribute("Sdk", "Microsoft.NET.Sdk"),
                 new XElement("PropertyGroup",
                     new XElement("TargetFramework", "net10.0"),
-                    new XElement("OutputType", "Exe"),
+                    new XElement("OutputType", "Library"),
                     new XElement("Nullable", "enable"),
                     new XElement("LangVersion", "latest"),
                     new XElement("Deterministic", "true"),
