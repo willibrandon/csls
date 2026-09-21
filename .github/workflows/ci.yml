@@ -560,10 +560,24 @@ jobs:
             name: Debugger stepping
             minimum_tests: 49
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
-          - suite: stepping-async
-            name: Debugger async stepping
-            minimum_tests: 30
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Iterator)
+          - suite: stepping-async-iterator
+            name: Debugger async iterator stepping
+            minimum_tests: 13
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&FullyQualifiedName~Iterator
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: stepping-async-method
+            name: Debugger async method stepping
+            minimum_tests: 8
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&FullyQualifiedName~StepOutOfResumedAsyncMethod
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: stepping-async-continuation
+            name: Debugger async continuation stepping
+            minimum_tests: 13
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&FullyQualifiedName!~Iterator&FullyQualifiedName~Async&FullyQualifiedName!~StepOutOfResumedAsyncMethod
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true

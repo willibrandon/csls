@@ -417,35 +417,44 @@ public sealed class DapArrayPagingTests : DapTestContext
     {
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
-        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
-        JsonElement array = await ReadEvaluationAsync(client, frameId, "many", success: true,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        int reference = array.GetProperty("variablesReference").GetInt32();
-        JsonElement published = Assert.ContainsSingle(await ReadPageAsync(client, reference, 0, 1).ConfigureAwait(false));
-        int childReference = published.GetProperty("variablesReference").GetInt32();
-        Assert.IsGreaterThan(0, childReference);
-        Assert.AreEqual("[0]", published.GetProperty("name").GetString());
-        JsonElement[] initial = await ReadPageAsync(client, childReference, 0, 1).ConfigureAwait(false);
-        Assert.AreEqual("41", Assert.ContainsSingle(initial).GetProperty("value").GetString());
-
-        for (int attempt = 0; attempt < 2; attempt++)
+        using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
+        try
         {
-            JsonElement rejected = await RequestPageAsync(client, reference, 0, 65536, success: false)
-                .ConfigureAwait(false);
-            Assert.Contains("retained-value limit of 65536",
-                Assert.IsInstanceOfType<string>(rejected.GetProperty("message").GetString()));
-            JsonElement last = Assert.ContainsSingle(await ReadPageAsync(client, reference, 65536, 1)
-                .ConfigureAwait(false));
-            Assert.AreEqual("[65536]", last.GetProperty("name").GetString());
-            Assert.IsGreaterThan(0, last.GetProperty("variablesReference").GetInt32());
-            JsonElement tailValue = Assert.ContainsSingle(await ReadPageAsync(client,
-                last.GetProperty("variablesReference").GetInt32(), 0, 1).ConfigureAwait(false));
-            Assert.AreEqual("41", tailValue.GetProperty("value").GetString());
-            JsonElement[] values = await ReadPageAsync(client, childReference, 0, 1).ConfigureAwait(false);
-            Assert.AreSequenceEqual(initial.Select(value => value.GetRawText()), values.Select(value => value.GetRawText()));
-        }
+            int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+            JsonElement array = await ReadEvaluationAsync(client, frameId, "many", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            int reference = array.GetProperty("variablesReference").GetInt32();
+            JsonElement published = Assert.ContainsSingle(await ReadPageAsync(client, reference, 0, 1).ConfigureAwait(false));
+            int childReference = published.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, childReference);
+            Assert.AreEqual("[0]", published.GetProperty("name").GetString());
+            JsonElement[] initial = await ReadPageAsync(client, childReference, 0, 1).ConfigureAwait(false);
+            Assert.AreEqual("41", Assert.ContainsSingle(initial).GetProperty("value").GetString());
 
-        await DisconnectAsync(client).ConfigureAwait(false);
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                JsonElement rejected = await RequestPageAsync(client, reference, 0, 65536, success: false)
+                    .ConfigureAwait(false);
+                Assert.Contains("retained-value limit of 65536",
+                    Assert.IsInstanceOfType<string>(rejected.GetProperty("message").GetString()));
+                JsonElement last = Assert.ContainsSingle(await ReadPageAsync(client, reference, 65536, 1)
+                    .ConfigureAwait(false));
+                Assert.AreEqual("[65536]", last.GetProperty("name").GetString());
+                Assert.IsGreaterThan(0, last.GetProperty("variablesReference").GetInt32());
+                JsonElement tailValue = Assert.ContainsSingle(await ReadPageAsync(client,
+                    last.GetProperty("variablesReference").GetInt32(), 0, 1).ConfigureAwait(false));
+                Assert.AreEqual("41", tailValue.GetProperty("value").GetString());
+                JsonElement[] values = await ReadPageAsync(client, childReference, 0, 1).ConfigureAwait(false);
+                Assert.AreSequenceEqual(initial.Select(value => value.GetRawText()), values.Select(value => value.GetRawText()));
+            }
+
+            await DisconnectAsync(client).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (TestContext.CancellationToken.IsCancellationRequested)
+        {
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task<int> StopAtInitializedArraysAsync(DapTestClient client, bool paging = true)

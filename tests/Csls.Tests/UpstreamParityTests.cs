@@ -174,9 +174,18 @@ public sealed class UpstreamParityTests
             if (oracleClient is not null)
             {
                 BeginPhase("waiting for oracle workspace load");
-                await WaitForWorkspaceLoadAsync(
-                    oracleClient,
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await WaitForWorkspaceLoadAsync(
+                        oracleClient,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (TestContext.CancellationToken.IsCancellationRequested)
+                {
+                    await OracleProcessDiagnostics.CaptureAsync(
+                        oracle.ProcessId, diagnosticDirectory, TestContext).ConfigureAwait(false);
+                    throw;
+                }
             }
 
             BeginPhase("opening documents");
