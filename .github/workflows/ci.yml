@@ -154,6 +154,17 @@ jobs:
           --output artifacts/bin/Csls.Debugger.TestAuthorization/debug
           '/bl:artifacts/binlogs/debugger-authorization-{}.binlog'
 
+      - name: Publish portable .NET root exporter
+        run: >-
+          dotnet publish scripts/Export-DotNetRoot.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.DotNetRoot/debug
+          '/bl:artifacts/binlogs/debugger-dotnet-root-{}.binlog'
+
       - name: Publish portable dump archive app
         run: >-
           dotnet publish scripts/Pack-DebuggerDumps.cs
@@ -734,7 +745,7 @@ jobs:
 
       - name: Export installed .NET host for macOS apphosts
         if: runner.os == 'macOS'
-        run: dotnet run --file scripts/Export-DotNetRoot.cs
+        run: dotnet artifacts/bin/Csls.Debugger.DotNetRoot/debug/Export-DotNetRoot.dll
 
       - name: Restore Unix wait interposer
         if: matrix.unix_wait

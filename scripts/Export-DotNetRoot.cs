@@ -8,6 +8,17 @@
 
 using System.Text;
 
+if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
+{
+    await Console.Out.WriteLineAsync(
+        "Exports the active .NET installation root to the GitHub Actions job environment.")
+        .ConfigureAwait(false);
+    await Console.Out.WriteLineAsync(
+        "Usage: dotnet run --file scripts/Export-DotNetRoot.cs")
+        .ConfigureAwait(false);
+    return 0;
+}
+
 string environmentFile = Environment.GetEnvironmentVariable("GITHUB_ENV")
     ?? throw new InvalidOperationException("GITHUB_ENV must identify the job environment file.");
 if (!Path.IsPathFullyQualified(environmentFile))
@@ -32,3 +43,4 @@ await File.AppendAllTextAsync(environmentFile, $"DOTNET_ROOT={root.FullName}{Env
     new UTF8Encoding(false)).ConfigureAwait(false);
 await Console.Error.WriteLineAsync($"Exported DOTNET_ROOT for the active runtime: {root.FullName}")
     .ConfigureAwait(false);
+return 0;
