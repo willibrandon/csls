@@ -56,7 +56,6 @@ internal sealed partial class CorDebugDebuggee
         cancellationToken.ThrowIfCancellationRequested();
         if (RuntimeFailure is not null)
         {
-            RecordPreservedChildren();
             await TerminateProcessAsync(
                 _process,
                 _unixExitMonitor,
@@ -104,10 +103,6 @@ internal sealed partial class CorDebugDebuggee
             {
                 DebuggeeChildProcesses.Terminate(_process.Id);
             }
-            else
-            {
-                RecordPreservedChildren();
-            }
         }
         finally
         {
@@ -119,15 +114,6 @@ internal sealed partial class CorDebugDebuggee
                 CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Terminate");
             }
             _managedCallback.RetireProcess();
-        }
-    }
-
-    private void RecordPreservedChildren()
-    {
-        if (_ownsProcess && !_terminateChildProcesses &&
-            DebuggeeChildProcesses.GetIds(_process.Id).Length != 0)
-        {
-            Volatile.Write(ref _preservedChildren, 1);
         }
     }
 

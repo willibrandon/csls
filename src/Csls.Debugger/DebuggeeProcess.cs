@@ -13,7 +13,6 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     private readonly int _id;
     private readonly string _name;
     private readonly bool _terminateChildProcesses;
-    private int _preservedChildren;
     private int _detached;
     private int _disposed;
 
@@ -37,9 +36,6 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
 
     /// <inheritdoc />
     public bool OwnsProcess => true;
-
-    /// <inheritdoc />
-    public bool ChildOutputMayOutliveTarget => Volatile.Read(ref _preservedChildren) != 0;
 
     /// <summary>
     /// Starts a target without invoking a command shell.
@@ -157,7 +153,6 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     {
         if (!_process.HasExited)
         {
-            RecordPreservedChildren();
             _process.Kill(entireProcessTree: _terminateChildProcesses);
         }
 
@@ -182,21 +177,12 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
         {
             if (!_process.HasExited)
             {
-                RecordPreservedChildren();
                 _process.Kill(entireProcessTree: _terminateChildProcesses);
             }
             await DebuggerProcessExit.WaitAsync(_process, CancellationToken.None).ConfigureAwait(false);
         }
 
         _process.Dispose();
-    }
-
-    private void RecordPreservedChildren()
-    {
-        if (!_terminateChildProcesses && DebuggeeChildProcesses.GetIds(_id).Length != 0)
-        {
-            Volatile.Write(ref _preservedChildren, 1);
-        }
     }
 
     private static async Task CopyAsync(

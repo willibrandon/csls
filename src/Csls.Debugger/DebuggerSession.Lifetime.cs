@@ -7,6 +7,8 @@ namespace Csls.Debugger;
 /// </summary>
 public sealed partial class DebuggerSession
 {
+    private static readonly TimeSpan s_outputDrainGrace = TimeSpan.FromMilliseconds(500);
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
@@ -195,22 +197,8 @@ public sealed partial class DebuggerSession
             return;
         }
 
-        if (debuggee.ChildOutputMayOutliveTarget)
-        {
-            // Descendants can inherit stdout/stderr even after the root has exited.
-            // Stop observing that pipe ownership when the debuggee's lifetime ends.
-            await outputCancellation.CancelAsync().ConfigureAwait(false);
-        }
-
-        try
-        {
-            await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (
-            outputCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            System.Diagnostics.Debug.Assert(debuggee.ChildOutputMayOutliveTarget);
-        }
+        await DrainOutputAsync(standardOutput, standardError, outputCancellation, cancellationToken)
+            .ConfigureAwait(false);
         await _actor.InvokeAsync(
             async token =>
             {
@@ -225,5 +213,32 @@ public sealed partial class DebuggerSession
                 await _observer.OnTerminatedAsync(token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task DrainOutputAsync(
+        Task standardOutput,
+        Task standardError,
+        CancellationTokenSource outputCancellation,
+        CancellationToken cancellationToken)
+    {
+        var drain = Task.WhenAll(standardOutput, standardError);
+        try
+        {
+            await drain.WaitAsync(s_outputDrainGrace, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // An independently surviving child may keep the root's redirected handles open.
+            // Deliver buffered output before retiring the reader at the session boundary.
+            await outputCancellation.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await drain.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                System.Diagnostics.Debug.Assert(outputCancellation.IsCancellationRequested);
+            }
+        }
     }
 }

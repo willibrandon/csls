@@ -40,7 +40,8 @@ public sealed class DapTerminationTests : DapTestContext
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            await LaunchAsync(client, pipeName, noDebug, terminateChildProcesses: true).ConfigureAwait(false);
+            await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
+                terminateChildProcesses: true).ConfigureAwait(false);
             await WaitForTreeConnectionAsync(client, firstConnected).ConfigureAwait(false);
             int[] firstIds = await ReadTreeAsync(client, targets).ConfigureAwait(false);
             Assert.IsFalse(sibling.HasExited);
@@ -137,7 +138,9 @@ public sealed class DapTerminationTests : DapTestContext
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            await LaunchAsync(client, pipeName, noDebug, terminateChildProcesses).ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
+                terminateChildProcesses).ConfigureAwait(false);
             TestContext.WriteLine("Launched child-preserving target.");
             await WaitForTreeConnectionAsync(client, connected).ConfigureAwait(false);
             _ = await ReadTreeAsync(client, targets).ConfigureAwait(false);
@@ -187,9 +190,113 @@ public sealed class DapTerminationTests : DapTestContext
         }
     }
 
+    /// <summary>
+    /// Completes target exit after draining available output even while an independent child retains the pipes.
+    /// </summary>
+    /// <param name="noDebug">Whether the target runs without a managed runtime connection.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NaturalTargetExitPreservesChildWithoutWaitingForInheritedOutput(bool noDebug)
+    {
+        string rootPipeName = $"csls-output-root-{Guid.NewGuid():N}";
+        string childPipeName = $"csls-output-child-{Guid.NewGuid():N}";
+        using var rootPipe = new NamedPipeServerStream(rootPipeName, PipeDirection.InOut, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        using var childPipe = new NamedPipeServerStream(childPipeName, PipeDirection.Out, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        Task rootConnected = rootPipe.WaitForConnectionAsync(TestContext.CancellationToken);
+        Task childConnected = childPipe.WaitForConnectionAsync(TestContext.CancellationToken);
+        Process? root = null;
+        Process? child = null;
+        try
+        {
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            await LaunchAsync(client,
+                ["--debugger-inherited-output-root", rootPipeName, childPipeName], noDebug,
+                terminateChildProcesses: null).ConfigureAwait(false);
+            await Task.WhenAll(rootConnected, childConnected).ConfigureAwait(false);
+            using var identities = new StreamReader(rootPipe, leaveOpen: true);
+            string? announcement = await identities.ReadLineAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsNotNull(announcement);
+            int[] ids = [.. announcement.Split(',').Select(value => int.Parse(value, CultureInfo.InvariantCulture))];
+            Assert.HasCount(2, ids);
+            root = Process.GetProcessById(ids[0]);
+            child = Process.GetProcessById(ids[1]);
+            _ = root.SafeHandle;
+            _ = child.SafeHandle;
+
+            await rootPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
+            var output = new StringBuilder();
+            bool exited = false;
+            bool terminated = false;
+            while (!terminated)
+            {
+                using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                JsonElement envelope = message.RootElement;
+                Assert.AreEqual("event", envelope.GetProperty("type").GetString());
+                switch (envelope.GetProperty("event").GetString())
+                {
+                    case "process":
+                        Assert.AreEqual(ids[0], envelope.GetProperty("body").GetProperty("systemProcessId").GetInt32());
+                        break;
+                    case "output":
+                        JsonElement body = envelope.GetProperty("body");
+                        if (body.GetProperty("category").GetString() == "stdout")
+                        {
+                            _ = output.Append(body.GetProperty("output").GetString());
+                        }
+                        break;
+                    case "exited":
+                        Assert.IsFalse(exited);
+                        Assert.AreEqual(0, envelope.GetProperty("body").GetProperty("exitCode").GetInt32());
+                        exited = true;
+                        break;
+                    case "terminated":
+                        Assert.IsTrue(exited);
+                        terminated = true;
+                        break;
+                    default:
+                        Assert.Fail($"Unexpected debugger event: {envelope}");
+                        break;
+                }
+            }
+
+            Assert.Contains(rootPipeName, output.ToString());
+            Assert.IsTrue(root.HasExited);
+            Assert.IsFalse(child.HasExited);
+            Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(client.Diagnostics.ToString());
+        }
+        finally
+        {
+            foreach (Process? process in new[] { child, root })
+            {
+                if (process is null)
+                {
+                    continue;
+                }
+                using (process)
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+        }
+    }
+
     private async Task LaunchAsync(
         DapTestClient client,
-        string pipeName,
+        IReadOnlyList<string> arguments,
         bool noDebug,
         bool? terminateChildProcesses)
     {
@@ -199,7 +306,7 @@ public sealed class DapTerminationTests : DapTestContext
             AssertResponse(response.RootElement, initialize, "initialize", success: true);
         }
         int launch = await client.SendRequestAsync("launch", writer => WriteLaunchArguments(writer,
-            ResolveTestProcessHost(), ["--debugger-process-tree", pipeName], wait: true, noDebug,
+            ResolveTestProcessHost(), arguments, wait: true, noDebug,
             terminateChildProcesses: terminateChildProcesses),
             TestContext.CancellationToken).ConfigureAwait(false);
         using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))

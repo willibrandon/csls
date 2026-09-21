@@ -21,11 +21,6 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     bool OwnsProcess { get; }
 
     /// <summary>
-    /// Gets whether surviving children can retain target output stream handles after the root exits.
-    /// </summary>
-    bool ChildOutputMayOutliveTarget { get; }
-
-    /// <summary>
     /// Copies target standard output to a debugger callback until end of stream.
     /// </summary>
     /// <param name="writeAsync">Receives each output segment.</param>

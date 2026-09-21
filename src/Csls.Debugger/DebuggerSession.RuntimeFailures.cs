@@ -64,15 +64,11 @@ public sealed partial class DebuggerSession
         }
         finally
         {
-            if (debuggee.ChildOutputMayOutliveTarget)
-            {
-                await outputCancellation.CancelAsync().ConfigureAwait(false);
-            }
-
             try
             {
-                await Task.WhenAll(standardOutput, standardError)
-                    .WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                await DrainOutputAsync(standardOutput, standardError, outputCancellation, CancellationToken.None)
+                    .WaitAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
             }
             catch (Exception transportException) when (
                 IsRuntimeFailureTransportException(transportException))

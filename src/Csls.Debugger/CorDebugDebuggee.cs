@@ -36,7 +36,6 @@ internal sealed partial class CorDebugDebuggee :
     private readonly UnixChildExitMonitor? _unixExitMonitor;
     private readonly bool _ownsProcess;
     private readonly bool _terminateChildProcesses;
-    private int _preservedChildren;
     private readonly ManagedStoppedFrameRegistry _frames = new();
     private readonly Dictionary<int, ManagedStepTargetHandle> _stepTargets = [];
     private readonly Dictionary<int, ManagedGotoTargetHandle> _gotoTargets = [];
@@ -155,8 +154,4 @@ internal sealed partial class CorDebugDebuggee :
 
     /// <inheritdoc />
     public bool OwnsProcess => _ownsProcess;
-
-    /// <inheritdoc />
-    public bool ChildOutputMayOutliveTarget => Volatile.Read(ref _preservedChildren) != 0;
-
 }
