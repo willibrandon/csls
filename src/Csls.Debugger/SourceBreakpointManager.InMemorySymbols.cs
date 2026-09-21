@@ -137,7 +137,7 @@ internal sealed partial class SourceBreakpointManager
     private void RemoveModuleBindings(nint moduleIdentity)
     {
         foreach ((nint breakpointIdentity, SourceBreakpointBinding binding) in
-            _bindings.ToArray())
+            _bindings.OrderByDescending(static item => item.Value.ActivationOrder).ToArray())
         {
             if (binding.ModuleIdentity != moduleIdentity)
             {

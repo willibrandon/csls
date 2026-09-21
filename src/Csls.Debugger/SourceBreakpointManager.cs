@@ -19,6 +19,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         uint OldIlOffset), uint> _hotReloadRemaps = [];
     private readonly DebugSymbolLocator _symbolLocator = new();
     private IReadOnlyList<string> _hotReloadCapabilities = [];
+    private long _nextBindingActivationOrder;
     private int _nextBreakpointId;
     private int _nextModuleId;
     private bool _enableHotReload;

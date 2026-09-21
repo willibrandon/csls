@@ -37,7 +37,7 @@ internal sealed partial class SourceBreakpointManager
             }
 
             foreach ((nint breakpointIdentity, SourceBreakpointBinding binding) in
-                _bindings.ToArray())
+                _bindings.OrderByDescending(static item => item.Value.ActivationOrder).ToArray())
             {
                 if (binding.ModuleIdentity != identity)
                 {
@@ -124,7 +124,8 @@ internal sealed partial class SourceBreakpointManager
 
     private void ReleaseRuntimeBindings(bool runtimeAvailable = true)
     {
-        foreach (SourceBreakpointBinding binding in _bindings.Values)
+        foreach (SourceBreakpointBinding binding in _bindings.Values
+            .OrderByDescending(static binding => binding.ActivationOrder))
         {
             if (runtimeAvailable)
             {

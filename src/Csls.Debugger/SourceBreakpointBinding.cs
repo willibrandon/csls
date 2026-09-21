@@ -6,6 +6,11 @@ namespace Csls.Debugger;
 internal sealed class SourceBreakpointBinding
 {
     /// <summary>
+    /// Gets the monotonically increasing order in which the runtime binding was activated.
+    /// </summary>
+    internal required long ActivationOrder { get; init; }
+
+    /// <summary>
     /// Gets the logical source breakpoint identifier.
     /// </summary>
     internal required int BreakpointId { get; init; }

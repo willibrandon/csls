@@ -171,6 +171,7 @@ internal sealed partial class SourceBreakpointManager
             identity = ComAbi.QueryInterface(breakpoint, s_iUnknownInterfaceId);
             _bindings.Add(identity, new SourceBreakpointBinding
             {
+                ActivationOrder = checked(++_nextBindingActivationOrder),
                 BreakpointId = definition.Id,
                 Definition = definition,
                 ModuleIdentity = module.Identity,
@@ -215,7 +216,9 @@ internal sealed partial class SourceBreakpointManager
         }
 
         var ids = definitions.Select(static definition => definition.Id).ToHashSet();
-        foreach (SourceBreakpointBinding binding in _bindings.Values.ToArray())
+        foreach (SourceBreakpointBinding binding in _bindings.Values
+            .OrderByDescending(static binding => binding.ActivationOrder)
+            .ToArray())
         {
             if (!ids.Contains(binding.BreakpointId) || retained.Contains(binding.Definition))
             {
