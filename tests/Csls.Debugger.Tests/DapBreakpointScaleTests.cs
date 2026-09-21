@@ -16,6 +16,8 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DapBreakpointScaleTests : DapTestContext
 {
+    private static readonly CSharpCompilation s_fixtureCompilation = CreateFixtureCompilation();
+
     /// <summary>
     /// Retains breakpoint identities across reordered replacements and removals before stopping and inspecting the target.
     /// </summary>
@@ -468,14 +470,7 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         await File.WriteAllTextAsync(sourcePath, source, Encoding.UTF8, TestContext.CancellationToken).ConfigureAwait(false);
         SyntaxTree syntax = CSharpSyntaxTree.ParseText(SourceText.From(source, Encoding.UTF8, SourceHashAlgorithm.Sha256),
             new CSharpParseOptions(LanguageVersion.CSharp14), sourcePath, TestContext.CancellationToken);
-        string platformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
-            ?? throw new InvalidOperationException("The trusted platform assembly list is unavailable.");
-        var compilation = CSharpCompilation.Create("Csls.BreakpointScale", [syntax],
-            platformAssemblies.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(static path => MetadataReference.CreateFromFile(path)),
-            new CSharpCompilationOptions(OutputKind.ConsoleApplication, optimizationLevel: OptimizationLevel.Debug,
-                deterministic: true, nullableContextOptions: NullableContextOptions.Enable,
-                generalDiagnosticOption: ReportDiagnostic.Error));
+        CSharpCompilation compilation = s_fixtureCompilation.AddSyntaxTrees(syntax);
         TestContext.WriteLine($"Created breakpoint compilation in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
         using (var pe = new FileStream(programPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         using (var pdb = new FileStream(Path.ChangeExtension(programPath, ".pdb"), FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -489,5 +484,18 @@ public sealed class DapBreakpointScaleTests : DapTestContext
             Path.ChangeExtension(programPath, ".runtimeconfig.json"));
         TestContext.WriteLine($"Emitted breakpoint fixture in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
         return (programPath, sourcePath);
+    }
+
+    private static CSharpCompilation CreateFixtureCompilation()
+    {
+        string platformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+            ?? throw new InvalidOperationException("The trusted platform assembly list is unavailable.");
+        return CSharpCompilation.Create(
+            "Csls.BreakpointScale",
+            references: platformAssemblies.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static path => MetadataReference.CreateFromFile(path)),
+            options: new CSharpCompilationOptions(OutputKind.ConsoleApplication, optimizationLevel: OptimizationLevel.Debug,
+                deterministic: true, nullableContextOptions: NullableContextOptions.Enable,
+                generalDiagnosticOption: ReportDiagnostic.Error));
     }
 }
