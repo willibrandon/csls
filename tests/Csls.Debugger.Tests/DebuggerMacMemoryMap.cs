@@ -22,14 +22,8 @@ internal static class DebuggerMacMemoryMap
         CancellationToken cancellationToken)
     {
         string path = Path.Join(directory, $"process-{processId}.vmmap.txt");
-        bool hostedRunner = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
-            "true", StringComparison.OrdinalIgnoreCase);
-        var start = new ProcessStartInfo(hostedRunner ? "/usr/bin/sudo" : "/usr/bin/vmmap");
-        if (hostedRunner)
-        {
-            start.ArgumentList.Add("-n");
-            start.ArgumentList.Add("/usr/bin/vmmap");
-        }
+        // The macOS task-port authorization rule requires the observer and target to share a user.
+        var start = new ProcessStartInfo("/usr/bin/vmmap");
         start.ArgumentList.Add("-w");
         start.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
         try
