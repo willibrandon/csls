@@ -25,6 +25,7 @@ public sealed partial class DapSessionTests
             DapTestClient client = await StartProxyFixtureAsync(
                 waitPath, supportsInvalidatedEvent: supportsInvalidatedEvent).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
             (_, int localsReference) = await ReadFrameScopeReferencesAsync(client, frameId)
