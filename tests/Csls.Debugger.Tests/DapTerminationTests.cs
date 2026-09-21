@@ -42,8 +42,9 @@ public sealed class DapTerminationTests : DapTestContext
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
                 terminateChildProcesses: true).ConfigureAwait(false);
+            int firstProcessId = await ReadTreeProcessIdAsync(client).ConfigureAwait(false);
             await WaitForTreeConnectionAsync(client, firstConnected).ConfigureAwait(false);
-            int[] firstIds = await ReadTreeAsync(client, targets).ConfigureAwait(false);
+            int[] firstIds = await ReadTreeOutputAsync(client, targets, firstProcessId).ConfigureAwait(false);
             Assert.IsFalse(sibling.HasExited);
             if (pause)
             {
@@ -68,8 +69,10 @@ public sealed class DapTerminationTests : DapTestContext
                 await ReadTerminalResponseAsync(client, sequence, "restart", terminated: false).ConfigureAwait(false);
                 await AssertTreeExitedAsync(targets).ConfigureAwait(false);
                 Assert.IsFalse(sibling.HasExited);
+                int replacementProcessId = await ReadTreeProcessIdAsync(client).ConfigureAwait(false);
                 await WaitForTreeConnectionAsync(client, replacementConnected).ConfigureAwait(false);
-                int[] replacementIds = await ReadTreeAsync(client, targets).ConfigureAwait(false);
+                int[] replacementIds = await ReadTreeOutputAsync(client, targets, replacementProcessId)
+                    .ConfigureAwait(false);
                 Assert.IsEmpty(firstIds.Intersect(replacementIds));
             }
             int disconnect = await client.SendRequestAsync("disconnect", WriteEmptyObject, TestContext.CancellationToken)
@@ -108,6 +111,11 @@ public sealed class DapTerminationTests : DapTestContext
         catch (OperationCanceledException)
         {
             await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            if (OperatingSystem.IsLinux())
+            {
+                await DebuggerProcessDiagnostics.CaptureLinuxWaitStatesAsync(client, TestContext)
+                    .ConfigureAwait(false);
+            }
             throw;
         }
     }
@@ -144,8 +152,9 @@ public sealed class DapTerminationTests : DapTestContext
             await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
                 terminateChildProcesses).ConfigureAwait(false);
             TestContext.WriteLine("Launched child-preserving target.");
+            int processId = await ReadTreeProcessIdAsync(client).ConfigureAwait(false);
             await WaitForTreeConnectionAsync(client, connected).ConfigureAwait(false);
-            _ = await ReadTreeAsync(client, targets).ConfigureAwait(false);
+            _ = await ReadTreeOutputAsync(client, targets, processId).ConfigureAwait(false);
             TestContext.WriteLine("Observed target and all descendants.");
 
             int disconnect = await client.SendRequestAsync(
@@ -359,14 +368,17 @@ public sealed class DapTerminationTests : DapTestContext
         }
     }
 
-    private async Task<int[]> ReadTreeAsync(DapTestClient client, List<Process> targets)
+    private async Task<int> ReadTreeProcessIdAsync(DapTestClient client)
     {
-        int processId;
         using (JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
         {
             AssertEvent(process.RootElement, "process");
-            processId = process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
+            return process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
         }
+    }
+
+    private async Task<int[]> ReadTreeOutputAsync(DapTestClient client, List<Process> targets, int processId)
+    {
         var output = new StringBuilder();
         do
         {
