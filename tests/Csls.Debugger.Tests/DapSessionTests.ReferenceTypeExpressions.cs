@@ -50,31 +50,9 @@ public sealed partial class DapSessionTests
     /// <summary>
     /// Evaluates type operations without changing the target's stop, object contents, or evaluation count.
     /// </summary>
-    /// <param name="expression">The source-language type operation.</param>
-    /// <param name="expectedValue">The exact debugger value.</param>
-    /// <param name="expectedType">The resulting debugger type.</param>
     [TestMethod]
-    [DataRow("((System.ArgumentException)widenedSource)._message", "\"widened source\"", "string")]
-    [DataRow("(widenedSource as System.ArgumentException)._message", "\"widened source\"", "string")]
-    [DataRow("widenedSource is System.ArgumentException", "true", "bool")]
-    [DataRow("widenedSource is System.InvalidOperationException", "false", "bool")]
-    [DataRow("nullBaseTarget is System.Exception", "false", "bool")]
-    [DataRow("widenedSource as System.InvalidOperationException", "null", "System.InvalidOperationException")]
-    [DataRow("(System.ArgumentException)nullBaseTarget", "null", "System.ArgumentException")]
-    [DataRow("enumerableSource is System.Collections.Generic.IEnumerable<System.Exception>", "true", "bool")]
-    [DataRow("derivedArray is System.Exception[]", "true", "bool")]
-    [DataRow("boxedSource is int", "true", "bool")]
-    [DataRow("boxedSource is long", "false", "bool")]
-    [DataRow("null is object", "false", "bool")]
-    [DataRow("(int)boxedSource", "42", "int")]
-    [DataRow("((object)\"text\") is string", "true", "bool")]
-    [DataRow("(interfaceTarget as string)", "null", "string")]
-    [DataRow("(derivedArray as System.Collections.Generic.IEnumerable<System.Exception>) is System.ArgumentException[]", "true", "bool")]
-    [DataRow("(covariantFactory as System.Func<System.ArgumentException>) is System.Func<System.ArgumentException>", "true", "bool")]
-    [DataRow("(contravariantAction as System.Action<string>) is System.Action<object>", "true", "bool")]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ReferenceTypeExpressionsPreserveStoppedState(
-        string expression, string expectedValue, string expectedType)
+    public async Task ReferenceTypeExpressionsPreserveStoppedState()
     {
         string waitPath = CreateResultsViewSignalPath();
         try
@@ -85,18 +63,47 @@ public sealed partial class DapSessionTests
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int frameId = await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false);
-            JsonElement result = await ReadEvaluationAsync(
-                client, frameId, expression, success: true, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual(expectedValue, result.GetProperty("result").GetString());
-            Assert.AreEqual(expectedType, result.GetProperty("type").GetString());
-            JsonElement calls = await ReadEvaluationAsync(
-                client, frameId, "factory._calls", success: true, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual("0", calls.GetProperty("result").GetString());
-            await AssertStringIdentityExpressionAsync(
-                client, frameId, "widenedSource._message", "\"widened source\"").ConfigureAwait(false);
-            await AssertStructAssignmentEvaluationAsync(client, frameId, "covariantCastOracle", "true", "bool").ConfigureAwait(false);
-            await AssertStructAssignmentEvaluationAsync(client, frameId, "contravariantCastOracle", "true", "bool").ConfigureAwait(false);
-            Assert.AreEqual(frameId, await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false));
+            foreach ((string expression, string expectedValue, string expectedType) in new[]
+            {
+                ("((System.ArgumentException)widenedSource)._message", "\"widened source\"", "string"),
+                ("(widenedSource as System.ArgumentException)._message", "\"widened source\"", "string"),
+                ("widenedSource is System.ArgumentException", "true", "bool"),
+                ("widenedSource is System.InvalidOperationException", "false", "bool"),
+                ("nullBaseTarget is System.Exception", "false", "bool"),
+                ("widenedSource as System.InvalidOperationException", "null", "System.InvalidOperationException"),
+                ("(System.ArgumentException)nullBaseTarget", "null", "System.ArgumentException"),
+                ("enumerableSource is System.Collections.Generic.IEnumerable<System.Exception>", "true", "bool"),
+                ("derivedArray is System.Exception[]", "true", "bool"),
+                ("boxedSource is int", "true", "bool"),
+                ("boxedSource is long", "false", "bool"),
+                ("null is object", "false", "bool"),
+                ("(int)boxedSource", "42", "int"),
+                ("((object)\"text\") is string", "true", "bool"),
+                ("(interfaceTarget as string)", "null", "string"),
+                ("(derivedArray as System.Collections.Generic.IEnumerable<System.Exception>) is System.ArgumentException[]",
+                    "true", "bool"),
+                ("(covariantFactory as System.Func<System.ArgumentException>) is System.Func<System.ArgumentException>",
+                    "true", "bool"),
+                ("(contravariantAction as System.Action<string>) is System.Action<object>", "true", "bool")
+            })
+            {
+                TestContext.WriteLine($"Evaluating reference-type scenario: {expression}");
+                JsonElement result = await ReadEvaluationAsync(
+                    client, frameId, expression, success: true, TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(expectedValue, result.GetProperty("result").GetString());
+                Assert.AreEqual(expectedType, result.GetProperty("type").GetString());
+                JsonElement calls = await ReadEvaluationAsync(
+                    client, frameId, "factory._calls", success: true, TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("0", calls.GetProperty("result").GetString());
+                await AssertStringIdentityExpressionAsync(
+                    client, frameId, "widenedSource._message", "\"widened source\"").ConfigureAwait(false);
+                await AssertStructAssignmentEvaluationAsync(
+                    client, frameId, "covariantCastOracle", "true", "bool").ConfigureAwait(false);
+                await AssertStructAssignmentEvaluationAsync(
+                    client, frameId, "contravariantCastOracle", "true", "bool").ConfigureAwait(false);
+                Assert.AreEqual(frameId, await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false));
+            }
+
             await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
         }
         finally
@@ -108,19 +115,9 @@ public sealed partial class DapSessionTests
     /// <summary>
     /// Rejects incompatible declared casts and invalid runtime downcasts without changing target state.
     /// </summary>
-    /// <param name="expression">The rejected reference or unboxing expression.</param>
-    /// <param name="diagnostic">The required type-compatibility diagnostic.</param>
     [TestMethod]
-    [DataRow("(System.InvalidOperationException)widenedSource", "cannot be cast")]
-    [DataRow("(string)widenedSource", "No built-in reference conversion")]
-    [DataRow("(System.Collections.Generic.List<System.Exception>)enumerableSource", "No built-in reference conversion")]
-    [DataRow("derivedArray as int[]", "No built-in reference conversion")]
-    [DataRow("(long)boxedSource", "long")]
-    [DataRow("(INT)boxedSource", "INT")]
-    [DataRow("(system.Int32)boxedSource", "system.Int32")]
-    [DataRow("(CInt)boxedSource", "CInt")]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ReferenceTypeExpressionsRejectIncompatibleCasts(string expression, string diagnostic)
+    public async Task ReferenceTypeExpressionsRejectIncompatibleCasts()
     {
         string waitPath = CreateResultsViewSignalPath();
         try
@@ -131,12 +128,30 @@ public sealed partial class DapSessionTests
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int frameId = await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false);
-            JsonElement failure = await ReadEvaluationAsync(
-                client, frameId, expression, success: false, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains(diagnostic, failure.GetProperty("message").GetString() ?? string.Empty, StringComparison.Ordinal);
-            await AssertStructAssignmentEvaluationAsync(client, frameId, "factory._calls", "0", "int").ConfigureAwait(false);
-            await AssertStructAssignmentEvaluationAsync(client, frameId, "boxedSource", "42", "int").ConfigureAwait(false);
-            Assert.AreEqual(frameId, await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false));
+            foreach ((string expression, string diagnostic) in new[]
+            {
+                ("(System.InvalidOperationException)widenedSource", "cannot be cast"),
+                ("(string)widenedSource", "No built-in reference conversion"),
+                ("(System.Collections.Generic.List<System.Exception>)enumerableSource", "No built-in reference conversion"),
+                ("derivedArray as int[]", "No built-in reference conversion"),
+                ("(long)boxedSource", "long"),
+                ("(INT)boxedSource", "INT"),
+                ("(system.Int32)boxedSource", "system.Int32"),
+                ("(CInt)boxedSource", "CInt")
+            })
+            {
+                TestContext.WriteLine($"Rejecting reference-type scenario: {expression}");
+                JsonElement failure = await ReadEvaluationAsync(
+                    client, frameId, expression, success: false, TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.Contains(
+                    diagnostic, failure.GetProperty("message").GetString() ?? string.Empty, StringComparison.Ordinal);
+                await AssertStructAssignmentEvaluationAsync(
+                    client, frameId, "factory._calls", "0", "int").ConfigureAwait(false);
+                await AssertStructAssignmentEvaluationAsync(
+                    client, frameId, "boxedSource", "42", "int").ConfigureAwait(false);
+                Assert.AreEqual(frameId, await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false));
+            }
+
             await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
         }
         finally

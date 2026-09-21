@@ -439,7 +439,7 @@ jobs:
             unix_wait: true
           - suite: type-inspection-references
             name: Debugger reference type inspection
-            minimum_tests: 50
+            minimum_tests: 30
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&(FullyQualifiedName~ReferenceConversions|FullyQualifiedName~ReferenceTypeExpressions|FullyQualifiedName~RawStringReferences)
             os: macos-26-intel
             rid: osx-x64
