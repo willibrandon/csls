@@ -215,9 +215,7 @@ public sealed partial class DapSessionTests
                 writer.WriteBoolean("terminateDebuggee", true);
                 writer.WriteEndObject();
             }, TestContext.CancellationToken).ConfigureAwait(false);
-            byte[] partialFrame = new byte[512 * 1024];
-            partialFrame.AsSpan().Fill((byte)' ');
-            Encoding.ASCII.GetBytes("Content-Length: 1048576\r\n\r\n", partialFrame);
+            byte[] partialFrame = Encoding.ASCII.GetBytes("Content-Length: 1048576\r\n\r\n ");
             await client.SendFrameAsync(partialFrame, fragment: false, TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await File.WriteAllTextAsync(waitPath + ".evaluation.release", "release",
