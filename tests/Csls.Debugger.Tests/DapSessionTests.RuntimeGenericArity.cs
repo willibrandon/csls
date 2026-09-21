@@ -13,6 +13,9 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DapSessionTests
 {
+    private static readonly CSharpCompilation s_genericArityCompilation =
+        CreateGenericArityCompilation();
+
     /// <summary>
     /// Preserves exact boundary types and stopped inspection after an over-budget generic value.
     /// </summary>
@@ -132,16 +135,9 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         await File.WriteAllTextAsync(valuePath, valueSource, Encoding.UTF8, TestContext.CancellationToken)
             .ConfigureAwait(false);
-        string platformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
-            ?? throw new InvalidOperationException("The trusted platform assembly list is unavailable.");
-        var compilation = CSharpCompilation.Create("Csls.RuntimeTypeArity",
-            [Parse(programSource, sourcePath), Parse(valueSource, valuePath)],
-            platformAssemblies.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(static path => MetadataReference.CreateFromFile(path)),
-            new CSharpCompilationOptions(OutputKind.ConsoleApplication,
-                optimizationLevel: OptimizationLevel.Debug, deterministic: true,
-                nullableContextOptions: NullableContextOptions.Enable,
-                generalDiagnosticOption: ReportDiagnostic.Error));
+        CSharpCompilation compilation = s_genericArityCompilation.AddSyntaxTrees(
+            Parse(programSource, sourcePath),
+            Parse(valueSource, valuePath));
         using (var pe = new FileStream(programPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         using (var pdb = new FileStream(Path.ChangeExtension(programPath, ".pdb"), FileMode.CreateNew,
             FileAccess.Write, FileShare.None))
@@ -159,5 +155,19 @@ public sealed partial class DapSessionTests
         SyntaxTree Parse(string source, string path) => CSharpSyntaxTree.ParseText(
             SourceText.From(source, Encoding.UTF8, SourceHashAlgorithm.Sha256),
             new CSharpParseOptions(LanguageVersion.CSharp14), path, TestContext.CancellationToken);
+    }
+
+    private static CSharpCompilation CreateGenericArityCompilation()
+    {
+        string platformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+            ?? throw new InvalidOperationException("The trusted platform assembly list is unavailable.");
+        return CSharpCompilation.Create(
+            "Csls.RuntimeTypeArity",
+            references: platformAssemblies.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static path => MetadataReference.CreateFromFile(path)),
+            options: new CSharpCompilationOptions(OutputKind.ConsoleApplication,
+                optimizationLevel: OptimizationLevel.Debug, deterministic: true,
+                nullableContextOptions: NullableContextOptions.Enable,
+                generalDiagnosticOption: ReportDiagnostic.Error));
     }
 }
