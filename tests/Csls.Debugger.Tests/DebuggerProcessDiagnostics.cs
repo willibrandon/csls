@@ -149,10 +149,9 @@ internal static class DebuggerProcessDiagnostics
                 captures.Add(DebuggerMacMemoryMap.CaptureAsync(processId, directory, testContext, cancellation.Token));
                 captures.Add(CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token));
             }
+            captures.Add(CaptureFileAndKernelActivityAsync(processes, directory, testContext, cancellation.Token));
+            captures.Add(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token));
             await Task.WhenAll(captures).ConfigureAwait(false);
-            await Task.WhenAll(
-                CaptureFileAndKernelActivityAsync(processes, directory, testContext, cancellation.Token),
-                DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
             OperationCanceledException or IOException or UnauthorizedAccessException or Win32Exception)
