@@ -20,8 +20,7 @@ internal static class DapLaunchOptionsParser
             throw new ArgumentException("The launch request requires an arguments object.");
         }
 
-        bool noDebug = arguments.TryGetProperty("noDebug", out JsonElement noDebugValue) &&
-            noDebugValue.ValueKind == JsonValueKind.True;
+        bool noDebug = DapBooleanOptionParser.Get(arguments, "noDebug", defaultValue: false);
         bool stopAtEntry = DapBooleanOptionParser.Get(arguments, "stopAtEntry", defaultValue: false);
 
         string program = GetRequiredString(arguments, "program");

@@ -498,6 +498,18 @@ public sealed partial class DapSessionTests
     public Task LaunchRejectsInvalidStopAtEntry(string option) => AssertInvalidLaunchOptionAsync("stopAtEntry", option);
 
     /// <summary>
+    /// Rejects malformed no-debug values before launching a target.
+    /// </summary>
+    /// <param name="option">The malformed JSON no-debug value.</param>
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("\"true\"")]
+    [DataRow("1")]
+    [DataRow("{}")]
+    [DataRow("[]")]
+    public Task LaunchRejectsInvalidNoDebug(string option) => AssertInvalidLaunchOptionAsync("noDebug", option);
+
+    /// <summary>
     /// Rejects malformed child-process termination policies before launching a target.
     /// </summary>
     /// <param name="option">The malformed JSON policy value.</param>
