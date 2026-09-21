@@ -73,14 +73,14 @@ internal sealed partial class CorDebugDebuggee
         if (!ManagedSymbolStepRangeResolver.TryResolve(
             thread,
             _sourceBreakpoints.FindModule,
-            out IReadOnlyList<ManagedStepRange> ranges,
-            out bool currentIsHidden))
+            out ManagedStepRangeResolution resolution))
         {
-            _stepTrace?.Write($"runtime step kind={kind} symbols=False");
+            _stepTrace?.Write($"runtime step kind={kind} symbols=False ip=0x{resolution.CurrentIlOffset:X}");
             return api.Step(kind == DebugStepKind.Into ? 1 : 0);
         }
 
-        _stepTrace?.Write($"runtime ranges kind={kind} hidden={currentIsHidden} ranges={string.Join(",", ranges.Select(range => FormattableString.Invariant($"0x{range.StartOffset:X}-0x{range.EndOffset:X}")))}");
+        IReadOnlyList<ManagedStepRange> ranges = resolution.Ranges;
+        _stepTrace?.Write($"runtime ranges kind={kind} ip=0x{resolution.CurrentIlOffset:X} hidden={resolution.CurrentIsHidden} ranges={string.Join(",", ranges.Select(range => FormattableString.Invariant($"0x{range.StartOffset:X}-0x{range.EndOffset:X}")))}");
         uint[] nativeRanges = new uint[checked(ranges.Count * 2)];
         for (int index = 0; index < ranges.Count; index++)
         {

@@ -15,16 +15,29 @@ internal static class ManagedSymbolStepRangeResolver
     /// <param name="ranges">Receives the current statement and hidden compiler instruction ranges.</param>
     /// <param name="currentIsHidden">Receives whether the active instruction belongs to hidden compiler code.</param>
     /// <returns>True when managed symbol data describes the current instruction.</returns>
-    internal static unsafe bool TryResolve(
+    internal static bool TryResolve(
         nint thread,
         Func<nint, CorDebugLoadedModule?> moduleResolver,
         out IReadOnlyList<ManagedStepRange> ranges,
         out bool currentIsHidden)
     {
+        bool resolved = TryResolve(thread, moduleResolver, out ManagedStepRangeResolution resolution);
+        ranges = resolution.Ranges;
+        currentIsHidden = resolution.CurrentIsHidden;
+        return resolved;
+    }
+
+    /// <summary>
+    /// Resolves the active managed statement and reports its exact IL offset for step diagnostics.
+    /// </summary>
+    internal static unsafe bool TryResolve(
+        nint thread,
+        Func<nint, CorDebugLoadedModule?> moduleResolver,
+        out ManagedStepRangeResolution resolution)
+    {
         ArgumentOutOfRangeException.ThrowIfZero(thread);
         ArgumentNullException.ThrowIfNull(moduleResolver);
-        ranges = [];
-        currentIsHidden = true;
+        resolution = new ManagedStepRangeResolution { Ranges = [], CurrentIsHidden = true };
         nint frame = 0;
         nint ilFrame = 0;
         nint function = 0;
@@ -59,6 +72,7 @@ internal static class ManagedSymbolStepRangeResolver
                 "ICorDebugILFrame.GetIP");
             methodToken = Volatile.Read(ref *methodTokenAddress);
             ilOffset = Volatile.Read(ref *ilOffsetAddress);
+            resolution = resolution with { CurrentIlOffset = ilOffset };
 
             nint* functionAddress = &function;
             CorDebugHResult.ThrowIfFailed(
@@ -82,13 +96,21 @@ internal static class ManagedSymbolStepRangeResolver
                 "ICorDebugCode.GetSize");
             codeSize = Volatile.Read(ref *codeSizeAddress);
             CorDebugLoadedModule? loadedModule = moduleResolver(module);
-            return loadedModule is not null && TryResolveSymbols(
+            IReadOnlyList<ManagedStepRange> ranges = [];
+            bool currentIsHidden = true;
+            bool resolved = loadedModule is not null && TryResolveSymbols(
                 loadedModule,
                 methodToken,
                 ilOffset,
                 codeSize,
                 out ranges,
                 out currentIsHidden);
+            if (resolved)
+            {
+                resolution = resolution with { Ranges = ranges, CurrentIsHidden = currentIsHidden };
+            }
+
+            return resolved;
         }
         catch (Exception exception) when (
             DebugSymbolReader.IsReadFailure(exception) ||

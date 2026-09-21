@@ -13,6 +13,7 @@ internal sealed class ManagedAsyncConsumerStep
     private readonly ManagedContinuationObjectReader _reader;
     private readonly Func<nint, uint, uint, (nint Breakpoint, nint Identity)> _createBreakpoint;
     private readonly List<(nint Breakpoint, nint Identity)> _breakpoints = [];
+    private readonly HashSet<nint> _sourceBreakpointIdentities = [];
     private nint _consumerBoxHandle;
 
     /// <summary>
@@ -70,13 +71,21 @@ internal sealed class ManagedAsyncConsumerStep
                     continue;
                 }
 
-                var locations = new HashSet<(uint Token, uint Offset)>();
+                var resumeLocations = new HashSet<(uint Token, uint Offset)>();
+                var sourceLocations = new HashSet<(uint Token, uint Offset)>();
+                IReadOnlyList<ManagedSequencePoint> sourcePoints = includeTasks
+                    ? []
+                    : symbols.GetSequencePoints(token);
                 foreach (ManagedAsyncAwaitPoint point in symbols.GetAsyncAwaitPoints(token))
                 {
-                    locations.Add((point.ResumeMethodToken, point.ResumeOffset));
+                    resumeLocations.Add((point.ResumeMethodToken, point.ResumeOffset));
+                    if (!includeTasks)
+                    {
+                        AddConsumerSourceLocations(sourcePoints, point, sourceLocations);
+                    }
                 }
 
-                if (locations.Count == 0)
+                if (resumeLocations.Count == 0)
                 {
                     return;
                 }
@@ -87,9 +96,16 @@ internal sealed class ManagedAsyncConsumerStep
                     return;
                 }
 
-                foreach ((uint methodToken, uint offset) in locations)
+                foreach ((uint methodToken, uint offset) in resumeLocations)
                 {
                     _breakpoints.Add(_createBreakpoint(module.Pointer, methodToken, offset));
+                }
+
+                foreach ((uint methodToken, uint offset) in sourceLocations.Except(resumeLocations))
+                {
+                    (nint breakpoint, nint identity) = _createBreakpoint(module.Pointer, methodToken, offset);
+                    _breakpoints.Add((breakpoint, identity));
+                    _sourceBreakpointIdentities.Add(identity);
                 }
 
                 return;
@@ -104,6 +120,32 @@ internal sealed class ManagedAsyncConsumerStep
         {
             Release(consumer);
             Release(consumerBox);
+        }
+    }
+
+    private static void AddConsumerSourceLocations(
+        IReadOnlyList<ManagedSequencePoint> sourcePoints,
+        ManagedAsyncAwaitPoint awaitPoint,
+        HashSet<(uint Token, uint Offset)> locations)
+    {
+        ManagedSequencePoint? awaitSource = sourcePoints.LastOrDefault(
+            point => point.IlOffset >= 0 && (uint)point.IlOffset <= awaitPoint.YieldOffset);
+        if (awaitSource is null)
+        {
+            return;
+        }
+
+        // Await-foreach resumes inside compiler-generated code and then branches
+        // back to an earlier sequence point on the authored loop line. A thread-
+        // bound runtime stepper can be lost across that continuation; source
+        // breakpoints preserve the selected consumer across the branch.
+        IEnumerable<ManagedSequencePoint> loopSourcePoints = sourcePoints.Where(point =>
+            point.IlOffset >= 0 && (uint)point.IlOffset < awaitPoint.YieldOffset &&
+            point.StartLine == awaitSource.StartLine &&
+            StringComparer.Ordinal.Equals(point.SourcePath, awaitSource.SourcePath));
+        foreach (ManagedSequencePoint point in loopSourcePoints)
+        {
+            locations.Add((point.MethodToken, checked((uint)point.IlOffset)));
         }
     }
 
@@ -205,6 +247,27 @@ internal sealed class ManagedAsyncConsumerStep
     }
 
     /// <summary>
+    /// Identifies an authored consumer statement rather than a compiler-generated await resume.
+    /// </summary>
+    internal bool IsSourceBreakpoint(nint breakpoint)
+    {
+        nint identity = ComAbi.GetIdentity(breakpoint);
+        try
+        {
+            return _sourceBreakpointIdentities.Contains(identity);
+        }
+        finally
+        {
+            Release(identity);
+        }
+    }
+
+    /// <summary>
+    /// Gets whether an iterator consumer has authored source locations to visit after resumption.
+    /// </summary>
+    internal bool HasSourceBreakpoints => _sourceBreakpointIdentities.Count != 0;
+
+    /// <summary>
     /// Compares the resumed state machine with the selected consumer's current storage after collection.
     /// </summary>
     internal bool Matches(nint stateMachine)
@@ -249,6 +312,7 @@ internal sealed class ManagedAsyncConsumerStep
         }
 
         _breakpoints.Clear();
+        _sourceBreakpointIdentities.Clear();
         nint handle = Interlocked.Exchange(ref _consumerBoxHandle, 0);
         if (handle != 0)
         {

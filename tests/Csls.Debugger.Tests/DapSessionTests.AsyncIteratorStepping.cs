@@ -139,6 +139,13 @@ public sealed partial class DapSessionTests
             string stepTrace = await File.ReadAllTextAsync(tracePath, TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("yield reached", stepTrace);
             Assert.Contains("resume matched", stepTrace);
+            int firstConsumerRequest = stepTrace.IndexOf("generation=3", StringComparison.Ordinal);
+            int secondConsumerRequest = stepTrace.IndexOf("generation=5", StringComparison.Ordinal);
+            Assert.IsTrue(firstConsumerRequest >= 0 && secondConsumerRequest > firstConsumerRequest, stepTrace);
+            string firstConsumerStep = stepTrace[firstConsumerRequest..secondConsumerRequest];
+            Assert.Contains("consumer resume matched", firstConsumerStep);
+            Assert.Contains("resumed at visible statement", firstConsumerStep);
+            Assert.DoesNotContain("runtime step to visible statement", firstConsumerStep);
         }
         else
         {

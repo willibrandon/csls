@@ -21,6 +21,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
         if (_asyncConsumerStep.Owns(breakpoint))
         {
+            _stepTrace?.Write($"consumer resumed thread={threadId}");
             nint thread = 0;
             nint stateMachine = 0;
             try
@@ -29,6 +30,18 @@ internal sealed partial class CorDebugDebuggee
                 stateMachine = GetFirstArgument(thread);
                 if (stateMachine == 0 || !_asyncConsumerStep.Matches(stateMachine))
                 {
+                    _stepTrace?.Write($"consumer resume rejected thread={threadId}");
+                    return ManagedTargetBreakpointDecision.Continue;
+                }
+
+                _stepTrace?.Write($"consumer resume matched thread={threadId}");
+                if (_asyncConsumerStep.HasSourceBreakpoints &&
+                    !_asyncConsumerStep.IsSourceBreakpoint(breakpoint))
+                {
+                    // The consumer may branch backwards from its await resume to
+                    // the foreach body. Retain its authored-source breakpoint
+                    // across the branch and across managed thread switches.
+                    ReleaseActiveStepper(deactivate: true);
                     return ManagedTargetBreakpointDecision.Continue;
                 }
 
