@@ -5,9 +5,10 @@ using System.Runtime.CompilerServices;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Verifies entry stopping through real managed launches and DAP streams.
+/// Verifies async entry stopping through real managed launches and DAP streams.
 /// </summary>
-public sealed partial class DapSymbolTests
+[TestClass]
+public sealed class DapAsyncEntryPointTests : DapTestContext
 {
     /// <summary>
     /// Enters the authored async top-level method before it produces target output.
@@ -31,7 +32,8 @@ public sealed partial class DapSymbolTests
             GlobalStatementSyntax firstStatement = syntax.Members.OfType<GlobalStatementSyntax>().First();
             int expectedLine = firstStatement.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Line + 1;
             string program = useAppHost
-                ? SymbolFixtures.EntryAppHostPath
+                ? Path.Join(FindRepositoryRoot(), "artifacts", "bin", "Csls.TestProcessHost", "debug",
+                    OperatingSystem.IsWindows() ? "csls-test-process-host.exe" : "csls-test-process-host")
                 : ResolveTestProcessHost();
             Assert.IsTrue(File.Exists(program), $"The entry fixture was not built: {program}");
             (int threadId, _) = await LaunchAtEntryAsync(client, program,

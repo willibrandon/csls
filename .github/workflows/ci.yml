@@ -464,7 +464,14 @@ jobs:
           - suite: protocol-lifecycle-attach
             name: Debugger attach and restart requests
             minimum_tests: 15
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&(FullyQualifiedName~Attach|FullyQualifiedName~Restart)
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~RestartReattachesWithoutTerminatingTarget&(FullyQualifiedName~Attach|FullyQualifiedName~Restart)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: protocol-lifecycle-reattach
+            name: Debugger repeated attach requests
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapAttachTests.RestartReattachesWithoutTerminatingTarget
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true
@@ -511,7 +518,21 @@ jobs:
           - suite: type-inspection-dumps
             name: Debugger dump type inspection
             minimum_tests: 20
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~DumpScopesAndVariablesPreserveCapturedValues
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: type-inspection-dump-scopes-triage
+            name: Debugger triage dump scopes
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapDumpTests.DumpScopesAndVariablesPreserveCapturedValues&Name~False
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: type-inspection-dump-scopes-heap
+            name: Debugger heap dump scopes
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapDumpTests.DumpScopesAndVariablesPreserveCapturedValues&Name~True
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true
