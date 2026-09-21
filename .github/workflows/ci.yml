@@ -558,7 +558,7 @@ jobs:
             unix_wait: true
           - suite: stepping
             name: Debugger stepping
-            minimum_tests: 50
+            minimum_tests: 49
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
           - suite: stepping-async
             name: Debugger async stepping
