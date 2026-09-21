@@ -322,17 +322,61 @@ jobs:
             os: macos-26
             rid: osx-arm64
             unix_wait: true
-          - suite: standard-core-runtime
-            name: Debugger core process tests
-            minimum_tests: 135
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests&FullyQualifiedName!~Metadata&FullyQualifiedName!~Symbol&FullyQualifiedName!~Pdb&FullyQualifiedName!~Type&FullyQualifiedName!~Expression&FullyQualifiedName!~Value
+          # Keep process-owning core tests in small, responsibility-aligned groups so
+          # one stalled native boundary cannot consume the whole macOS job deadline.
+          - suite: standard-core-lifecycle
+            name: Debugger core lifecycle tests
+            minimum_tests: 37
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DebugAdapterProcessTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggeeChildProcessTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerProcessExitTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerTestProcessTests)
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true
-          - suite: standard-core-runtime
-            name: Debugger core process tests
-            minimum_tests: 135
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests&FullyQualifiedName!~Metadata&FullyQualifiedName!~Symbol&FullyQualifiedName!~Pdb&FullyQualifiedName!~Type&FullyQualifiedName!~Expression&FullyQualifiedName!~Value
+          - suite: standard-core-lifecycle
+            name: Debugger core lifecycle tests
+            minimum_tests: 37
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DebugAdapterProcessTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggeeChildProcessTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerProcessExitTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerTestProcessTests)
+            os: macos-26
+            rid: osx-arm64
+            unix_wait: true
+          - suite: standard-core-capture
+            name: Debugger core capture tests
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DebuggerCaptureResourceObservationTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerCaptureTraceTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerControlOutputTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerMeasurementClientTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerTerminalStateTests|FullyQualifiedName~Csls.Debugger.Tests.LinuxThreadContextTests|FullyQualifiedName~Csls.Debugger.Tests.UnixWaitStatusTests|FullyQualifiedName~Csls.Debugger.Tests.WindowsNativeDebugObserverTests|FullyQualifiedName~Csls.Debugger.Tests.WindowsNativeFaultMemoryCaptureTests)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: standard-core-capture
+            name: Debugger core capture tests
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DebuggerCaptureResourceObservationTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerCaptureTraceTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerControlOutputTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerMeasurementClientTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerTerminalStateTests|FullyQualifiedName~Csls.Debugger.Tests.LinuxThreadContextTests|FullyQualifiedName~Csls.Debugger.Tests.UnixWaitStatusTests|FullyQualifiedName~Csls.Debugger.Tests.WindowsNativeDebugObserverTests|FullyQualifiedName~Csls.Debugger.Tests.WindowsNativeFaultMemoryCaptureTests)
+            os: macos-26
+            rid: osx-arm64
+            unix_wait: true
+          - suite: standard-core-stack
+            name: Debugger core stack tests
+            minimum_tests: 16
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Symbol&FullyQualifiedName~Csls.Debugger.Tests.DebuggerStackProgressTests
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: standard-core-stack
+            name: Debugger core stack tests
+            minimum_tests: 16
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Symbol&FullyQualifiedName~Csls.Debugger.Tests.DebuggerStackProgressTests
+            os: macos-26
+            rid: osx-arm64
+            unix_wait: true
+          - suite: standard-core-managed
+            name: Debugger core managed tests
+            minimum_tests: 46
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Symbol&FullyQualifiedName!~Value&(FullyQualifiedName~Csls.Debugger.Tests.CapturedModuleVariableNamesTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerFileLockDiagnosticsTests|FullyQualifiedName~Csls.Debugger.Tests.DisposableCollectionTests|FullyQualifiedName~Csls.Debugger.Tests.HotReloadRuntimeCapabilitiesTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedAssemblyReferenceResolverTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedDebuggerDisplayTemplateTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedFieldGetterDecoderTests|FullyQualifiedName~Csls.Debugger.Tests.SourceChecksumVerifierTests)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: standard-core-managed
+            name: Debugger core managed tests
+            minimum_tests: 46
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Symbol&FullyQualifiedName!~Value&(FullyQualifiedName~Csls.Debugger.Tests.CapturedModuleVariableNamesTests|FullyQualifiedName~Csls.Debugger.Tests.DebuggerFileLockDiagnosticsTests|FullyQualifiedName~Csls.Debugger.Tests.DisposableCollectionTests|FullyQualifiedName~Csls.Debugger.Tests.HotReloadRuntimeCapabilitiesTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedAssemblyReferenceResolverTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedDebuggerDisplayTemplateTests|FullyQualifiedName~Csls.Debugger.Tests.ManagedFieldGetterDecoderTests|FullyQualifiedName~Csls.Debugger.Tests.SourceChecksumVerifierTests)
             os: macos-26
             rid: osx-arm64
             unix_wait: true
