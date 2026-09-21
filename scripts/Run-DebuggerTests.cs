@@ -63,48 +63,55 @@ for (int index = firstTestArgument; index < args.Length; index++)
 
 using Process process = Process.Start(startInfo)
     ?? throw new InvalidOperationException("The debugger test process did not start.");
-StartWatchdog(process, deadline, resultsDirectory);
-Task exit = process.WaitForExitAsync();
-var deadlineElapsed = Task.Delay(deadline);
-Task<string> standardOutput = Task.Run(() => ProcessOutputCapture.ReadAsync(
-    process.StandardOutput.BaseStream,
-    process.StandardOutput.CurrentEncoding,
-    Console.Out));
-Task<string> standardError = Task.Run(() => ProcessOutputCapture.ReadAsync(
-    process.StandardError.BaseStream,
-    process.StandardError.CurrentEncoding,
-    Console.Error));
-var execution = Task.WhenAll(exit, standardOutput, standardError);
-if (await Task.WhenAny(execution, deadlineElapsed).ConfigureAwait(false) == execution)
-{
-    await execution.ConfigureAwait(false);
-    return process.ExitCode;
-}
-
-string timeoutMessage = FormattableString.Invariant(
-    $"Debugger tests exceeded the supervisor deadline of {deadline.TotalSeconds:F0} seconds. Root PID: {process.Id}.");
-string processSnapshot = await CaptureProcessSnapshotAsync().ConfigureAwait(false);
-await PreserveTimeoutEvidenceAsync(resultsDirectory, timeoutMessage, processSnapshot).ConfigureAwait(false);
-await ReportAsync(timeoutMessage).ConfigureAwait(false);
-await ReportAsync(processSnapshot).ConfigureAwait(false);
-string? terminationFailure = TerminateProcessTree(process, processSnapshot);
-if (terminationFailure is not null)
-{
-    await ReportAsync(terminationFailure).ConfigureAwait(false);
-}
-
+using Process watchdog = StartWatchdog(process, deadline, resultsDirectory);
 try
 {
-    await exit.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-}
-catch (TimeoutException)
-{
-    await ReportAsync("Debugger test process did not exit within five seconds after termination.")
-        .ConfigureAwait(false);
-}
+    Task exit = process.WaitForExitAsync();
+    var deadlineElapsed = Task.Delay(deadline);
+    Task<string> standardOutput = Task.Run(() => ProcessOutputCapture.ReadAsync(
+        process.StandardOutput.BaseStream,
+        process.StandardOutput.CurrentEncoding,
+        Console.Out));
+    Task<string> standardError = Task.Run(() => ProcessOutputCapture.ReadAsync(
+        process.StandardError.BaseStream,
+        process.StandardError.CurrentEncoding,
+        Console.Error));
+    var execution = Task.WhenAll(exit, standardOutput, standardError);
+    if (await Task.WhenAny(execution, deadlineElapsed).ConfigureAwait(false) == execution)
+    {
+        await execution.ConfigureAwait(false);
+        return process.ExitCode;
+    }
 
-await DrainOutputAsync(standardOutput, standardError).ConfigureAwait(false);
-return 124;
+    string timeoutMessage = FormattableString.Invariant(
+        $"Debugger tests exceeded the supervisor deadline of {deadline.TotalSeconds:F0} seconds. Root PID: {process.Id}.");
+    string processSnapshot = await CaptureProcessSnapshotAsync().ConfigureAwait(false);
+    await PreserveTimeoutEvidenceAsync(resultsDirectory, timeoutMessage, processSnapshot).ConfigureAwait(false);
+    await ReportAsync(timeoutMessage).ConfigureAwait(false);
+    await ReportAsync(processSnapshot).ConfigureAwait(false);
+    string? terminationFailure = TerminateProcessTree(process, processSnapshot);
+    if (terminationFailure is not null)
+    {
+        await ReportAsync(terminationFailure).ConfigureAwait(false);
+    }
+
+    try
+    {
+        await exit.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+    }
+    catch (TimeoutException)
+    {
+        await ReportAsync("Debugger test process did not exit within five seconds after termination.")
+            .ConfigureAwait(false);
+    }
+
+    await DrainOutputAsync(standardOutput, standardError).ConfigureAwait(false);
+    return 124;
+}
+finally
+{
+    await StopWatchdogAsync(watchdog).ConfigureAwait(false);
+}
 
 static string ResolveDotNetHost()
 {
@@ -112,7 +119,7 @@ static string ResolveDotNetHost()
     return string.IsNullOrWhiteSpace(configured) ? "dotnet" : configured;
 }
 
-static void StartWatchdog(Process testProcess, TimeSpan deadline, string resultsDirectory)
+static Process StartWatchdog(Process testProcess, TimeSpan deadline, string resultsDirectory)
 {
     string supervisorAssembly = Path.GetFullPath(Environment.GetCommandLineArgs()[0]);
     using var supervisor = Process.GetCurrentProcess();
@@ -130,8 +137,30 @@ static void StartWatchdog(Process testProcess, TimeSpan deadline, string results
     watchdogInfo.ArgumentList.Add(((int)deadline.TotalSeconds).ToString(CultureInfo.InvariantCulture));
     watchdogInfo.ArgumentList.Add(resultsDirectory);
 
-    using Process watchdog = Process.Start(watchdogInfo)
+    return Process.Start(watchdogInfo)
         ?? throw new InvalidOperationException("The debugger test watchdog did not start.");
+}
+
+static async Task StopWatchdogAsync(Process watchdog)
+{
+    if (!watchdog.HasExited)
+    {
+        try
+        {
+            watchdog.Kill();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+        {
+            if (!watchdog.HasExited)
+            {
+                throw;
+            }
+        }
+    }
+
+    await watchdog.WaitForExitAsync()
+        .WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None)
+        .ConfigureAwait(false);
 }
 
 static async Task<int> RunWatchdogAsync(string[] arguments)
