@@ -17,20 +17,32 @@ internal sealed partial class DapTestClient
     internal string ExitWaitState => Volatile.Read(ref _exitWaitState);
 
     /// <summary>
-    /// Waits for the production DAP process to finish.
+    /// Waits for the production DAP process while retained descendants may hold its stderr pipe.
     /// </summary>
     /// <param name="cancellationToken">Cancels the wait.</param>
     /// <returns>The process exit code.</returns>
-    internal async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
+    internal async Task<int> WaitForProcessExitAsync(CancellationToken cancellationToken)
     {
         Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
         Volatile.Write(ref _exitWaitState, "process exit");
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        Volatile.Write(ref _exitWaitState, "process exited");
+        return process.ExitCode;
+    }
+
+    /// <summary>
+    /// Waits for both the production DAP process and its diagnostic stream to finish.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the process wait.</param>
+    /// <returns>The process exit code.</returns>
+    internal async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        int exitCode = await WaitForProcessExitAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _exitWaitState, "stderr EOF");
         await _diagnostics.ConfigureAwait(false);
         Volatile.Write(ref _exitWaitState, "complete");
-        return process.ExitCode;
+        return exitCode;
     }
 
     /// <summary>

@@ -175,9 +175,17 @@ public sealed class DapTerminationTests : DapTestContext
                 Assert.IsFalse(descendant.HasExited, $"Child process {descendant.Id} should survive.");
             }
             Assert.IsFalse(sibling.HasExited);
+            Volatile.Write(ref phase, "waiting for adapter process");
+            Assert.AreEqual(0, await client.WaitForProcessExitAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false));
+            foreach (Process descendant in targets.Skip(1))
+            {
+                Assert.IsFalse(descendant.HasExited, $"Child process {descendant.Id} should outlive the adapter.");
+            }
 
             // Preserved descendants may retain the adapter's inherited stderr pipe.
             // Release these test-owned processes before requiring that pipe to reach EOF.
+            Volatile.Write(ref phase, "releasing descendants");
             foreach (Process descendant in targets.Skip(1).Reverse())
             {
                 if (!descendant.HasExited)
@@ -188,7 +196,7 @@ public sealed class DapTerminationTests : DapTestContext
                 await descendant.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
             }
 
-            Volatile.Write(ref phase, "waiting for adapter exit");
+            Volatile.Write(ref phase, "waiting for stderr EOF");
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
             Volatile.Write(ref phase, "checking adapter diagnostics");
             Assert.IsEmpty(client.Diagnostics.ToString());
@@ -234,7 +242,8 @@ public sealed class DapTerminationTests : DapTestContext
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(
+                client, () => client.ExitWaitState);
             await LaunchAsync(client,
                 ["--debugger-inherited-output-root", rootPipeName, childPipeName], noDebug,
                 terminateChildProcesses: null).ConfigureAwait(false);
@@ -290,6 +299,12 @@ public sealed class DapTerminationTests : DapTestContext
             Assert.Contains(rootPipeName, output.ToString());
             Assert.IsTrue(root.HasExited);
             Assert.IsFalse(child.HasExited);
+            Assert.AreEqual(0, await client.WaitForProcessExitAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false));
+            Assert.IsFalse(child.HasExited);
+            await childPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
+            await child.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, child.ExitCode);
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
             Assert.IsEmpty(client.Diagnostics.ToString());
         }
