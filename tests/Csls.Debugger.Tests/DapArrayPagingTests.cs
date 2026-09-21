@@ -91,15 +91,17 @@ public sealed class DapArrayPagingTests : DapTestContext
         await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
         int frameId = await StopAtInitializedArraysAsync(client, paging).ConfigureAwait(false);
         foreach (string command in new[] { "setVariable", "setExpression" })
-        foreach ((string expression, int? length) in new (string, int?)[]
         {
-            ("vector", 3),
-            ("empty", 0),
-            ("absent", null)
-        })
-        {
-            await AssertArrayAssignmentAsync(client, frameId, command, paging, expression, length)
-                .ConfigureAwait(false);
+            foreach ((string expression, int? length) in new (string, int?)[]
+            {
+                ("vector", 3),
+                ("empty", 0),
+                ("absent", null)
+            })
+            {
+                await AssertArrayAssignmentAsync(client, frameId, command, paging, expression, length)
+                    .ConfigureAwait(false);
+            }
         }
 
         await DisconnectAsync(client).ConfigureAwait(false);
