@@ -25,7 +25,7 @@ public sealed class DebuggerRpcChildProcessPolicyTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task TerminateRespectsChildProcessPolicy(bool terminateChildProcesses)
     {
-        string pipeName = $"csls-rpc-tree-{Guid.NewGuid():N}";
+        string pipeName = $"cr-{Guid.NewGuid():N}";
         using var release = new NamedPipeServerStream(pipeName, PipeDirection.Out, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         Task connected = release.WaitForConnectionAsync(TestContext.CancellationToken);
