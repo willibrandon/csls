@@ -247,6 +247,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             $$"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
+                <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
                 <AssemblyName>{{projectName}}</AssemblyName>
                 <DebugSymbols>true</DebugSymbols>
                 <DebugType>{{debugType}}</DebugType>
@@ -283,6 +284,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 new XAttribute("Sdk", "Microsoft.NET.Sdk"),
                 new XElement(
                     "PropertyGroup",
+                    new XElement("AllowUnsafeBlocks", "true"),
                     new XElement("AssemblyName", projectName),
                     new XElement("DebugSymbols", windowsPdb),
                     new XElement("DebugType", windowsPdb ? "full" : "none"),
