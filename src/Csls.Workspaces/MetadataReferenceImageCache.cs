@@ -8,12 +8,7 @@ namespace Csls.Workspaces;
 public static class MetadataReferenceImageCache
 {
     private static readonly Lock s_gate = new();
-    private static readonly Dictionary<string, (
-        long ImageLength,
-        long ImageWriteTicks,
-        long DocumentationLength,
-        long DocumentationWriteTicks,
-        WeakReference<PortableExecutableReference> Reference)> s_references = new(PathComparer);
+    private static readonly Dictionary<string, MetadataReferenceImageCacheEntry> s_references = new(PathComparer);
     private static int s_insertionsSinceSweep;
 
     /// <summary>
@@ -40,19 +35,16 @@ public static class MetadataReferenceImageCache
 
         lock (s_gate)
         {
-            if (s_references.TryGetValue(key, out (
-                long ImageLength,
-                long ImageWriteTicks,
-                long DocumentationLength,
-                long DocumentationWriteTicks,
-                WeakReference<PortableExecutableReference> Reference) entry) &&
-                entry.ImageLength == imageLength &&
-                entry.ImageWriteTicks == imageWriteTicks &&
-                entry.DocumentationLength == documentationLength &&
-                entry.DocumentationWriteTicks == documentationWriteTicks &&
-                entry.Reference.TryGetTarget(out PortableExecutableReference? cached))
+            if (s_references.TryGetValue(key, out MetadataReferenceImageCacheEntry? entry) &&
+                entry.Matches(imageLength, imageWriteTicks, documentationLength, documentationWriteTicks) &&
+                entry.GetReference(properties, out bool created) is PortableExecutableReference cached)
             {
-                return cached.WithProperties(properties);
+                if (created)
+                {
+                    SweepIfNeeded();
+                }
+
+                return cached;
             }
 
             DocumentationProvider? documentationProvider = documentation.Exists
@@ -62,20 +54,28 @@ public static class MetadataReferenceImageCache
                 path,
                 properties,
                 documentationProvider);
-            s_references[key] = (
+            entry = new MetadataReferenceImageCacheEntry(
                 imageLength,
                 imageWriteTicks,
                 documentationLength,
-                documentationWriteTicks,
-                new WeakReference<PortableExecutableReference>(reference));
-            if (++s_insertionsSinceSweep >= 256)
-            {
-                SweepDeadReferences();
-                s_insertionsSinceSweep = 0;
-            }
+                documentationWriteTicks);
+            entry.Add(reference);
+            s_references[key] = entry;
+            SweepIfNeeded();
 
             return reference;
         }
+    }
+
+    private static void SweepIfNeeded()
+    {
+        if (++s_insertionsSinceSweep < 256)
+        {
+            return;
+        }
+
+        SweepDeadReferences();
+        s_insertionsSinceSweep = 0;
     }
 
     private static void SweepDeadReferences()
@@ -83,7 +83,7 @@ public static class MetadataReferenceImageCache
         string[] deadKeys =
         [
             .. s_references
-                .Where(static entry => !entry.Value.Reference.TryGetTarget(out _))
+                .Where(static entry => !entry.Value.PruneDeadReferences())
                 .Select(static entry => entry.Key)
         ];
         foreach (string key in deadKeys)

@@ -1,5 +1,6 @@
 using Csls.Workspaces;
 using Microsoft.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
 
@@ -159,6 +160,58 @@ public sealed class WorkspaceMetadataReferenceTests
                 workspacePath,
                 TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Reuses an image while only a property-adjusted reference remains in use.
+    /// </summary>
+    [TestMethod]
+    public async Task AliasVariantsKeepMetadataImageAliveAcrossReferenceCollections()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-metadata-aliases-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string referencePath = Path.Join(workspacePath, "Reference.dll");
+            File.Copy(typeof(object).Assembly.Location, referencePath);
+            (PortableExecutableReference retained, WeakReference<PortableExecutableReference> original) =
+                CreateAliasVariants(referencePath);
+
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            Assert.IsFalse(original.TryGetTarget(out _),
+                "The original reference must be collected while its metadata remains in use.");
+
+            PortableExecutableReference next = MetadataReferenceImageCache.GetReference(
+                referencePath,
+                MetadataReferenceProperties.Assembly.WithAliases(["third"]));
+            Assert.AreSame(retained.GetMetadataId(), next.GetMetadataId());
+            GC.KeepAlive(retained);
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                workspacePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (PortableExecutableReference Retained, WeakReference<PortableExecutableReference> Original)
+        CreateAliasVariants(string referencePath)
+    {
+        PortableExecutableReference original = MetadataReferenceImageCache.GetReference(
+            referencePath,
+            MetadataReferenceProperties.Assembly.WithAliases(["first"]));
+        PortableExecutableReference retained = MetadataReferenceImageCache.GetReference(
+            referencePath,
+            MetadataReferenceProperties.Assembly.WithAliases(["second"]));
+        Assert.AreNotSame(original, retained);
+        Assert.AreSame(original.GetMetadataId(), retained.GetMetadataId());
+        return (retained, new WeakReference<PortableExecutableReference>(original));
     }
 
     private static PortableExecutableReference GetReference(Project project) =>
