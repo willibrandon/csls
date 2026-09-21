@@ -30,6 +30,7 @@ public sealed partial class DapSessionTests
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             (_, int originalProcessId) = await LaunchAtEntryAsync(client, program, [signal, "41", "entry-result"])
                 .ConfigureAwait(false);
             int setSequence = await client.SendRequestAsync("setBreakpoints",
