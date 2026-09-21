@@ -22,8 +22,8 @@ public sealed partial class DapSessionTests
         Directory.CreateDirectory(testDirectory);
         try
         {
-            (string programPath, string sourcePath, string pdbPath) =
-                await BuildSymbolServerFixtureAsync(testDirectory).ConfigureAwait(false);
+            (string programPath, string sourcePath, string pdbPath, int breakpointLine) =
+                PrepareSymbolServerFixture(testDirectory);
             byte[] pdb = await File.ReadAllBytesAsync(
                 pdbPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -38,12 +38,14 @@ public sealed partial class DapSessionTests
             await ExerciseSymbolServerSessionAsync(
                 programPath,
                 sourcePath,
+                breakpointLine,
                 cachePath,
                 server.BaseUrl).ConfigureAwait(false);
             Assert.AreEqual(1, server.RequestCount);
             await ExerciseSymbolServerSessionAsync(
                 programPath,
                 sourcePath,
+                breakpointLine,
                 cachePath,
                 server.BaseUrl).ConfigureAwait(false);
             Assert.AreEqual(1, server.RequestCount);
@@ -59,6 +61,7 @@ public sealed partial class DapSessionTests
     private async Task ExerciseSymbolServerSessionAsync(
         string programPath,
         string sourcePath,
+        int breakpointLine,
         string cachePath,
         string serverUrl)
     {
@@ -66,6 +69,7 @@ public sealed partial class DapSessionTests
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int initializeSequence = await client.SendRequestAsync(
             "initialize",
             WriteEmptyObject,
@@ -88,7 +92,7 @@ public sealed partial class DapSessionTests
         AssertEvent(initialized.RootElement, "initialized");
         int breakpointSequence = await client.SendRequestAsync(
             "setBreakpoints",
-            writer => WriteSourceBreakpointArguments(writer, sourcePath, 8),
+            writer => WriteSourceBreakpointArguments(writer, sourcePath, breakpointLine),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument breakpoint = await client
             .ReadMessageAsync(TestContext.CancellationToken)
@@ -104,7 +108,7 @@ public sealed partial class DapSessionTests
             launchSequence,
             TestContext.CancellationToken).ConfigureAwait(false);
         await AssertSymbolServerModuleAsync(client, programPath, cachePath).ConfigureAwait(false);
-        await AssertSymbolServerFrameAsync(client, threadId, sourcePath).ConfigureAwait(false);
+        await AssertSymbolServerFrameAsync(client, threadId, sourcePath, breakpointLine).ConfigureAwait(false);
         await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
         Assert.AreEqual(
             0,
@@ -138,7 +142,8 @@ public sealed partial class DapSessionTests
     private async Task AssertSymbolServerFrameAsync(
         DapTestClient client,
         int threadId,
-        string sourcePath)
+        string sourcePath,
+        int breakpointLine)
     {
         int sequence = await client.SendRequestAsync(
             "stackTrace",
@@ -152,6 +157,6 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(DebuggerTestPath.AreEquivalent(
             sourcePath,
             frame.GetProperty("source").GetProperty("path").GetString()));
-        Assert.AreEqual(8, frame.GetProperty("line").GetInt32());
+        Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
     }
 }

@@ -1,72 +1,32 @@
-using System.Diagnostics;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Builds and serializes the real Portable PDB symbol-server DAP fixture.
+/// Prepares the real Portable PDB symbol-server DAP fixture from the shared test build.
 /// </summary>
 public sealed partial class DapSessionTests
 {
-    private async Task<(string ProgramPath, string SourcePath, string PdbPath)>
-        BuildSymbolServerFixtureAsync(string testDirectory)
+    private static (string ProgramPath, string SourcePath, string PdbPath, int BreakpointLine)
+        PrepareSymbolServerFixture(string testDirectory)
     {
-        string sourcePath = Path.Join(testDirectory, "Program.cs");
-        await File.WriteAllTextAsync(
-            sourcePath,
-            """
-            using System;
-            using System.Threading;
-
-            internal static class Program
-            {
-                private static void Main()
-                {
-                    int answer = 41;
-                    answer++;
-                    Console.WriteLine(answer);
-                    Thread.Sleep(Timeout.Infinite);
-                }
-            }
-            """,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string projectPath = Path.Join(testDirectory, "SymbolServerFixture.csproj");
-        await File.WriteAllTextAsync(
-            projectPath,
-            """
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <OutputType>Exe</OutputType>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-                <DebugType>portable</DebugType>
-                <DebugSymbols>true</DebugSymbols>
-              </PropertyGroup>
-            </Project>
-            """,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
-        var startInfo = new ProcessStartInfo(dotnet)
+        const string project = "Csls.Debugger.Fixtures.CSharp";
+        string sourceProgram = DebuggerLanguageFixtures.GetProgramPath(project, "Debug");
+        string sourceDirectory = Path.GetDirectoryName(sourceProgram)
+            ?? throw new InvalidOperationException("The shared debugger fixture has no output directory.");
+        foreach (string file in Directory.EnumerateFiles(sourceDirectory))
         {
-            WorkingDirectory = testDirectory,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
-        };
-        startInfo.ArgumentList.Add("build");
-        startInfo.ArgumentList.Add(projectPath);
-        startInfo.ArgumentList.Add("--nologo");
-        startInfo.ArgumentList.Add("--disable-build-servers");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
-        string outputDirectory = Path.Join(testDirectory, "bin", "Debug", "net10.0");
+            File.Copy(file, Path.Join(testDirectory, Path.GetFileName(file)));
+        }
+
+        string sourcePath = Path.Join(FindRepositoryRoot(), "test-assets", project, "Program.cs");
+        int breakpointLine = FindSourceLine(File.ReadAllLines(sourcePath), "answer++;");
         return (
-            Path.Join(outputDirectory, "SymbolServerFixture.dll"),
+            Path.Join(testDirectory, $"{project}.dll"),
             sourcePath,
-            Path.Join(outputDirectory, "SymbolServerFixture.pdb"));
+            Path.Join(testDirectory, $"{project}.pdb"),
+            breakpointLine);
     }
 
     private static string ReadPortablePdbStoreIndex(string programPath)
@@ -87,9 +47,19 @@ public sealed partial class DapSessionTests
         string cachePath,
         string serverUrl)
     {
+        string programDirectory = Path.GetDirectoryName(programPath)
+            ?? throw new InvalidOperationException("The symbol-server fixture has no program directory.");
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", false);
         writer.WriteString("program", programPath);
+        writer.WriteStartArray("args");
+        writer.WriteStringValue(Path.Join(programDirectory, "continue.signal"));
+        writer.WriteStringValue("41");
+        writer.WriteStringValue("ready");
+        writer.WriteEndArray();
+        writer.WriteStartObject("sourceFileMap");
+        writer.WriteString("/_/", FindRepositoryRoot());
+        writer.WriteEndObject();
         writer.WriteStartObject("symbolOptions");
         writer.WriteStartArray("searchPaths");
         writer.WriteStringValue(serverUrl);
@@ -98,7 +68,7 @@ public sealed partial class DapSessionTests
         writer.WriteStartObject("moduleFilter");
         writer.WriteString("mode", "loadOnlyIncluded");
         writer.WriteStartArray("includedModules");
-        writer.WriteStringValue("SymbolServerFixture.dll");
+        writer.WriteStringValue("Csls.Debugger.Fixtures.CSharp.dll");
         writer.WriteEndArray();
         writer.WriteBoolean("includeSymbolsNextToModules", true);
         writer.WriteEndObject();

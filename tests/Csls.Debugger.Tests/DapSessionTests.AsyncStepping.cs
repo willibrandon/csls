@@ -27,15 +27,20 @@ public sealed partial class DapSessionTests
         int awaitLine = FindSourceLine(sourceLines, "await Task.Delay(250)");
         int resumedLine = FindSourceLine(sourceLines, "answer++;");
 
-        DapTestClient client = await DapTestClient
-            .CreateAsync(TestContext.CancellationToken)
+        string traceDirectory = Path.Join(repositoryRoot, "artifacts", "test-results");
+        Directory.CreateDirectory(traceDirectory);
+        string tracePath = Path.Join(traceDirectory, $"async-step-{Guid.NewGuid():N}.log");
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+            environment: new Dictionary<string, string?> { ["CSLS_DEBUGGER_STEP_TRACE"] = tracePath })
             .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int threadId = await LaunchToSourceBreakpointAsync(
             client,
             sourcePath,
             awaitLine,
             ["--debugger-async-step-fixture", "41"]).ConfigureAwait(false);
+        TestContext.AddResultFile(tracePath);
         (string initialName, string? initialPath, int initialLine) =
             await ReadSourceFrameAsync(
                 client,
