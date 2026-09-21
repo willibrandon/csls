@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -90,8 +91,8 @@ internal static partial class DebuggerMacMemoryMap
             cancellationToken.ThrowIfCancellationRequested();
             var region = new DebuggerMacRegionInfo();
             uint infoCount = (uint)(sizeof(DebuggerMacRegionInfo) / sizeof(uint));
-            ulong size;
-            int result = QueryRegion(targetTask, ref address, out size, ref depth, &region, ref infoCount);
+            Unsafe.SkipInit(out ulong size);
+            int result = QueryRegion(targetTask, &address, &size, &depth, &region, &infoCount);
             if (result != 0)
             {
                 if (result == InvalidAddress && captured != 0)
@@ -161,8 +162,8 @@ internal static partial class DebuggerMacMemoryMap
     private static partial int OpenTask(uint currentTask, int processId, out uint targetTask);
 
     [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "mach_vm_region_recurse")]
-    private static unsafe partial int QueryRegion(uint targetTask, ref ulong address, out ulong size,
-        ref uint depth, DebuggerMacRegionInfo* region, ref uint infoCount);
+    private static unsafe partial int QueryRegion(uint targetTask, ulong* address, ulong* size,
+        uint* depth, DebuggerMacRegionInfo* region, uint* infoCount);
 
     [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "mach_port_deallocate")]
     private static partial int ReleasePort(uint currentTask, uint targetTask);
