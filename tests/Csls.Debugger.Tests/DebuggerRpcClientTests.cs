@@ -132,4 +132,57 @@ public sealed class DebuggerRpcClientTests
             Directory.Delete(directory.FullName, recursive: true);
         }
     }
+
+    /// <summary>
+    /// Cancels a connection queued behind the owning client while leaving that session usable.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CancelingQueuedHandshakePreservesOwningSession()
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-rpc-queued-");
+        try
+        {
+            string path = Path.Join(directory.FullName, "control.sock");
+            var service = new DebuggerControlService();
+            await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
+            var server = new DebuggerRpcServer(path, service);
+            await using ConfiguredAsyncDisposable serverCleanup = server.ConfigureAwait(false);
+            server.Start();
+
+            var owner = new DebuggerRpcClient(path);
+            await using ConfiguredAsyncDisposable ownerCleanup = owner.ConfigureAwait(false);
+            await owner.ConnectAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(path), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using var stream = new NetworkStream(socket, ownsSocket: false);
+            var queued = new DebuggerRpcClient(stream, stream, leaveOpen: true);
+            await using ConfiguredAsyncDisposable queuedCleanup = queued.ConfigureAwait(false);
+            using var cancellation = new CancellationTokenSource();
+            Task handshake = queued.ConnectAsync(cancellation.Token);
+            Assert.IsFalse(handshake.IsCompleted);
+
+            await cancellation.CancelAsync().ConfigureAwait(false);
+            OperationCanceledException canceled = await Assert.ThrowsAsync<OperationCanceledException>(
+                () => handshake.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken))
+                .ConfigureAwait(false);
+            Assert.AreEqual(cancellation.Token, canceled.CancellationToken);
+            Assert.IsTrue(stream.CanRead);
+            Assert.IsTrue(stream.CanWrite);
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+                () => queued.ConnectAsync(TestContext.CancellationToken)).ConfigureAwait(false);
+
+            DebugSessionSnapshot session = await owner.GetSessionAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual(DebugSessionState.Created, session.State);
+            Assert.IsNull(session.ProcessId);
+            Assert.AreEqual(0L, session.StopGeneration);
+        }
+        finally
+        {
+            Directory.Delete(directory.FullName, recursive: true);
+        }
+    }
 }
