@@ -138,7 +138,9 @@ public sealed class DapTerminationTests : DapTestContext
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            string phase = "launching";
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(
+                client, () => Volatile.Read(ref phase));
             await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
                 terminateChildProcesses).ConfigureAwait(false);
             TestContext.WriteLine("Launched child-preserving target.");
@@ -148,6 +150,7 @@ public sealed class DapTerminationTests : DapTestContext
 
             int disconnect = await client.SendRequestAsync(
                 "disconnect", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref phase, "reading disconnect response");
             TestContext.WriteLine("Sent disconnect request.");
             try
             {
@@ -164,6 +167,7 @@ public sealed class DapTerminationTests : DapTestContext
 
             await DebuggerProcessExit.WaitAsync(targets[0], TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            Volatile.Write(ref phase, "checking descendants");
             TestContext.WriteLine("Observed target exit.");
             Assert.IsTrue(targets[0].HasExited);
             foreach (Process descendant in targets.Skip(1))
@@ -171,7 +175,9 @@ public sealed class DapTerminationTests : DapTestContext
                 Assert.IsFalse(descendant.HasExited, $"Child process {descendant.Id} should survive.");
             }
             Assert.IsFalse(sibling.HasExited);
+            Volatile.Write(ref phase, "waiting for adapter exit");
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Volatile.Write(ref phase, "checking adapter diagnostics");
             Assert.IsEmpty(client.Diagnostics.ToString());
         }
         finally
@@ -200,8 +206,8 @@ public sealed class DapTerminationTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task NaturalTargetExitPreservesChildWithoutWaitingForInheritedOutput(bool noDebug)
     {
-        string rootPipeName = $"csls-output-root-{Guid.NewGuid():N}";
-        string childPipeName = $"csls-output-child-{Guid.NewGuid():N}";
+        string rootPipeName = $"csls-r-{Guid.NewGuid():N}";
+        string childPipeName = $"csls-c-{Guid.NewGuid():N}";
         using var rootPipe = new NamedPipeServerStream(rootPipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         using var childPipe = new NamedPipeServerStream(childPipeName, PipeDirection.Out, 1,

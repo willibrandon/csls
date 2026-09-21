@@ -17,13 +17,17 @@ public abstract class DapTestContext
     /// Retains bounded protocol evidence when timeout results replace captured test output.
     /// </summary>
     /// <param name="client">The real DAP client whose exchange belongs to this test.</param>
+    /// <param name="stage">Optionally records the test's current lifecycle phase.</param>
     /// <returns>The diagnostic scope disposed before disposing the client.</returns>
-    private protected DapTestCancellationCapture CaptureProtocolOnCancellation(DapTestClient client)
+    private protected DapTestCancellationCapture CaptureProtocolOnCancellation(
+        DapTestClient client,
+        Func<string?>? stage = null)
     {
         string directory = Path.Join(FindRepositoryRoot(), "artifacts", "test-results");
         Directory.CreateDirectory(directory);
         string path = Path.Join(directory, $"dap-cancellation-{Guid.NewGuid():N}.log");
-        return new DapTestCancellationCapture(client, TestContext.TestName, path, TestContext.CancellationToken);
+        return new DapTestCancellationCapture(client, TestContext.TestName, path,
+            TestContext.CancellationToken, stage);
     }
 
     /// <summary>

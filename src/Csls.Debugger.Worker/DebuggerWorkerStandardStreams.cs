@@ -16,6 +16,9 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
     private const int SetFileDescriptorFlags = 2;
     private const int CloseOnExec = 1;
     private const int StandardInputHandle = -10;
+    private const int StandardOutputHandle = -11;
+    private const int StandardErrorHandle = -12;
+    private const uint InheritHandleFlag = 1;
     private const uint DuplicateSameAccess = 2;
     private readonly SafeFileHandle? _inputHandle;
     private readonly SafeFileHandle? _outputHandle;
@@ -35,6 +38,7 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
                 _input = new FileStream(_inputHandle, FileAccess.Read, bufferSize: 4096, isAsync: false);
                 _output = Console.OpenStandardOutput();
                 _errorStream = Console.OpenStandardError();
+                MakeWindowsStandardHandlesPrivate();
             }
             else
             {
@@ -162,9 +166,33 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
         return duplicate;
     }
 
+    private static void MakeWindowsStandardHandlesPrivate()
+    {
+        foreach (int standardHandle in new[]
+            { StandardInputHandle, StandardOutputHandle, StandardErrorHandle })
+        {
+            nint handle = GetStandardHandle(standardHandle);
+            if (handle is 0 or -1)
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(),
+                    $"GetStdHandle({standardHandle})");
+            }
+
+            if (SetHandleInformation(handle, InheritHandleFlag, 0) == 0)
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(),
+                    $"SetHandleInformation({standardHandle}, HANDLE_FLAG_INHERIT)");
+            }
+        }
+    }
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetStdHandle", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint GetStandardHandle(int standardHandle);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "SetHandleInformation", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int SetHandleInformation(nint handle, uint mask, uint flags);
 
     [LibraryImport("kernel32.dll", EntryPoint = "DuplicateHandle", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
