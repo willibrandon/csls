@@ -97,11 +97,16 @@ public sealed class DebuggerTerminalStateTests
         await AssertQueuedSelectionsAsync(state, oldView).ConfigureAwait(false);
 
         DebuggerTerminalViewSnapshot beforeStep = state.CaptureViewSnapshot();
+        long beforeStopGeneration = state.Snapshot.StopGeneration;
         await StepToNextStatementAsync(state).ConfigureAwait(false);
         DebuggerTerminalViewSnapshot currentView = state.CaptureViewSnapshot();
         Assert.AreEqual(DebugSessionState.Stopped, state.Snapshot.State);
         Assert.AreEqual("step", state.Snapshot.StopReason);
+        Assert.IsGreaterThan(beforeStopGeneration, state.Snapshot.StopGeneration);
         Assert.AreNotSame(beforeStep, currentView);
+        Assert.AreNotEqual(beforeStep.ThreadRevision, currentView.ThreadRevision);
+        Assert.AreNotEqual(beforeStep.StackRevision, currentView.StackRevision);
+        Assert.AreNotEqual(beforeStep.SourceRevision, currentView.SourceRevision);
         Assert.IsGreaterThan(1, currentView.SourceLines.Length);
         Assert.EndsWith(
             "long localLong = number + 2L;",

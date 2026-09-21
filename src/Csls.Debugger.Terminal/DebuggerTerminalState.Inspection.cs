@@ -14,6 +14,8 @@ internal sealed partial class DebuggerTerminalState
     private long _sourceRevision;
     private long _threadRevision;
     private long _stackRevision;
+    private long _presentedStopGeneration = -1;
+    private int? _presentedStopProcessId;
     private int _sourceFrameId;
     private int _sourceFirstLine;
     private string[] _sourceTextLines = [];
@@ -201,6 +203,16 @@ internal sealed partial class DebuggerTerminalState
 
     private async Task LoadStoppedStateAsync(CancellationToken cancellationToken)
     {
+        if (_presentedStopGeneration != Snapshot.StopGeneration ||
+            _presentedStopProcessId != Snapshot.ProcessId)
+        {
+            _presentedStopGeneration = Snapshot.StopGeneration;
+            _presentedStopProcessId = Snapshot.ProcessId;
+            _threadRevision = checked(_threadRevision + 1);
+            _stackRevision = checked(_stackRevision + 1);
+            _sourceRevision = checked(_sourceRevision + 1);
+        }
+
         StatusMessage = null;
         await _auxiliary.LoadAsync(Snapshot, cancellationToken).ConfigureAwait(false);
         IReadOnlyList<DebugThreadInfo> threads = await _client.GetThreadsAsync(cancellationToken)
