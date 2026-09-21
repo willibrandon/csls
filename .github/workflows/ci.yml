@@ -732,6 +732,10 @@ jobs:
           tar --extract --file artifacts/debugger-test-binaries.tar
           --directory .
 
+      - name: Export installed .NET host for macOS apphosts
+        if: runner.os == 'macOS'
+        run: dotnet run --file scripts/Export-DotNetRoot.cs
+
       - name: Restore Unix wait interposer
         if: matrix.unix_wait
         uses: actions/download-artifact@v8
