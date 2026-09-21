@@ -1,15 +1,21 @@
-using System.Diagnostics;
+using System.ComponentModel;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Retains memory-region protections and backing information for a failed test's owned macOS process.
+/// Retains bounded memory-region protections and sharing information for an owned macOS process.
 /// </summary>
 [SupportedOSPlatform("macos")]
-internal static class DebuggerMacMemoryMap
+internal static partial class DebuggerMacMemoryMap
 {
+    private const int InvalidAddress = 1;
+    private const int MaximumRegions = 4096;
+    private const uint MaximumNestingDepth = 32;
+
     /// <summary>
     /// Captures process memory regions within the existing diagnostic deadline.
     /// </summary>
@@ -21,42 +27,17 @@ internal static class DebuggerMacMemoryMap
     internal static async Task CaptureAsync(int processId, string directory, TestContext testContext,
         CancellationToken cancellationToken)
     {
-        string path = Path.Join(directory, $"process-{processId}.vmmap.txt");
-        // The macOS task-port authorization rule requires the observer and target to share a user.
-        var start = new ProcessStartInfo("/usr/bin/vmmap");
-        start.ArgumentList.Add("-w");
-        start.ArgumentList.Add("-pages");
-        start.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
-        long started = Stopwatch.GetTimestamp();
-        int observedLines = 0;
-        testContext.WriteLine($"Starting memory map for {processId} as {Environment.UserName}.");
+        string path = Path.Join(directory, $"process-{processId}.regions.txt");
         try
         {
-            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, cancellationToken,
-                line =>
-                {
-                    if (Interlocked.Increment(ref observedLines) <= 4)
-                    {
-                        testContext.WriteLine($"Memory map {processId} output: {line[..Math.Min(line.Length, 256)]}");
-                    }
-                }, observeProcess: (process, _, token) => ObserveCaptureAsync(process, testContext, token))
-                .ConfigureAwait(false);
-            string report = $"Memory map exit code: {exitCode}{Environment.NewLine}{error}{Environment.NewLine}{output}";
-            const int MaximumCharacters = 1024 * 1024;
-            if (report.Length > MaximumCharacters)
-            {
-                report = report[..MaximumCharacters] + Environment.NewLine + "Memory map truncated.";
-            }
+            string report = CaptureRegions(processId, cancellationToken);
             await File.WriteAllTextAsync(path, report, cancellationToken).ConfigureAwait(false);
-            testContext.WriteLine($"Memory map for {processId} exited with {exitCode} after " +
-                $"{Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms: {path}.");
+            testContext.WriteLine($"Captured memory regions for {processId}: {path}.");
         }
         catch (Exception exception) when (exception is OperationCanceledException or IOException or
-            UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
-            testContext.WriteLine($"Memory map for {processId} after " +
-                $"{Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms " +
-                $"and {Volatile.Read(ref observedLines)} output lines: {exception.Message}");
+            testContext.WriteLine($"Memory regions for {processId}: {exception.Message}");
         }
         finally
         {
@@ -67,30 +48,122 @@ internal static class DebuggerMacMemoryMap
         }
     }
 
-    private static async Task ObserveCaptureAsync(Process process, TestContext testContext,
-        CancellationToken cancellationToken)
+    private static unsafe string CaptureRegions(int processId, CancellationToken cancellationToken)
     {
-        Task exit = process.WaitForExitAsync(cancellationToken);
-        if (await Task.WhenAny(exit, Task.Delay(TimeSpan.FromSeconds(4), cancellationToken))
-            .ConfigureAwait(false) == exit)
+        uint currentTask = CurrentTask();
+        int result = OpenTask(currentTask, processId, out uint targetTask);
+        if (result != 0)
         {
-            await exit.ConfigureAwait(false);
-            return;
+            throw new InvalidOperationException($"Opening the owned process task failed with Mach error {result}.");
         }
 
-        if (!process.HasExited)
+        string report;
+        int release;
+        try
         {
-            var start = new ProcessStartInfo("/bin/ps");
-            start.ArgumentList.Add("-p");
-            start.ArgumentList.Add(process.Id.ToString(CultureInfo.InvariantCulture));
-            start.ArgumentList.Add("-o");
-            start.ArgumentList.Add("pid,ppid,state,wchan,pcpu,time,etime,rss,vsz,comm");
-            (int code, string output, string error) = await DebuggerTestProcess.RunAsync(start, cancellationToken)
-                .ConfigureAwait(false);
-            testContext.WriteLine($"Memory map child {process.Id} after four seconds (exit {code}): " +
-                $"{output}{error}");
+            report = ReadRegions(targetTask, processId, cancellationToken);
+        }
+        finally
+        {
+            release = ReleasePort(currentTask, targetTask);
         }
 
-        await exit.ConfigureAwait(false);
+        if (release != 0)
+        {
+            throw new InvalidOperationException($"Releasing the owned process task failed with Mach error {release}.");
+        }
+
+        return report;
     }
+
+    private static unsafe string ReadRegions(uint targetTask, int processId, CancellationToken cancellationToken)
+    {
+        var report = new StringBuilder();
+        report.AppendLine(FormattableString.Invariant($"Process memory regions for [{processId}]:"));
+        report.AppendLine("ADDRESS RANGE                              BYTES CURRENT/MAX USER TAG SHARE");
+        ulong address = 0;
+        uint depth = 0;
+        int visited = 0;
+        int captured = 0;
+        while (visited < MaximumRegions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var region = new DebuggerMacRegionInfo();
+            uint infoCount = (uint)(sizeof(DebuggerMacRegionInfo) / sizeof(uint));
+            ulong size;
+            int result = QueryRegion(targetTask, ref address, out size, ref depth, &region, ref infoCount);
+            if (result != 0)
+            {
+                if (result == InvalidAddress && captured != 0)
+                {
+                    break;
+                }
+
+                throw new InvalidOperationException($"Reading memory regions for {processId} failed with Mach error {result}.");
+            }
+
+            if (infoCount != (uint)(sizeof(DebuggerMacRegionInfo) / sizeof(uint)) || size == 0 ||
+                ulong.MaxValue - address < size)
+            {
+                throw new InvalidDataException("The process region API returned an invalid address range.");
+            }
+
+            visited++;
+            if (region.IsSubmap != 0)
+            {
+                if (depth >= MaximumNestingDepth)
+                {
+                    throw new InvalidDataException("The process region map exceeded the nesting bound.");
+                }
+
+                depth++;
+                continue;
+            }
+
+            ulong end = address + size;
+            report.AppendLine(FormattableString.Invariant(
+                $"0x{address:X16}-0x{end:X16} {size,12} {FormatProtection(region.Protection)}/{FormatProtection(region.MaxProtection)} {region.UserTag,8} {FormatShareMode(region.ShareMode)}"));
+            address = end;
+            captured++;
+        }
+
+        if (visited == MaximumRegions)
+        {
+            report.AppendLine(FormattableString.Invariant($"Report bounded to {MaximumRegions} regions."));
+        }
+
+        return report.ToString();
+    }
+
+    private static string FormatProtection(uint protection) => new([
+        (protection & 1) != 0 ? 'r' : '-',
+        (protection & 2) != 0 ? 'w' : '-',
+        (protection & 4) != 0 ? 'x' : '-'
+    ]);
+
+    private static string FormatShareMode(byte shareMode) => shareMode switch
+    {
+        1 => "COW",
+        2 => "PRIVATE",
+        3 => "EMPTY",
+        4 => "SHARED",
+        5 => "TRUE_SHARED",
+        6 => "PRIVATE_ALIASED",
+        7 => "SHARED_ALIASED",
+        8 => "LARGE_PAGE",
+        _ => shareMode.ToString(CultureInfo.InvariantCulture)
+    };
+
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "mach_task_self")]
+    private static partial uint CurrentTask();
+
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "task_for_pid")]
+    private static partial int OpenTask(uint currentTask, int processId, out uint targetTask);
+
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "mach_vm_region_recurse")]
+    private static unsafe partial int QueryRegion(uint targetTask, ref ulong address, out ulong size,
+        ref uint depth, DebuggerMacRegionInfo* region, ref uint infoCount);
+
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "mach_port_deallocate")]
+    private static partial int ReleasePort(uint currentTask, uint targetTask);
 }

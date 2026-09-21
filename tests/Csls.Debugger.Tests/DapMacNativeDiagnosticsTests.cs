@@ -44,11 +44,13 @@ public sealed class DapMacNativeDiagnosticsTests : DapTestContext
             Assert.Contains($"[{process.Id.ToString(CultureInfo.InvariantCulture)}]", report);
             Assert.Contains("Call graph:", report);
             Assert.Contains("read", report);
-            string memoryMap = await File.ReadAllTextAsync(Path.Join(directory, $"process-{process.Id}.vmmap.txt"),
+            string memoryMap = await File.ReadAllTextAsync(Path.Join(directory, $"process-{process.Id}.regions.txt"),
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains("Memory map exit code: 0", memoryMap);
+            Assert.Contains("Process memory regions for", memoryMap);
             Assert.Contains($"[{process.Id.ToString(CultureInfo.InvariantCulture)}]", memoryMap);
-            Assert.Contains("REGION TYPE", memoryMap);
+            Assert.Contains("ADDRESS RANGE", memoryMap);
+            Assert.Contains("USER TAG", memoryMap);
+            Assert.Contains("r-x", memoryMap);
             Assert.IsFalse(process.HasExited);
             await AssertEchoAsync(process, "after-capture").ConfigureAwait(false);
             process.StandardInput.Close();
