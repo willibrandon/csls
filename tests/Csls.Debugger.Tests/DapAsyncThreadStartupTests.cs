@@ -13,6 +13,7 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DapAsyncThreadStartupTests : DapTestContext
 {
+    private static readonly SemaphoreSlim s_oracleProcessGate = new(1, 1);
     private int _launchSequence;
     private bool _launchResponseReceived;
 
@@ -57,7 +58,21 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
         string breakpointSource = oracle is null ? source : ReadRecordedSource(program, Path.GetFileName(source));
         TestContext.WriteLine($"Adapter: {oracle ?? "csls"}; fixture: {program}; shape: {kind}; iteration: {iteration}.");
         TestContext.WriteLine($"Breakpoint source: {breakpointSource}:{line}.");
-        await VerifyStartupAsync(program, breakpointSource, line, kind, oracle).ConfigureAwait(false);
+        if (oracle is null)
+        {
+            await VerifyStartupAsync(program, breakpointSource, line, kind, oracle).ConfigureAwait(false);
+            return;
+        }
+
+        await s_oracleProcessGate.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        try
+        {
+            await VerifyStartupAsync(program, breakpointSource, line, kind, oracle).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = s_oracleProcessGate.Release();
+        }
     }
 
     private static string ReadRecordedSource(string program, string fileName)
