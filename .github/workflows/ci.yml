@@ -285,7 +285,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, dumps-platform, dumps-state, dumps-symbols, dumps-values, physical-capture, protocol, protocol-breakpoints, protocol-capture, capture-normal, capture-triage, capture-heap, capture-full, protocol-values, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, assignment-array, presentation-results, presentation-proxy, stress]
+        suite: [standard, dumps-platform, dumps-state, dumps-symbols, dumps-values, physical-capture, protocol, protocol-breakpoints, protocol-capture, capture-normal, capture-triage, capture-heap, capture-full, protocol-values, protocol-lifecycle, protocol-lifecycle-reattach, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, assignment-array, presentation-results, presentation-proxy, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         exclude:
           - suite: standard
@@ -293,6 +293,8 @@ jobs:
           - suite: standard
             rid: osx-arm64
           - suite: protocol-lifecycle
+            rid: osx-x64
+          - suite: protocol-lifecycle-reattach
             rid: osx-x64
           - suite: type-inspection
             rid: osx-x64
@@ -446,7 +448,11 @@ jobs:
           - suite: protocol-lifecycle
             name: Debugger process requests
             minimum_tests: 40
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&(FullyQualifiedName~Launch|FullyQualifiedName~Restart|FullyQualifiedName~Attach|FullyQualifiedName~Disconnect|FullyQualifiedName~Terminate|FullyQualifiedName~Cancel|FullyQualifiedName~Process|FullyQualifiedName~Threads|FullyQualifiedName~Running)
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!=Csls.Debugger.Tests.DapAttachTests.RestartReattachesWithoutTerminatingTarget&(FullyQualifiedName~Launch|FullyQualifiedName~Restart|FullyQualifiedName~Attach|FullyQualifiedName~Disconnect|FullyQualifiedName~Terminate|FullyQualifiedName~Cancel|FullyQualifiedName~Process|FullyQualifiedName~Threads|FullyQualifiedName~Running)
+          - suite: protocol-lifecycle-reattach
+            name: Debugger repeated attach requests
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapAttachTests.RestartReattachesWithoutTerminatingTarget
           - suite: protocol-lifecycle-launch-environment
             name: Debugger launch environment requests
             minimum_tests: 80
