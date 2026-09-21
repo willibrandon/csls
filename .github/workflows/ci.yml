@@ -298,6 +298,10 @@ jobs:
             rid: osx-x64
           - suite: stepping
             rid: osx-x64
+          - suite: evaluation
+            rid: osx-x64
+          - suite: symbols
+            rid: osx-x64
           - suite: assignment
             rid: osx-x64
           - suite: stress
@@ -486,6 +490,20 @@ jobs:
             name: Debugger symbols
             minimum_tests: 30
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~Csls.Debugger.Tests.DapSymbolTests|FullyQualifiedName~PortablePdbLanguagesBindIn|FullyQualifiedName~RuntimeGenericArityBoundary|FullyQualifiedName~CapturedGenericArgumentsRetainSourceIdentityAfterAwait)
+          - suite: symbols-dap
+            name: Debugger DAP symbols
+            minimum_tests: 10
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.DapSymbolTests
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: symbols-language
+            name: Debugger language symbols
+            minimum_tests: 10
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~PortablePdbLanguagesBindIn|FullyQualifiedName~RuntimeGenericArityBoundary|FullyQualifiedName~CapturedGenericArgumentsRetainSourceIdentityAfterAwait)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: type-inspection
             name: Debugger type inspection
             minimum_tests: 40
@@ -537,6 +555,27 @@ jobs:
             name: Debugger evaluation
             minimum_tests: 56
             filter: TestCategory!=DebuggerStress&FullyQualifiedName~Evaluation&FullyQualifiedName!~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+          - suite: evaluation-runtime
+            name: Debugger runtime evaluation
+            minimum_tests: 20
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName~Evaluation&FullyQualifiedName!~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~InvalidExpressionEvaluationOptionsPreserveInitializedSession&FullyQualifiedName!~ImplicitEvaluationOptionControlsProxySideEffects&FullyQualifiedName!~PropertyEvaluation&FullyQualifiedName!~QueuedInspectionDrainsAfterEvaluationCancellation
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: evaluation-options
+            name: Debugger evaluation options
+            minimum_tests: 20
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName~Evaluation&FullyQualifiedName!~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~InvalidExpressionEvaluationOptionsPreserveInitializedSession|FullyQualifiedName~ImplicitEvaluationOptionControlsProxySideEffects)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
+          - suite: evaluation-property-queue
+            name: Debugger property and queued evaluation
+            minimum_tests: 10
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName~Evaluation&FullyQualifiedName!~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~PropertyEvaluation|FullyQualifiedName~QueuedInspectionDrainsAfterEvaluationCancellation)
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           - suite: assignment
             name: Debugger assignment
             minimum_tests: 61

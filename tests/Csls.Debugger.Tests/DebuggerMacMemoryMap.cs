@@ -106,7 +106,8 @@ internal static partial class DebuggerMacMemoryMap
             if (infoCount != (uint)(sizeof(DebuggerMacRegionInfo) / sizeof(uint)) || size == 0 ||
                 ulong.MaxValue - address < size)
             {
-                throw new InvalidDataException("The process region API returned an invalid address range.");
+                throw new InvalidDataException(FormattableString.Invariant(
+                    $"The process region API returned an invalid range: address=0x{address:X16}, size=0x{size:X16}, depth={depth}, infoCount={infoCount}."));
             }
 
             visited++;
