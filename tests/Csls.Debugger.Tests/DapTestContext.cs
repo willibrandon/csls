@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -28,6 +30,43 @@ public abstract class DapTestContext
         string path = Path.Join(directory, $"dap-cancellation-{Guid.NewGuid():N}.log");
         return new DapTestCancellationCapture(client, TestContext.TestName, path,
             TestContext.CancellationToken, stage);
+    }
+
+    /// <summary>
+    /// Verifies that a managed launch stops at the authored async top-level source.
+    /// </summary>
+    /// <param name="program">The built managed executable or assembly to launch.</param>
+    /// <returns>A task that completes after the target exits without producing output before entry.</returns>
+    private protected async Task VerifyAsyncTopLevelEntryAsync(string program)
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        try
+        {
+            string source = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "Program.cs");
+            string sourceText = await File.ReadAllTextAsync(source, TestContext.CancellationToken).ConfigureAwait(false);
+            CompilationUnitSyntax syntax = CSharpSyntaxTree.ParseText(sourceText, cancellationToken: TestContext.CancellationToken)
+                .GetCompilationUnitRoot(TestContext.CancellationToken);
+            GlobalStatementSyntax firstStatement = syntax.Members.OfType<GlobalStatementSyntax>().First();
+            int expectedLine = firstStatement.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            Assert.IsTrue(File.Exists(program), $"The entry fixture was not built: {program}");
+            (int threadId, _) = await LaunchAtEntryAsync(client, program,
+                ["--print-environment", "CSLS_DEBUGGER_ENTRY_VALUE"]).ConfigureAwait(false);
+            (_, string? path, int line) = await ReadSourceFrameAsync(
+                client, threadId, source, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(source, path), $"Expected source '{source}', received '{path}'.");
+            Assert.AreEqual(expectedLine, line);
+            await ContinueEntryToExitAsync(client, threadId, "entry-result").ConfigureAwait(false);
+        }
+        catch
+        {
+            TestContext.WriteLine($"Adapter process: {client.HostProcessId}; target process: {client.TargetProcessId}.");
+            TestContext.WriteLine($"Adapter diagnostics: {client.Diagnostics}");
+            TestContext.WriteLine($"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <summary>
