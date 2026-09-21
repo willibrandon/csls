@@ -290,6 +290,8 @@ jobs:
         exclude:
           - suite: standard
             rid: osx-x64
+          - suite: standard
+            rid: osx-arm64
           - suite: protocol-lifecycle
             rid: osx-x64
           - suite: type-inspection
@@ -313,12 +315,26 @@ jobs:
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true
+          - suite: standard-core-symbols
+            name: Debugger core symbol tests
+            minimum_tests: 110
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests&(FullyQualifiedName~Metadata|FullyQualifiedName~Symbol|FullyQualifiedName~Pdb|FullyQualifiedName~Type|FullyQualifiedName~Expression|FullyQualifiedName~Value)
+            os: macos-26
+            rid: osx-arm64
+            unix_wait: true
           - suite: standard-core-runtime
             name: Debugger core process tests
             minimum_tests: 135
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests&FullyQualifiedName!~Metadata&FullyQualifiedName!~Symbol&FullyQualifiedName!~Pdb&FullyQualifiedName!~Type&FullyQualifiedName!~Expression&FullyQualifiedName!~Value
             os: macos-26-intel
             rid: osx-x64
+            unix_wait: true
+          - suite: standard-core-runtime
+            name: Debugger core process tests
+            minimum_tests: 135
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerRpc&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerWorkerProcessTests&FullyQualifiedName!~Csls.Debugger.Tests.RuntimeActivationTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerReferenceAssemblyTests&FullyQualifiedName!~Csls.Debugger.Tests.DebuggerPerformanceTests&FullyQualifiedName!~Metadata&FullyQualifiedName!~Symbol&FullyQualifiedName!~Pdb&FullyQualifiedName!~Type&FullyQualifiedName!~Expression&FullyQualifiedName!~Value
+            os: macos-26
+            rid: osx-arm64
             unix_wait: true
           - suite: standard-runtime
             name: Debugger runtime tests
