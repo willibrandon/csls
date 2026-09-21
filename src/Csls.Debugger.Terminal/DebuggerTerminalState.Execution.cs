@@ -112,9 +112,7 @@ internal sealed partial class DebuggerTerminalState
 
             Snapshot = await _client.ContinueAsync(_cancellationToken).ConfigureAwait(false);
             StatusMessage = null;
-            ClearInspection();
-            PublishViewSnapshot();
-            StartRunObservation();
+            await PublishExecutionStateAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -181,9 +179,7 @@ internal sealed partial class DebuggerTerminalState
                 new DebugStepRequest(threadId, kind),
                 _cancellationToken).ConfigureAwait(false);
             StatusMessage = null;
-            ClearInspection();
-            PublishViewSnapshot();
-            StartRunObservation();
+            await PublishExecutionStateAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -203,9 +199,7 @@ internal sealed partial class DebuggerTerminalState
         {
             Snapshot = await _client.RestartAsync(_cancellationToken).ConfigureAwait(false);
             StatusMessage = "Restarted target.";
-            ClearInspection();
-            PublishViewSnapshot();
-            StartRunObservation();
+            await PublishExecutionStateAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -237,6 +231,22 @@ internal sealed partial class DebuggerTerminalState
         finally
         {
             _ = _mutationGate.Release();
+        }
+    }
+
+    private async Task PublishExecutionStateAsync()
+    {
+        if (Snapshot.State == DebugSessionState.Stopped)
+        {
+            await LoadStoppedStateAsync(_cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        ClearInspection();
+        PublishViewSnapshot();
+        if (Snapshot.State == DebugSessionState.Running)
+        {
+            StartRunObservation();
         }
     }
 
