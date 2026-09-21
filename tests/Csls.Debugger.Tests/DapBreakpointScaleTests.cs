@@ -2,9 +2,11 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Text;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -16,7 +18,67 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DapBreakpointScaleTests : DapTestContext
 {
+    private const string BreakpointSpanSource = """
+        using System;
+        namespace Csls.BreakpointScale;
+        /// <summary>
+        /// Exposes distinct executable spans within and across source lines.
+        /// </summary>
+        internal static class Program
+        {
+            /// <summary>
+            /// Accumulates an independently inspected value across each authored statement.
+            /// </summary>
+            internal static void Main()
+            {
+                int total = 0;
+
+                total +=
+                    1;
+                total += 2; total += 3;
+                Console.WriteLine(total);
+            }
+        }
+        """;
+    private const string BreakpointHitSource = """
+        using System;
+        namespace Csls.BreakpointScale;
+        /// <summary>
+        /// Keeps a counted source location live while another breakpoint is replaced.
+        /// </summary>
+        internal static class Program
+        {
+            /// <summary>
+            /// Accumulates known values on each iteration before printing their sum.
+            /// </summary>
+            internal static void Main()
+            {
+                int total = 0;
+                for (int iteration = 1; iteration <= 4; iteration++)
+                {
+                    int observed = iteration;
+                    total += observed;
+                }
+                Console.WriteLine(total);
+            }
+        }
+        """;
     private static readonly CSharpCompilation s_fixtureCompilation = CreateFixtureCompilation();
+    private static readonly ConcurrentDictionary<string, Lazy<(byte[] Program, byte[] Symbols, string BuildSource)>>
+        s_programImages = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Builds each common compiler-authored fixture image once before parallel test execution.
+    /// </summary>
+    /// <param name="testContext">The active test class context.</param>
+    [ClassInitialize]
+    public static void InitializeBreakpointFixtures(TestContext testContext)
+    {
+        _ = testContext;
+        _ = GetProgramImage(CreateTargetSource(3).Source);
+        _ = GetProgramImage(BreakpointSpanSource);
+        _ = GetProgramImage(BreakpointHitSource);
+    }
 
     /// <summary>
     /// Retains breakpoint identities across reordered replacements and removals before stopping and inspecting the target.
@@ -32,11 +94,13 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         string directory = Directory.CreateTempSubdirectory("csls-breakpoint-scale-").FullName;
         try
         {
-            (string program, string source, int[] lines) = await EmitTargetAsync(directory, count).ConfigureAwait(false);
+            (string program, string source, string buildSource, int[] lines) = await EmitTargetAsync(directory, count)
+                .ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, [],
+                sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             try
             {
                 Dictionary<int, int> original = await SetBreakpointsAsync(client, source, lines).ConfigureAwait(false);
@@ -114,11 +178,13 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         string directory = Directory.CreateTempSubdirectory("csls-breakpoint-identity-").FullName;
         try
         {
-            (string program, string source, int[] lines) = await EmitTargetAsync(directory, 3).ConfigureAwait(false);
+            (string program, string source, string buildSource, int[] lines) = await EmitTargetAsync(directory, 3)
+                .ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, [],
+                sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             int first = lines[0];
             int last = lines[^1];
             JsonElement original = await ReadBreakpointsAsync(client, source, [first, first, first, last], [null, 9, null, null])
@@ -156,40 +222,20 @@ public sealed class DapBreakpointScaleTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task SourceBreakpointRelocationPreservesExecutableSpans()
     {
-        const string text = """
-            using System;
-            namespace Csls.BreakpointScale;
-            /// <summary>
-            /// Exposes distinct executable spans within and across source lines.
-            /// </summary>
-            internal static class Program
-            {
-                /// <summary>
-                /// Accumulates an independently inspected value across each authored statement.
-                /// </summary>
-                internal static void Main()
-                {
-                    int total = 0;
-
-                    total +=
-                        1;
-                    total += 2; total += 3;
-                    Console.WriteLine(total);
-                }
-            }
-            """;
         string directory = Directory.CreateTempSubdirectory("csls-breakpoint-spans-").FullName;
         try
         {
-            (string program, string source) = await EmitProgramAsync(directory, text).ConfigureAwait(false);
-            string[] sourceLines = text.Split('\n');
+            (string program, string source, string buildSource) = await EmitProgramAsync(directory, BreakpointSpanSource)
+                .ConfigureAwait(false);
+            string[] sourceLines = BreakpointSpanSource.Split('\n');
             int multiline = FindSourceLine(sourceLines, "1;") - 1;
             int paired = FindSourceLine(sourceLines, "total += 2;");
             int secondColumn = sourceLines[paired - 1].IndexOf("total += 3;", StringComparison.Ordinal) + 1;
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, [],
+                sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             JsonElement bound = await ReadBreakpointsAsync(client, source,
                 [paired, multiline + 1, multiline - 1, paired], [secondColumn, null, null, 9]).ConfigureAwait(false);
             Assert.AreSequenceEqual([paired, multiline, multiline, paired], bound.EnumerateArray()
@@ -235,41 +281,20 @@ public sealed class DapBreakpointScaleTests : DapTestContext
 
     private async Task ExerciseHitConditionReplacementAsync(string hitCondition, string replacement, int expectedTotal)
     {
-        const string text = """
-            using System;
-            namespace Csls.BreakpointScale;
-            /// <summary>
-            /// Keeps a counted source location live while another breakpoint is replaced.
-            /// </summary>
-            internal static class Program
-            {
-                /// <summary>
-                /// Accumulates known values on each iteration before printing their sum.
-                /// </summary>
-                internal static void Main()
-                {
-                    int total = 0;
-                    for (int iteration = 1; iteration <= 4; iteration++)
-                    {
-                        int observed = iteration;
-                        total += observed;
-                    }
-                    Console.WriteLine(total);
-                }
-            }
-            """;
         string directory = Directory.CreateTempSubdirectory("csls-breakpoint-hits-").FullName;
         try
         {
-            (string program, string source) = await EmitProgramAsync(directory, text).ConfigureAwait(false);
-            string[] sourceLines = text.Split('\n');
+            (string program, string source, string buildSource) = await EmitProgramAsync(directory, BreakpointHitSource)
+                .ConfigureAwait(false);
+            string[] sourceLines = BreakpointHitSource.Split('\n');
             int marker = FindSourceLine(sourceLines, "int observed =");
             int counted = FindSourceLine(sourceLines, "total += observed;");
             int final = FindSourceLine(sourceLines, "Console.WriteLine(total);");
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, [],
+                sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             JsonElement original = await ReadBreakpointsAsync(client, source, [marker, counted],
                 conditions: ["iteration == 2", "observed >= 1"], hitConditions: [null, hitCondition]).ConfigureAwait(false);
             foreach (JsonElement breakpoint in original.EnumerateArray())
@@ -309,11 +334,13 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         string directory = Directory.CreateTempSubdirectory("csls-breakpoint-refresh-").FullName;
         try
         {
-            (string program, string source, int[] lines) = await EmitTargetAsync(directory, 3).ConfigureAwait(false);
+            (string program, string source, string buildSource, int[] lines) = await EmitTargetAsync(directory, 3)
+                .ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
-            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, [],
+                sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             Dictionary<int, int> original = await SetBreakpointsAsync(client, source, lines).ConfigureAwait(false);
             if (changeSource)
             {
@@ -439,7 +466,17 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         Assert.AreEqual("int", value.GetProperty("type").GetString());
     }
 
-    private async Task<(string Program, string Source, int[] Lines)> EmitTargetAsync(string directory, int count)
+    private async Task<(string Program, string Source, string BuildSource, int[] Lines)> EmitTargetAsync(
+        string directory,
+        int count)
+    {
+        (string source, int[] lines) = CreateTargetSource(count);
+        (string programPath, string sourcePath, string buildSource) = await EmitProgramAsync(directory, source)
+            .ConfigureAwait(false);
+        return (programPath, sourcePath, buildSource, lines);
+    }
+
+    private static (string Source, int[] Lines) CreateTargetSource(int count)
     {
         var sourceLines = new List<string>
         {
@@ -457,33 +494,62 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         }
         sourceLines.AddRange(["        Console.WriteLine(total);", "    }", "}"]);
         string source = string.Join('\n', sourceLines);
-        (string programPath, string sourcePath) = await EmitProgramAsync(directory, source).ConfigureAwait(false);
-        return (programPath, sourcePath, lines);
+        return (source, lines);
     }
 
-    private async Task<(string Program, string Source)> EmitProgramAsync(string directory, string source)
+    private async Task<(string Program, string Source, string BuildSource)> EmitProgramAsync(
+        string directory,
+        string source)
     {
         long started = Stopwatch.GetTimestamp();
-        TestContext.WriteLine($"Compiling breakpoint fixture in {directory}.");
+        TestContext.WriteLine($"Materializing breakpoint fixture in {directory}.");
         string sourcePath = Path.Join(directory, "Program.cs");
         string programPath = Path.Join(directory, "Csls.BreakpointScale.dll");
-        await File.WriteAllTextAsync(sourcePath, source, Encoding.UTF8, TestContext.CancellationToken).ConfigureAwait(false);
-        SyntaxTree syntax = CSharpSyntaxTree.ParseText(SourceText.From(source, Encoding.UTF8, SourceHashAlgorithm.Sha256),
-            new CSharpParseOptions(LanguageVersion.CSharp14), sourcePath, TestContext.CancellationToken);
-        CSharpCompilation compilation = s_fixtureCompilation.AddSyntaxTrees(syntax);
-        TestContext.WriteLine($"Created breakpoint compilation in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
-        using (var pe = new FileStream(programPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        using (var pdb = new FileStream(Path.ChangeExtension(programPath, ".pdb"), FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        {
-            EmitResult emitted = compilation.Emit(pe, pdb,
-                options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb),
-                cancellationToken: TestContext.CancellationToken);
-            Assert.IsTrue(emitted.Success, string.Join(Environment.NewLine, emitted.Diagnostics));
-        }
+        (byte[] program, byte[] symbols, string buildSource) = GetProgramImage(source);
+        await Task.WhenAll(
+            File.WriteAllTextAsync(sourcePath, source, Encoding.UTF8, TestContext.CancellationToken),
+            File.WriteAllBytesAsync(programPath, program, TestContext.CancellationToken),
+            File.WriteAllBytesAsync(Path.ChangeExtension(programPath, ".pdb"), symbols, TestContext.CancellationToken))
+            .ConfigureAwait(false);
         File.Copy(Path.ChangeExtension(ResolveTestProcessHost(), ".runtimeconfig.json"),
             Path.ChangeExtension(programPath, ".runtimeconfig.json"));
-        TestContext.WriteLine($"Emitted breakpoint fixture in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
-        return (programPath, sourcePath);
+        TestContext.WriteLine($"Materialized breakpoint fixture in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
+        return (programPath, sourcePath, buildSource);
+    }
+
+    private static Dictionary<string, string> CreateSourceFileMap(string buildSource, string source) =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [buildSource] = source
+        };
+
+    private static (byte[] Program, byte[] Symbols, string BuildSource) GetProgramImage(string source) =>
+        s_programImages.GetOrAdd(source, static value =>
+            new Lazy<(byte[] Program, byte[] Symbols, string BuildSource)>(
+                () => CreateProgramImage(value),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+
+    private static (byte[] Program, byte[] Symbols, string BuildSource) CreateProgramImage(string source)
+    {
+        string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
+        string buildSource = $"/csls-breakpoint-fixtures/{digest}/Program.cs";
+        SyntaxTree syntax = CSharpSyntaxTree.ParseText(
+            SourceText.From(source, Encoding.UTF8, SourceHashAlgorithm.Sha256),
+            new CSharpParseOptions(LanguageVersion.CSharp14),
+            buildSource);
+        CSharpCompilation compilation = s_fixtureCompilation.AddSyntaxTrees(syntax);
+        using var program = new MemoryStream();
+        using var symbols = new MemoryStream();
+        EmitResult emitted = compilation.Emit(
+            program,
+            symbols,
+            options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb));
+        if (!emitted.Success)
+        {
+            throw new InvalidOperationException(string.Join(Environment.NewLine, emitted.Diagnostics));
+        }
+
+        return (program.ToArray(), symbols.ToArray(), buildSource);
     }
 
     private static CSharpCompilation CreateFixtureCompilation()
