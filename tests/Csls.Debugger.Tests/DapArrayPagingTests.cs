@@ -78,35 +78,42 @@ public sealed class DapArrayPagingTests : DapTestContext
     }
 
     /// <summary>
-    /// Reports the current array size after each physical variable or expression assignment.
+    /// Reports array sizes after repeated physical variable and expression assignments in one client session.
     /// </summary>
-    /// <param name="command">The DAP assignment operation.</param>
     /// <param name="paging">Whether the client advertises variable paging.</param>
-    /// <param name="expression">The replacement expression assigned to the array local.</param>
-    /// <param name="length">The replacement array length, or null for a null reference.</param>
     [TestMethod]
-    [DataRow("setVariable", true, "vector", 3)]
-    [DataRow("setVariable", true, "empty", 0)]
-    [DataRow("setVariable", true, "absent", null)]
-    [DataRow("setVariable", false, "vector", 3)]
-    [DataRow("setVariable", false, "empty", 0)]
-    [DataRow("setVariable", false, "absent", null)]
-    [DataRow("setExpression", true, "vector", 3)]
-    [DataRow("setExpression", true, "empty", 0)]
-    [DataRow("setExpression", true, "absent", null)]
-    [DataRow("setExpression", false, "vector", 3)]
-    [DataRow("setExpression", false, "empty", 0)]
-    [DataRow("setExpression", false, "absent", null)]
+    [DataRow(true)]
+    [DataRow(false)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ArrayAssignmentsReportReplacementCounts(
+    public async Task ArrayAssignmentsReportReplacementCounts(bool paging)
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        int frameId = await StopAtInitializedArraysAsync(client, paging).ConfigureAwait(false);
+        foreach (string command in new[] { "setVariable", "setExpression" })
+        foreach ((string expression, int? length) in new (string, int?)[]
+        {
+            ("vector", 3),
+            ("empty", 0),
+            ("absent", null)
+        })
+        {
+            await AssertArrayAssignmentAsync(client, frameId, command, paging, expression, length)
+                .ConfigureAwait(false);
+        }
+
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
+
+    private async Task AssertArrayAssignmentAsync(
+        DapTestClient client,
+        int frameId,
         string command,
         bool paging,
         string expression,
         int? length)
     {
-        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
-        int frameId = await StopAtInitializedArraysAsync(client, paging).ConfigureAwait(false);
+        TestContext.WriteLine($"Assigning {expression} through {command} with paging {paging}.");
         int locals = await ReadLocalsReferenceAsync(client, frameId).ConfigureAwait(false);
         int sequence = await client.SendRequestAsync(command, writer =>
         {
@@ -144,7 +151,6 @@ public sealed class DapArrayPagingTests : DapTestContext
             Assert.AreEqual("null", result.GetProperty("value").GetString());
             Assert.AreEqual(0, result.GetProperty("variablesReference").GetInt32());
         }
-        await DisconnectAsync(client).ConfigureAwait(false);
     }
 
     /// <summary>

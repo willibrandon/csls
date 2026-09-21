@@ -490,7 +490,7 @@ jobs:
             unix_wait: true
           - suite: assignment-array
             name: Debugger array assignment
-            minimum_tests: 12
+            minimum_tests: 2
             filter: FullyQualifiedName=Csls.Debugger.Tests.DapArrayPagingTests.ArrayAssignmentsReportReplacementCounts
           - suite: presentation-results
             name: Debugger results-view presentation
