@@ -37,6 +37,178 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
     }
 
     /// <summary>
+    /// Shares framework metadata between real projects and successive workspace loads.
+    /// </summary>
+    [TestMethod]
+    public async Task ProjectLoadingSharesMetadataReferencesAcrossProjectsAndReloads()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-shared-metadata-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "First.csproj"),
+                CreateProjectWithoutSymbolText(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Second.csproj"),
+                CreateProjectWithoutSymbolText(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                "<Solution><Project Path=\"First.csproj\" /><Project Path=\"Second.csproj\" /></Solution>",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Program.cs"),
+                "public sealed class Fixture;",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var loader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            WorkspaceFolderSnapshot initial = Assert.ContainsSingle(await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            using (initial.Workspace)
+            {
+                Project[] projects = [.. initial.Solution.Projects];
+                Assert.HasCount(2, projects);
+                var firstReferences = projects[0]
+                    .MetadataReferences.OfType<PortableExecutableReference>()
+                    .Where(static reference => reference.FilePath is not null)
+                    .ToDictionary(static reference => reference.FilePath!, PathComparer);
+                var secondReferences = projects[1]
+                    .MetadataReferences.OfType<PortableExecutableReference>()
+                    .Where(static reference => reference.FilePath is not null)
+                    .ToDictionary(static reference => reference.FilePath!, PathComparer);
+                string[] commonPaths = [.. firstReferences.Keys.Intersect(
+                    secondReferences.Keys,
+                    PathComparer)];
+                Assert.IsNotEmpty(commonPaths);
+                foreach (string path in commonPaths)
+                {
+                    Assert.AreSame(firstReferences[path], secondReferences[path]);
+                }
+
+                WorkspaceFolderSnapshot reloaded = Assert.ContainsSingle(await loader.LoadAsync(
+                    [workspacePath],
+                    "Debug",
+                    progress: null,
+                    TestContext.CancellationToken).ConfigureAwait(false));
+                using (reloaded.Workspace)
+                {
+                    Project reloadedProject = reloaded.Solution.Projects.First();
+                    var reloadedReferences =
+                        reloadedProject.MetadataReferences
+                            .OfType<PortableExecutableReference>()
+                            .Where(static reference => reference.FilePath is not null)
+                            .ToDictionary(static reference => reference.FilePath!, PathComparer);
+                    foreach (string path in commonPaths)
+                    {
+                        Assert.AreSame(firstReferences[path], reloadedReferences[path]);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                workspacePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Refreshes shared metadata when an assembly or its documentation changes.
+    /// </summary>
+    [TestMethod]
+    public async Task ProjectLoadingRefreshesChangedMetadataAndDocumentation()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-metadata-refresh-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string referencePath = Path.Join(workspacePath, "Reference.dll");
+            File.Copy(typeof(MSBuildWorkspaceLoader).Assembly.Location, referencePath);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Reference Include="Csls.Workspaces.MSBuild">
+                      <HintPath>Reference.dll</HintPath>
+                    </Reference>
+                  </ItemGroup>
+                </Project>
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Program.cs"),
+                "public sealed class Fixture;",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var loader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            WorkspaceFolderSnapshot initial = Assert.ContainsSingle(await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            using (initial.Workspace)
+            {
+                PortableExecutableReference firstReference = GetReference(initial, referencePath);
+                string documentationPath = Path.ChangeExtension(referencePath, ".xml");
+                await File.WriteAllTextAsync(
+                    documentationPath,
+                    "<doc><members /></doc>",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                WorkspaceFolderSnapshot documented = Assert.ContainsSingle(await loader.LoadAsync(
+                    [workspacePath],
+                    "Debug",
+                    progress: null,
+                    TestContext.CancellationToken).ConfigureAwait(false));
+                using (documented.Workspace)
+                {
+                    PortableExecutableReference documentedReference = GetReference(
+                        documented,
+                        referencePath);
+                    Assert.AreNotSame(firstReference, documentedReference);
+
+                    File.SetLastWriteTimeUtc(
+                        referencePath,
+                        File.GetLastWriteTimeUtc(referencePath).AddSeconds(2));
+                    WorkspaceFolderSnapshot updated = Assert.ContainsSingle(await loader.LoadAsync(
+                        [workspacePath],
+                        "Debug",
+                        progress: null,
+                        TestContext.CancellationToken).ConfigureAwait(false));
+                    using (updated.Workspace)
+                    {
+                        PortableExecutableReference updatedReference = GetReference(
+                            updated,
+                            referencePath);
+                        Assert.AreNotSame(documentedReference, updatedReference);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                workspacePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Keeps in-process MSBuild state from changing the language-server process directory.
     /// </summary>
     [TestMethod]
@@ -439,4 +611,17 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 $"..{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal);
     }
+
+    private static PortableExecutableReference GetReference(
+        WorkspaceFolderSnapshot snapshot,
+        string referencePath)
+    {
+        Project project = Assert.ContainsSingle(snapshot.Solution.Projects);
+        return Assert.ContainsSingle(project.MetadataReferences
+            .OfType<PortableExecutableReference>()
+            .Where(reference => PathComparer.Equals(reference.FilePath, referencePath)));
+    }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

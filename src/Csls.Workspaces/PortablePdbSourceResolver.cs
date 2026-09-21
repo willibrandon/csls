@@ -321,7 +321,9 @@ internal static class PortablePdbSourceResolver
         string declarationId,
         CancellationToken cancellationToken)
     {
-        MetadataReference reference = MetadataReference.CreateFromFile(implementationPath);
+        MetadataReference reference = MetadataReferenceImageCache.GetReference(
+            implementationPath,
+            MetadataReferenceProperties.Assembly);
         var compilation = CSharpCompilation.Create(
             "csls.metadata.source",
             references: [reference]);

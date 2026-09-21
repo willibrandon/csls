@@ -56,6 +56,8 @@ internal static class MSBuildProjectInfoFactory
                     snapshot.ProjectPath))
                 .ToHashSet(PathComparer);
             RoslynAnalyzerAssemblyLoader analyzerLoader = CreateAnalyzerLoader(snapshots);
+            var loadedReferences = new Dictionary<string, PortableExecutableReference>(
+                PathComparer);
             ProjectInfo[] projectInfos =
             [
                 .. snapshots.Select(snapshot => CreateProjectInfo(
@@ -64,6 +66,7 @@ internal static class MSBuildProjectInfoFactory
                     snapshotsByPath,
                     knownProjectOutputPaths,
                     analyzerLoader,
+                    loadedReferences,
                     projectFilePaths,
                     reportDiagnostic))
             ];
@@ -88,6 +91,7 @@ internal static class MSBuildProjectInfoFactory
         Dictionary<string, MSBuildProjectSnapshot[]> snapshotsByPath,
         IReadOnlySet<string> knownProjectOutputPaths,
         RoslynAnalyzerAssemblyLoader analyzerLoader,
+        Dictionary<string, PortableExecutableReference> loadedReferences,
         IReadOnlyDictionary<string, string> projectFilePaths,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
     {
@@ -120,6 +124,7 @@ internal static class MSBuildProjectInfoFactory
             projectDirectory,
             projectPath,
             knownProjectOutputPaths,
+            loadedReferences,
             reportDiagnostic);
         var metadataPaths = metadataReferences
             .Select(static reference => reference.FilePath)
@@ -231,6 +236,7 @@ internal static class MSBuildProjectInfoFactory
         string projectDirectory,
         string projectPath,
         IReadOnlySet<string> knownProjectOutputPaths,
+        Dictionary<string, PortableExecutableReference> loadedReferences,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
     {
         var references = new List<PortableExecutableReference>();
@@ -282,15 +288,14 @@ internal static class MSBuildProjectInfoFactory
             string key = $"{path}\0{properties.EmbedInteropTypes}\0{string.Join(',', properties.Aliases)}";
             if (keys.Add(key))
             {
-                string documentationPath = Path.ChangeExtension(path, ".xml");
-                DocumentationProvider? documentationProvider =
-                    File.Exists(documentationPath)
-                        ? XmlDocumentationProvider.CreateFromFile(documentationPath)
-                        : null;
-                references.Add(MetadataReference.CreateFromFile(
-                    path,
-                    properties,
-                    documentationProvider));
+                string imageKey = $"{path}\0{(int)properties.Kind}";
+                if (!loadedReferences.TryGetValue(imageKey, out PortableExecutableReference? reference))
+                {
+                    reference = MetadataReferenceImageCache.GetReference(path, properties);
+                    loadedReferences.Add(imageKey, reference);
+                }
+
+                references.Add(reference.WithProperties(properties));
             }
         }
     }
