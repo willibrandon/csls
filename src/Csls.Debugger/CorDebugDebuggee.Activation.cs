@@ -165,6 +165,7 @@ internal sealed partial class CorDebugDebuggee
                 processOwner,
                 unixExitMonitor,
                 ownsProcess: true,
+                terminateChildProcesses: options.TerminateChildProcesses,
                 ownsRuntimeLease: true,
                 activation);
             activationLease.Transfer();
@@ -177,7 +178,12 @@ internal sealed partial class CorDebugDebuggee
         {
             if (processOwner.Value is Process process)
             {
-                await TerminateProcessAsync(process, unixExitMonitor, managedCallbackOwner.Value, CancellationToken.None)
+                await TerminateProcessAsync(
+                    process,
+                    unixExitMonitor,
+                    managedCallbackOwner.Value,
+                    options.TerminateChildProcesses,
+                    CancellationToken.None)
                     .ConfigureAwait(false);
             }
 

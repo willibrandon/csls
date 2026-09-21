@@ -94,7 +94,7 @@ public sealed partial class DebuggerSession
     }
 
     /// <summary>
-    /// Terminates the owned target process and all of its descendants.
+    /// Terminates the owned target process and any children selected by its launch policy.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for process termination.</param>
     /// <returns>A task that completes after final target notifications are delivered.</returns>

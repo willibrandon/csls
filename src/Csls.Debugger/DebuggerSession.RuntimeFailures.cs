@@ -11,7 +11,8 @@ public sealed partial class DebuggerSession
         CorDebugDebuggee debuggee,
         CorDebugRuntimeException failure,
         Task standardOutput,
-        Task standardError)
+        Task standardError,
+        CancellationTokenSource outputCancellation)
     {
         try
         {
@@ -42,7 +43,7 @@ public sealed partial class DebuggerSession
         }
         finally
         {
-            await CompleteRuntimeFailureCleanupAsync(debuggee, standardOutput, standardError)
+            await CompleteRuntimeFailureCleanupAsync(debuggee, standardOutput, standardError, outputCancellation)
                 .WaitAsync(CancellationToken.None)
                 .ConfigureAwait(false);
         }
@@ -51,7 +52,8 @@ public sealed partial class DebuggerSession
     private async Task CompleteRuntimeFailureCleanupAsync(
         CorDebugDebuggee debuggee,
         Task standardOutput,
-        Task standardError)
+        Task standardError,
+        CancellationTokenSource outputCancellation)
     {
         try
         {
@@ -62,6 +64,11 @@ public sealed partial class DebuggerSession
         }
         finally
         {
+            if (debuggee.ChildOutputMayOutliveTarget)
+            {
+                await outputCancellation.CancelAsync().ConfigureAwait(false);
+            }
+
             try
             {
                 await Task.WhenAll(standardOutput, standardError)

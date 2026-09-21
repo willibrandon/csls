@@ -69,6 +69,11 @@ public sealed class DebugLaunchRequest
     public bool StopAtEntry { get; init; }
 
     /// <summary>
+    /// Gets whether ending the debugger-owned target also terminates its child processes.
+    /// </summary>
+    public bool TerminateChildProcesses { get; init; }
+
+    /// <summary>
     /// Gets whether the debugger requests unoptimized JIT code for loaded managed modules.
     /// </summary>
     public bool SuppressJitOptimizations { get; init; }

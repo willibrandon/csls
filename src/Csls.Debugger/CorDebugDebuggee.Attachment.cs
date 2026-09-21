@@ -122,6 +122,7 @@ internal sealed partial class CorDebugDebuggee
                 processOwner,
                 unixExitMonitor: null,
                 ownsProcess: false,
+                terminateChildProcesses: false,
                 ownsRuntimeLease: true,
                 new CorDebugActivationResult(corDebug, debugProcess));
             activationLease.Transfer();

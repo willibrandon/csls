@@ -184,6 +184,11 @@
       "type": "boolean",
       "default": false
     },
+    "terminateChildProcesses": {
+      "type": "boolean",
+      "default": false,
+      "description": "Terminate processes started by the target when the debug session ends."
+    },
     "justMyCode": {
       "type": "boolean",
       "default": true,
@@ -233,6 +238,7 @@
           {
             "required": ["processId"],
             "properties": {
+              "terminateChildProcesses": false,
               "dumpPath": false,
               "runtimeIndex": false,
               "dacPath": false,
@@ -242,6 +248,7 @@
           {
             "required": ["dumpPath"],
             "properties": {
+              "terminateChildProcesses": false,
               "processId": false,
               "sourceFileMap": false,
               "sourceLinkOptions": false,

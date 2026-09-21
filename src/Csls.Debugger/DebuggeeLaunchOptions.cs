@@ -43,6 +43,11 @@ public sealed class DebuggeeLaunchOptions
     public bool StopAtEntry { get; init; }
 
     /// <summary>
+    /// Gets whether ending the debugger-owned target also terminates its child processes.
+    /// </summary>
+    public bool TerminateChildProcesses { get; init; }
+
+    /// <summary>
     /// Gets build-time source prefixes mapped to local editor paths.
     /// </summary>
     public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =

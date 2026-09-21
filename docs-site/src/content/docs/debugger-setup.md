@@ -62,6 +62,14 @@ Set `stopAtEntry` to `true` to stop at the first executable entry-point statemen
 The default is `false`. Continue from that stop to run the application with its
 configured breakpoints. Restart applies the launch configuration's entry-stop setting.
 
+## Child processes
+
+Ending a launch session terminates its target process and leaves child processes
+running by default. Set `terminateChildProcesses` to `true` to end the target's
+child process tree as well. Restart retains this setting. In the terminal, pass
+`--terminate-child-processes`; MCP `debug_session_start` accepts
+`terminateChildProcesses`.
+
 ## Load environment variables from a file
 
 Set `envFile` in a launch configuration to load a UTF-8 environment file:

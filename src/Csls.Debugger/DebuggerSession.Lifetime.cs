@@ -166,18 +166,19 @@ public sealed partial class DebuggerSession
         IDebuggeeProcess debuggee,
         CancellationToken cancellationToken)
     {
+        using var outputCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task standardOutput = debuggee.CopyStandardOutputAsync(
             (value, token) => _observer.OnOutputAsync(
                 DebugOutputCategory.StandardOutput,
                 value,
                 token),
-            cancellationToken);
+            outputCancellation.Token);
         Task standardError = debuggee.CopyStandardErrorAsync(
             (value, token) => _observer.OnOutputAsync(
                 DebugOutputCategory.StandardError,
                 value,
                 token),
-            cancellationToken);
+            outputCancellation.Token);
         int exitCode;
         try
         {
@@ -189,11 +190,27 @@ public sealed partial class DebuggerSession
                 managedDebuggee,
                 failure,
                 standardOutput,
-                standardError).ConfigureAwait(false);
+                standardError,
+                outputCancellation).ConfigureAwait(false);
             return;
         }
 
-        await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
+        if (debuggee.ChildOutputMayOutliveTarget)
+        {
+            // Descendants can inherit stdout/stderr even after the root has exited.
+            // Stop observing that pipe ownership when the debuggee's lifetime ends.
+            await outputCancellation.CancelAsync().ConfigureAwait(false);
+        }
+
+        try
+        {
+            await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            outputCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.Assert(debuggee.ChildOutputMayOutliveTarget);
+        }
         await _actor.InvokeAsync(
             async token =>
             {

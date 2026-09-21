@@ -78,6 +78,10 @@ internal static class DebuggerCommand
         {
             Description = "Stop at the first executable entry-point statement."
         };
+        var terminateChildProcessesOption = new Option<bool>("--terminate-child-processes")
+        {
+            Description = "Terminate child processes when the launched target ends."
+        };
         var workingDirectoryOption = new Option<string>("--cwd")
         {
             Description = "Target working directory.",
@@ -114,6 +118,7 @@ internal static class DebuggerCommand
             sourceOption,
             lineOption,
             stopAtEntryOption,
+            terminateChildProcessesOption,
             workingDirectoryOption,
             environmentFileOption,
             runtimeOption,
@@ -155,6 +160,7 @@ internal static class DebuggerCommand
                     parseResult.GetValue(requireExactSourceOption) ? "true" : "false",
                     parseResult.GetValue(showRawValuesOption) ? "true" : "false",
                     parseResult.GetValue(allowImplicitFuncEvalOption) ? "true" : "false",
+                    parseResult.GetValue(terminateChildProcessesOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value }),

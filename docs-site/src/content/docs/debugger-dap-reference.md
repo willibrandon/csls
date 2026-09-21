@@ -95,6 +95,7 @@ This page is generated from the shipping DAP dispatcher, target capabilities, an
 | `args` | `array` | No | `[]` | Arguments passed directly to the managed target as literal values. |
 | `noDebug` | `boolean` | No | `false` | Run the target as an ordinary process. |
 | `stopAtEntry` | `boolean` | No | `false` | Stop at the first executable entry-point statement. |
+| `terminateChildProcesses` | `boolean` | No | `false` | Terminate processes started by the target when the debug session ends. |
 | `requireExactSource` | `boolean` | No | `true` | Require local source to match its debug symbols. Set false to bind against unverified local source. |
 | `expressionEvaluationOptions` | `object` | No |  | Managed value presentation and automatic target-code evaluation policy. |
 | `env` | `object` | No |  | Environment variables added to the target. A null value removes an inherited variable. |

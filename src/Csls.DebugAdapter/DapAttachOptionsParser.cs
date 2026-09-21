@@ -21,6 +21,11 @@ internal static class DapAttachOptionsParser
             throw new ArgumentException("The attach request requires an object containing processId or dumpPath.");
         }
 
+        if (arguments.TryGetProperty("terminateChildProcesses", out _))
+        {
+            throw new ArgumentException("terminateChildProcesses applies only to debugger-owned launches.");
+        }
+
         bool hasProcess = arguments.TryGetProperty("processId", out JsonElement processIdValue);
         bool hasDump = arguments.TryGetProperty("dumpPath", out JsonElement dumpPathValue);
         if (hasProcess && hasDump)

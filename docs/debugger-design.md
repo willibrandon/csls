@@ -343,6 +343,7 @@ advertised. Unknown requests receive a normal unsuccessful response and do not
 fault the session. Invalid sequencing receives a stable machine-readable error.
 
 The adapter accepts launch options `program`, `cwd`, `args`, `env`, `envFile`, `noDebug`, `stopAtEntry`,
+`terminateChildProcesses`,
 `runtimeHost`, `sourceFileMap`, `requireExactSource`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
 `enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Live attach
 requires `processId` and accepts the same source, symbol, and stepping options.
@@ -367,6 +368,10 @@ Executables built without symbols stop at entry IL offset zero. The actor retire
 the entry breakpoint before publishing the `entry` stop. Restart rearms entry
 stopping from the retained or replacement launch configuration. User breakpoints
 keep their independent identities and binding policies.
+
+`terminateChildProcesses` defaults to `false`. Session shutdown always retires
+the launched target; selecting `true` also ends its child process tree. Restart
+retains the selected policy. Attached processes remain externally owned.
 
 DAP frame and variable IDs are compact session-local handles, not process pointers.
 Paging is applied before expensive expansion. Memory references are opaque,

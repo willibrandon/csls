@@ -21,6 +21,11 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     bool OwnsProcess { get; }
 
     /// <summary>
+    /// Gets whether surviving children can retain target output stream handles after the root exits.
+    /// </summary>
+    bool ChildOutputMayOutliveTarget { get; }
+
+    /// <summary>
     /// Copies target standard output to a debugger callback until end of stream.
     /// </summary>
     /// <param name="writeAsync">Receives each output segment.</param>
@@ -48,7 +53,7 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     Task<int> WaitForExitAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Terminates the target and its descendants when it is still running.
+    /// Terminates the target and any children selected by its launch policy.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for process exit.</param>
     /// <returns>A task that completes after the target exits.</returns>

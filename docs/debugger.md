@@ -126,6 +126,10 @@ In Zed, use `"adapter": "csls"` in `debug.json`. For attach, set
 Set `stopAtEntry` to `true` in a launch configuration to inspect the entry frame
 before continuing. The same option is available on MCP `debug_session_start`.
 
+Set `terminateChildProcesses` to `true` when the debug session should also end
+processes started by the target. The same option is available on MCP
+`debug_session_start` and as `--terminate-child-processes` in the terminal.
+
 Build projects and resolve launch profiles before starting the adapter. A managed
 DLL runs through the selected `dotnet` host; a platform executable starts directly.
 Restart retains logical breakpoints and starts a new stop generation. Refresh

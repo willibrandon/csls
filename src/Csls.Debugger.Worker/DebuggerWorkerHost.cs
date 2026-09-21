@@ -59,7 +59,7 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 12 ||
+        if (arguments.Count < 13 ||
             !int.TryParse(
                 arguments[4],
                 NumberStyles.None,
@@ -69,7 +69,8 @@ internal static partial class DebuggerWorkerHost
             !bool.TryParse(arguments[8], out bool requireExactSource) ||
             !bool.TryParse(arguments[9], out bool showRawValues) ||
             !bool.TryParse(arguments[10], out bool allowImplicitFuncEval) ||
-            !TryParseSourceFileMap(arguments, 11, out Dictionary<string, string>? sourceFileMap,
+            !bool.TryParse(arguments[11], out bool terminateChildProcesses) ||
+            !TryParseSourceFileMap(arguments, 12, out Dictionary<string, string>? sourceFileMap,
                 out int targetArgumentIndex))
         {
             throw new InvalidDataException(
@@ -84,6 +85,7 @@ internal static partial class DebuggerWorkerHost
                 SourcePath = string.IsNullOrEmpty(arguments[3]) ? null : arguments[3],
                 Line = line == 0 ? null : line,
                 StopAtEntry = stopAtEntry,
+                TerminateChildProcesses = terminateChildProcesses,
                 RequireExactSource = requireExactSource,
                 ExpressionEvaluationOptions = new() { ShowRawValues = showRawValues, AllowImplicitFuncEval = allowImplicitFuncEval },
                 EnvironmentFilePath = string.IsNullOrEmpty(arguments[7]) ? null : arguments[7],

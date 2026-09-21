@@ -846,6 +846,7 @@ Options:
   --source <path>                          Source document containing the initial breakpoint.
   --line <number>                          One-based line for the initial source breakpoint.
   --stop-at-entry                          Stop at the first executable entry-point statement.
+  --terminate-child-processes              Terminate child processes when the launched target ends.
   --cwd <path>                             Target working directory. [default: .]
   --env-file <path>                        UTF-8 environment file, absolute or relative to --cwd.
   --runtime <path>                         Optional dotnet host path used to run a managed assembly.

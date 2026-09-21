@@ -12,14 +12,17 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     private readonly Process _process;
     private readonly int _id;
     private readonly string _name;
+    private readonly bool _terminateChildProcesses;
+    private int _preservedChildren;
     private int _detached;
     private int _disposed;
 
-    private DebuggeeProcess(Process process, string name)
+    private DebuggeeProcess(Process process, string name, bool terminateChildProcesses)
     {
         _process = process;
         _id = process.Id;
         _name = name;
+        _terminateChildProcesses = terminateChildProcesses;
     }
 
     /// <summary>
@@ -34,6 +37,9 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
 
     /// <inheritdoc />
     public bool OwnsProcess => true;
+
+    /// <inheritdoc />
+    public bool ChildOutputMayOutliveTarget => Volatile.Read(ref _preservedChildren) != 0;
 
     /// <summary>
     /// Starts a target without invoking a command shell.
@@ -100,7 +106,7 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
                     $"The operating system did not start '{options.Program}'.");
             }
 
-            return new DebuggeeProcess(process, GetProcessName(executable));
+            return new DebuggeeProcess(process, GetProcessName(executable), options.TerminateChildProcesses);
         }
         catch
         {
@@ -143,7 +149,7 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     }
 
     /// <summary>
-    /// Terminates the target and its descendants when it is still running.
+    /// Terminates the target and its selected descendants when it is still running.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for process exit.</param>
     /// <returns>A task that completes after the target exits.</returns>
@@ -151,7 +157,8 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     {
         if (!_process.HasExited)
         {
-            _process.Kill(entireProcessTree: true);
+            RecordPreservedChildren();
+            _process.Kill(entireProcessTree: _terminateChildProcesses);
         }
 
         await DebuggerProcessExit.WaitAsync(_process, cancellationToken).ConfigureAwait(false);
@@ -175,12 +182,21 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
         {
             if (!_process.HasExited)
             {
-                _process.Kill(entireProcessTree: true);
+                RecordPreservedChildren();
+                _process.Kill(entireProcessTree: _terminateChildProcesses);
             }
             await DebuggerProcessExit.WaitAsync(_process, CancellationToken.None).ConfigureAwait(false);
         }
 
         _process.Dispose();
+    }
+
+    private void RecordPreservedChildren()
+    {
+        if (!_terminateChildProcesses && DebuggeeChildProcesses.GetIds(_id).Length != 0)
+        {
+            Volatile.Write(ref _preservedChildren, 1);
+        }
     }
 
     private static async Task CopyAsync(

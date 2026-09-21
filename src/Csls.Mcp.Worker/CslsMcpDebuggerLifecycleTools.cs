@@ -40,6 +40,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <param name="stopAtEntry">Whether launch stops at the first executable entry-point statement.</param>
+    /// <param name="terminateChildProcesses">Whether ending the launched target also terminates its child processes.</param>
     /// <param name="requireExactSource">Whether local source must match its debug symbols.</param>
     /// <param name="expressionEvaluationOptions">The managed value presentation policy for the session.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
@@ -83,6 +84,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         bool enableStepFiltering = true,
         [Description("Stop at the first executable entry-point statement. Defaults to false.")]
         bool stopAtEntry = false,
+        [Description("Terminate launched child processes when the debug session ends. Defaults to false.")]
+        bool terminateChildProcesses = false,
         [Description("Require local source to match its debug symbols. Defaults to true.")]
         bool requireExactSource = true,
         [Description("Managed value presentation. Set showRawValues to true to inspect physical fields.")]
@@ -115,6 +118,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     SuppressJitOptimizations = suppressJitOptimizations,
                     EnableHotReload = enableHotReload,
                     StopAtEntry = stopAtEntry,
+                    TerminateChildProcesses = terminateChildProcesses,
                     RequireExactSource = requireExactSource,
                     ExpressionEvaluationOptions = expressionEvaluationOptions ?? new(),
                     JustMyCode = justMyCode,

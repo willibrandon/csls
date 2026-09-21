@@ -137,6 +137,10 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(startProperties.TryGetProperty("enableHotReload", out _));
         Assert.AreEqual("boolean", startProperties.GetProperty("stopAtEntry").GetProperty("type").GetString());
         Assert.IsFalse(startProperties.GetProperty("stopAtEntry").GetProperty("default").GetBoolean());
+        Assert.AreEqual("boolean", startProperties.GetProperty("terminateChildProcesses")
+            .GetProperty("type").GetString());
+        Assert.IsFalse(startProperties.GetProperty("terminateChildProcesses")
+            .GetProperty("default").GetBoolean());
         Assert.AreEqual("boolean", startProperties.GetProperty("requireExactSource").GetProperty("type").GetString());
         Assert.IsTrue(startProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
         Assert.AreEqual("boolean", startProperties.GetProperty("expressionEvaluationOptions")

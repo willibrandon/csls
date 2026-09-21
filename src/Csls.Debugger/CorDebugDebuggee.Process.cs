@@ -56,7 +56,13 @@ internal sealed partial class CorDebugDebuggee
         cancellationToken.ThrowIfCancellationRequested();
         if (RuntimeFailure is not null)
         {
-            await TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, cancellationToken)
+            RecordPreservedChildren();
+            await TerminateProcessAsync(
+                _process,
+                _unixExitMonitor,
+                _managedCallback,
+                _terminateChildProcesses,
+                cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -94,7 +100,14 @@ internal sealed partial class CorDebugDebuggee
 
         try
         {
-            DebuggeeChildProcesses.Terminate(_process.Id);
+            if (_terminateChildProcesses)
+            {
+                DebuggeeChildProcesses.Terminate(_process.Id);
+            }
+            else
+            {
+                RecordPreservedChildren();
+            }
         }
         finally
         {
@@ -106,6 +119,15 @@ internal sealed partial class CorDebugDebuggee
                 CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Terminate");
             }
             _managedCallback.RetireProcess();
+        }
+    }
+
+    private void RecordPreservedChildren()
+    {
+        if (_ownsProcess && !_terminateChildProcesses &&
+            DebuggeeChildProcesses.GetIds(_process.Id).Length != 0)
+        {
+            Volatile.Write(ref _preservedChildren, 1);
         }
     }
 
@@ -126,6 +148,7 @@ internal sealed partial class CorDebugDebuggee
         Process process,
         UnixChildExitMonitor? unixExitMonitor,
         CorDebugManagedCallback? managedCallback,
+        bool terminateChildProcesses,
         CancellationToken cancellationToken)
     {
         if (unixExitMonitor is not null)
@@ -134,7 +157,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 try
                 {
-                    process.Kill(entireProcessTree: true);
+                    process.Kill(entireProcessTree: terminateChildProcesses);
                 }
                 catch (Exception exception) when (
                     exception is (InvalidOperationException or Win32Exception) &&
@@ -151,7 +174,7 @@ internal sealed partial class CorDebugDebuggee
 
         if (!process.HasExited)
         {
-            process.Kill(entireProcessTree: true);
+            process.Kill(entireProcessTree: terminateChildProcesses);
         }
 
         managedCallback?.RetireProcess();

@@ -80,6 +80,7 @@ public sealed class DebuggerTerminalTests
                     breakpointLine.ToString(CultureInfo.InvariantCulture),
                     "--source-file-map",
                     $"/_/={repositoryRoot}",
+                    "--terminate-child-processes",
                     "--",
                     "--debugger-fixture",
                     signalPath

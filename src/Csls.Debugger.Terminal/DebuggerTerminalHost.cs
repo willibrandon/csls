@@ -51,7 +51,8 @@ public static class DebuggerTerminalHost
                 SourceFileMap = options.SourceFileMap,
                 RequireExactSource = options.RequireExactSource,
                 ExpressionEvaluationOptions = options.ExpressionEvaluationOptions,
-                StopAtEntry = options.StopAtEntry
+                StopAtEntry = options.StopAtEntry,
+                TerminateChildProcesses = options.TerminateChildProcesses
             },
             cancellationToken).ConfigureAwait(false);
         return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);

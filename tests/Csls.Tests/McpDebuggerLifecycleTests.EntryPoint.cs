@@ -122,7 +122,8 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["environmentFilePath"] = environmentMode == "direct" ? null : ".env",
                 ["environment"] = environment,
                 ["sourceFileMap"] = new Dictionary<string, string> { ["/_/"] = repositoryRoot },
-                ["stopAtEntry"] = true
+                ["stopAtEntry"] = true,
+                ["terminateChildProcesses"] = true
             }, TestContext.CancellationToken).ConfigureAwait(false);
         string debugSession = started.GetProperty("debugSession").GetString()
             ?? throw new AssertFailedException("The launch omitted its debugger identity.");

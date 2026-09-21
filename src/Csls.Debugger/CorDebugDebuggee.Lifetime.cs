@@ -59,7 +59,9 @@ internal sealed partial class CorDebugDebuggee
         {
             if (_ownsProcess)
             {
-                await TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, CancellationToken.None)
+                RecordPreservedChildren();
+                await TerminateProcessAsync(
+                    _process, _unixExitMonitor, _managedCallback, _terminateChildProcesses, CancellationToken.None)
                     .ConfigureAwait(false);
             }
 
@@ -77,7 +79,9 @@ internal sealed partial class CorDebugDebuggee
         {
             if (_ownsProcess)
             {
-                await TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, CancellationToken.None)
+                RecordPreservedChildren();
+                await TerminateProcessAsync(
+                    _process, _unixExitMonitor, _managedCallback, _terminateChildProcesses, CancellationToken.None)
                     .ConfigureAwait(false);
                 await _managedCallback.WaitForExitProcessAsync(CancellationToken.None)
                     .ConfigureAwait(false);

@@ -340,6 +340,11 @@
                 "default": false,
                 "description": "Stop at the first executable entry-point statement."
               },
+              "terminateChildProcesses": {
+                "type": "boolean",
+                "default": false,
+                "description": "Terminate processes started by the target when the debug session ends."
+              },
               "requireExactSource": {
                 "type": "boolean",
                 "default": true,

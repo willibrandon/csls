@@ -720,7 +720,8 @@ public abstract class DapTestContext
         bool suppressJitOptimizations = false,
         bool? stopAtEntry = null,
         bool? showRawValues = null,
-        bool? allowImplicitFuncEval = null)
+        bool? allowImplicitFuncEval = null,
+        bool? terminateChildProcesses = null)
     {
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", noDebug);
@@ -729,6 +730,10 @@ public abstract class DapTestContext
         if (stopAtEntry is bool entryStop)
         {
             writer.WriteBoolean("stopAtEntry", entryStop);
+        }
+        if (terminateChildProcesses is bool terminateChildren)
+        {
+            writer.WriteBoolean("terminateChildProcesses", terminateChildren);
         }
 
         if (showRawValues.HasValue || allowImplicitFuncEval.HasValue)

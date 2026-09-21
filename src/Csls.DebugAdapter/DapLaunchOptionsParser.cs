@@ -65,6 +65,10 @@ internal static class DapLaunchOptionsParser
                     : null,
                 RuntimeHostPath = ResolveRuntimeHost(arguments),
                 StopAtEntry = stopAtEntry,
+                TerminateChildProcesses = DapBooleanOptionParser.Get(
+                    arguments,
+                    "terminateChildProcesses",
+                    defaultValue: false),
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
                 RequireExactSource = DapBooleanOptionParser.Get(arguments, "requireExactSource", defaultValue: true),
                 ExpressionEvaluationOptions = DapExpressionEvaluationOptionsParser.Parse(arguments),

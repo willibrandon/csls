@@ -83,6 +83,7 @@ public sealed partial class DebuggerControlService
         SourceLinkOptions = request.SourceLinkOptions,
         SymbolOptions = request.SymbolOptions,
         StopAtEntry = request.StopAtEntry,
+        TerminateChildProcesses = request.TerminateChildProcesses,
         SuppressJitOptimizations = request.SuppressJitOptimizations,
         EnableHotReload = request.EnableHotReload,
         JustMyCode = request.JustMyCode,
