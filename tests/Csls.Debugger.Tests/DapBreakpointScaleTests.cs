@@ -98,7 +98,8 @@ public sealed class DapBreakpointScaleTests : DapTestContext
                 .ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
-            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(
+                client, () => client.ExitWaitState);
             (int thread, _) = await LaunchAtEntryAsync(client, program, [],
                 sourceFileMap: CreateSourceFileMap(buildSource, source)).ConfigureAwait(false);
             try
@@ -136,8 +137,11 @@ public sealed class DapBreakpointScaleTests : DapTestContext
             }
             catch
             {
+                TestContext.WriteLine($"Adapter exit wait: {client.ExitWaitState}.");
                 TestContext.WriteLine(client.ProtocolTranscript);
                 TestContext.WriteLine(client.Diagnostics.ToString());
+                await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext)
+                    .ConfigureAwait(false);
                 throw;
             }
         }
