@@ -64,11 +64,14 @@ internal static class WindowsDebuggerProcessCapture
             }
             diagnostics.AppendLine(CultureInfo.InvariantCulture,
                 $"{testContext.TestName}: owned processes {string.Join(", ", processes.Select(p => p.Id))}");
-            string[] results = await Task.WhenAll(processes.Select(process =>
-                CaptureOwnedProcessAsync(process, Path.Join(directory, $"process-{process.Id}.dmp"), cancellation.Token)))
-                .ConfigureAwait(false);
-            foreach (string result in results)
+            // Native snapshot writers contend for the same stopped process tree. Capture descendants
+            // first so the target's evidence is complete before collecting its debugger hosts.
+            for (int index = processes.Count - 1; index >= 0; index--)
             {
+                Process process = processes[index];
+                string result = await CaptureOwnedProcessAsync(process,
+                    Path.Join(directory, $"process-{process.Id}.dmp"), testContext, cancellation.Token)
+                    .ConfigureAwait(false);
                 diagnostics.AppendLine(result);
             }
         }
@@ -178,11 +181,13 @@ internal static class WindowsDebuggerProcessCapture
         processes.Add(process);
     }
 
-    private static async Task<string> CaptureOwnedProcessAsync(Process process, string path, CancellationToken cancellationToken)
+    private static async Task<string> CaptureOwnedProcessAsync(Process process, string path,
+        TestContext diagnosticContext, CancellationToken cancellationToken)
     {
         try
         {
-            (int exitCode, string output, string error) = await CaptureAsync(process, path, cancellationToken)
+            (int exitCode, string output, string error) = await CaptureAsync(process, path, cancellationToken,
+                diagnosticContext: diagnosticContext)
                 .ConfigureAwait(false);
             return $"Process {process.Id}, collector exit {exitCode}: {output}{error}";
         }
