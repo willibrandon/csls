@@ -9,32 +9,32 @@ namespace Csls.Debugger.Tests;
 internal struct DebuggerMacRegionInfo
 {
     /// <summary>
-    /// Gets the region's active read, write, and execute permissions.
+    /// Stores the region's active read, write, and execute permissions.
     /// </summary>
     [FieldOffset(0)]
-    internal uint Protection;
+    internal uint _protection;
 
     /// <summary>
-    /// Gets the region's maximum read, write, and execute permissions.
+    /// Stores the region's maximum read, write, and execute permissions.
     /// </summary>
     [FieldOffset(4)]
-    internal uint MaxProtection;
+    internal uint _maxProtection;
 
     /// <summary>
-    /// Gets the operating system's memory-purpose tag.
+    /// Stores the operating system's memory-purpose tag.
     /// </summary>
     [FieldOffset(24)]
-    internal uint UserTag;
+    internal uint _userTag;
 
     /// <summary>
-    /// Gets the region's private, shared, or copy-on-write mode.
+    /// Stores the region's private, shared, or copy-on-write mode.
     /// </summary>
     [FieldOffset(35)]
-    internal byte ShareMode;
+    internal byte _shareMode;
 
     /// <summary>
-    /// Gets whether this entry contains nested mappings.
+    /// Stores whether this entry contains nested mappings.
     /// </summary>
     [FieldOffset(36)]
-    internal int IsSubmap;
+    internal int _isSubmap;
 }

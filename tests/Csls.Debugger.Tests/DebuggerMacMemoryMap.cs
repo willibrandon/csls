@@ -109,7 +109,7 @@ internal static partial class DebuggerMacMemoryMap
             }
 
             visited++;
-            if (region.IsSubmap != 0)
+            if (region._isSubmap != 0)
             {
                 if (depth >= MaximumNestingDepth)
                 {
@@ -122,7 +122,7 @@ internal static partial class DebuggerMacMemoryMap
 
             ulong end = address + size;
             report.AppendLine(FormattableString.Invariant(
-                $"0x{address:X16}-0x{end:X16} {size,12} {FormatProtection(region.Protection)}/{FormatProtection(region.MaxProtection)} {region.UserTag,8} {FormatShareMode(region.ShareMode)}"));
+                $"0x{address:X16}-0x{end:X16} {size,12} {FormatProtection(region._protection)}/{FormatProtection(region._maxProtection)} {region._userTag,8} {FormatShareMode(region._shareMode)}"));
             address = end;
             captured++;
         }
