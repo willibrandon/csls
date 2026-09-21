@@ -32,6 +32,10 @@ internal static class DbgShimLibrary
                 "CloseResumeHandle",
                 "RegisterForRuntimeStartup",
                 "UnregisterForRuntimeStartup",
+                "EnumerateCLRs",
+                "CloseCLREnumeration",
+                "CreateVersionStringFromModule",
+                "CreateDebuggingInterfaceFromVersionEx",
                 "CLRCreateInstance"
             ];
             foreach (string requiredExport in requiredExports)

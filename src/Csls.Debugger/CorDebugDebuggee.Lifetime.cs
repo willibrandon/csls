@@ -121,7 +121,7 @@ internal sealed partial class CorDebugDebuggee
                 return ValueTask.CompletedTask;
             },
             CancellationToken.None).ConfigureAwait(false);
-        _registration.Dispose();
+        _registration?.Dispose();
         _managedCallback.Dispose();
         _standardOutput.Dispose();
         _standardError.Dispose();

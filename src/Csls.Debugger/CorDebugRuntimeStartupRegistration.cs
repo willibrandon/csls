@@ -163,46 +163,23 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
         _ = _completion.TrySetException(failure.InnerExceptions);
     }
 
-    private unsafe void CompleteRuntimeStartup(nint callbackObject, int callbackResult)
+    private void CompleteRuntimeStartup(nint callbackObject, int callbackResult)
     {
-        CorDebugHResult.ThrowIfFailed(callbackResult, "Runtime startup");
-        if (callbackObject == 0)
-        {
-            throw new InvalidOperationException(
-                "Runtime startup succeeded without returning an ICorDebug object.");
-        }
-
         nint corDebug = 0;
         nint attachedProcess = 0;
         try
         {
-            corDebug = ComAbi.QueryInterface(callbackObject, ICorDebugAbi.InterfaceId);
-            _ = ComAbi.Release(callbackObject);
-            callbackObject = 0;
-
-            var api = new ICorDebugAbi(corDebug);
-            CorDebugHResult.ThrowIfFailed(api.Initialize(), "ICorDebug.Initialize");
-            CorDebugHResult.ThrowIfFailed(
-                api.SetManagedHandler(_managedCallback.Pointer),
-                "ICorDebug.SetManagedHandler");
-            nint nativeProcess = 0;
-            nint* processAddress = &nativeProcess;
-            int attachResult = api.DebugActiveProcess(
-                _processId,
-                win32Attach: 0,
-                (nint)processAddress);
-            attachedProcess = Volatile.Read(ref *processAddress);
-            _managedCallback.ThrowIfRuntimeFailed();
-            CorDebugHResult.ThrowIfFailed(attachResult, "ICorDebug.DebugActiveProcess");
-            if (attachedProcess == 0)
+            CorDebugHResult.ThrowIfFailed(callbackResult, "Runtime startup");
+            if (callbackObject == 0)
             {
                 throw new InvalidOperationException(
-                    "ICorDebug.DebugActiveProcess succeeded without returning a process.");
+                    "Runtime startup succeeded without returning an ICorDebug object.");
             }
 
-            _sourceBreakpoints.SetRuntimeVersion(
-                CorDebugRuntimeVersionReader.TryRead(attachedProcess));
-            var result = new CorDebugActivationResult(corDebug, attachedProcess);
+            CorDebugActivationResult result = CorDebugRuntimeActivation.Attach(
+                Interlocked.Exchange(ref callbackObject, 0), _processId, _managedCallback, _sourceBreakpoints);
+            corDebug = result.CorDebug;
+            attachedProcess = result.Process;
             if (!_completion.TrySetResult(result))
             {
                 throw new InvalidOperationException(

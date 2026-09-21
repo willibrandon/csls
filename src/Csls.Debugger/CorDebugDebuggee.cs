@@ -28,7 +28,7 @@ internal sealed partial class CorDebugDebuggee :
     private readonly ManagedReferenceConversion _referenceConversions;
     private readonly ManagedReferenceExpressionEvaluator _referenceExpressions;
     private readonly CorDebugManagedCallback _managedCallback;
-    private readonly CorDebugRuntimeStartupRegistration _registration;
+    private readonly CorDebugRuntimeStartupRegistration? _registration;
     private readonly DbgShimStandardStreams? _standardStreams;
     private readonly TextReader _standardOutput;
     private readonly TextReader _standardError;
@@ -78,7 +78,7 @@ internal sealed partial class CorDebugDebuggee :
         InstructionBreakpointManager instructionBreakpoints,
         EntryPointBreakpointManager entryBreakpoint,
         DisposableOwner<CorDebugManagedCallback> managedCallbackOwner,
-        DisposableOwner<CorDebugRuntimeStartupRegistration> registrationOwner,
+        DisposableOwner<CorDebugRuntimeStartupRegistration>? registrationOwner,
         DbgShimStandardStreamsOwner? standardStreamsOwner,
         DisposableOwner<Process> processOwner,
         UnixChildExitMonitor? unixExitMonitor,
@@ -88,8 +88,6 @@ internal sealed partial class CorDebugDebuggee :
     {
         CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
             ?? throw new InvalidOperationException("No managed callback is owned.");
-        CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
-            ?? throw new InvalidOperationException("No runtime registration is owned.");
         DbgShimStandardStreams? standardStreams = standardStreamsOwner?.Value;
         Process process = processOwner.Value
             ?? throw new InvalidOperationException("No debuggee process is owned.");
@@ -116,7 +114,7 @@ internal sealed partial class CorDebugDebuggee :
         _referenceConversions = new ManagedReferenceConversion(_boundTypes);
         _referenceExpressions = new ManagedReferenceExpressionEvaluator(_referenceConversions);
         _managedCallback = managedCallback;
-        _registration = registration;
+        _registration = registrationOwner?.Value;
         _standardStreams = standardStreams;
         _standardOutput = standardStreams is null
             ? TextReader.Null
@@ -136,7 +134,7 @@ internal sealed partial class CorDebugDebuggee :
         _corDebug = activation.CorDebug;
         _debugProcess = activation.Process;
         _ = managedCallbackOwner.Detach();
-        _ = registrationOwner.Detach();
+        _ = registrationOwner?.Detach();
         if (standardStreamsOwner is not null)
         {
             _ = standardStreamsOwner.Detach();

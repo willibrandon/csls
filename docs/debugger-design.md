@@ -225,13 +225,20 @@ dbgshim's `CreateProcessForLaunch`. Windows hosts use `CreateProcessW` with a Un
 environment and an extended-startup handle allowlist because dbgshim's convenience
 wrapper neither enables Unicode environments nor exposes standard-handle inheritance. Attach
 enumerates loaded CoreCLR instances, reports ambiguity explicitly, and creates the
-interface for the selected runtime. Architecture and permission mismatches are
+interface for the selected runtime through `CreateVersionStringFromModule` and
+`CreateDebuggingInterfaceFromVersionEx`. Attachment and reattachment activate that
+loaded runtime directly on the session actor. Launch and attach share managed
+callback installation, process attachment, initial callback draining, and owned
+interface cleanup. Architecture and permission mismatches are
 reported before partial session activation where the platform exposes enough data.
 
 On Unix, dbgshim inherits the host's process-wide standard handles, so launch is
 serialized through a short process-wide gate. Before protocol processing starts,
 the worker duplicates all three standard descriptors into stable close-on-exec
-handles. Both DAP read-ahead and private-control input remain on the stable input
+handles and directs native standard output to standard error. Native libraries
+and runtime diagnostic children therefore write to the diagnostic stream, while
+DAP and private-control responses use the private output handle.
+Both DAP read-ahead and private-control input remain on the stable input
 descriptor. A Unix input wait watches that descriptor and a private cancellation
 pipe; cancellation wakes the native wait, and disposal waits for the reader before
 closing the wake descriptors. Windows input uses a noninheritable duplicate and

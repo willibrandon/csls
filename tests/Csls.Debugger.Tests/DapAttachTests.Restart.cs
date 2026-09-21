@@ -20,6 +20,8 @@ public sealed partial class DapAttachTests
             Path.GetTempPath(),
             $"csls-debugger-reattach-{Guid.NewGuid():N}.signal");
         using Process target = StartManagedTarget(waitPath);
+        DapTestClient? client = null;
+        string stage = "target readiness";
         try
         {
             char[] readyBuffer = new char[5];
@@ -27,26 +29,32 @@ public sealed partial class DapAttachTests
                 .ReadBlockAsync(readyBuffer, TestContext.CancellationToken)
                 .ConfigureAwait(false);
             Assert.AreEqual(readyBuffer.Length, readyCount);
+            Assert.AreEqual("ready", new string(readyBuffer));
 
-            DapTestClient client = await DapTestClient
+            stage = "adapter initialization";
+            client = await DapTestClient
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
+            int initializeSequence = await client.SendRequestAsync(
                 "initialize",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialize = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
+            AssertResponse(initialize.RootElement, initializeSequence, "initialize");
+            stage = "attach configuration";
+            int attachSequence = await client.SendRequestAsync(
                 "attach",
                 writer => WriteAttachArguments(writer, target.Id),
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialized = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
+            AssertEvent(initialized.RootElement, "initialized");
+            stage = "target attachment";
+            int configurationSequence = await client.SendRequestAsync(
                 "configurationDone",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -59,32 +67,39 @@ public sealed partial class DapAttachTests
             using JsonDocument process = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            AssertResponse(configuration.RootElement, configurationSequence, "configurationDone");
+            AssertResponse(attach.RootElement, attachSequence, "attach");
             AssertEvent(process.RootElement, "process");
 
-            int restartSequence = await client.SendRequestAsync(
-                "restart",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WritePropertyName("arguments");
-                    WriteAttachArguments(writer, target.Id);
-                    writer.WriteEndObject();
-                },
-                TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument restart = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            using JsonDocument restartedProcess = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(restart.RootElement, restartSequence, "restart");
-            AssertEvent(restartedProcess.RootElement, "process");
-            Assert.AreEqual(
-                target.Id,
-                restartedProcess.RootElement.GetProperty("body")
-                    .GetProperty("systemProcessId").GetInt32());
-            Assert.IsFalse(target.HasExited);
+            for (int iteration = 0; iteration < 8; iteration++)
+            {
+                stage = $"restart attachment {iteration + 1}";
+                int restartSequence = await client.SendRequestAsync(
+                    "restart",
+                    writer =>
+                    {
+                        writer.WriteStartObject();
+                        writer.WritePropertyName("arguments");
+                        WriteAttachArguments(writer, target.Id);
+                        writer.WriteEndObject();
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                using JsonDocument restart = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                using JsonDocument restartedProcess = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertResponse(restart.RootElement, restartSequence, "restart");
+                AssertEvent(restartedProcess.RootElement, "process");
+                Assert.AreEqual(
+                    target.Id,
+                    restartedProcess.RootElement.GetProperty("body")
+                        .GetProperty("systemProcessId").GetInt32());
+                Assert.IsFalse(target.HasExited);
+            }
 
+            stage = "disconnect";
             int disconnectSequence = await client.SendRequestAsync(
                 "disconnect",
                 WriteEmptyObject,
@@ -98,9 +113,7 @@ public sealed partial class DapAttachTests
                 await client.WaitForExitAsync(TestContext.CancellationToken)
                     .ConfigureAwait(false));
             Assert.IsFalse(target.HasExited);
-        }
-        finally
-        {
+            stage = "detached target exit";
             await File.WriteAllTextAsync(
                 waitPath,
                 string.Empty,
@@ -108,9 +121,24 @@ public sealed partial class DapAttachTests
             if (!target.HasExited)
             {
                 await target.WaitForExitAsync(TestContext.CancellationToken)
-                    .ConfigureAwait(false);
+                .ConfigureAwait(false);
             }
-
+            Assert.AreEqual(0, target.ExitCode);
+        }
+        catch
+        {
+            TestContext.WriteLine($"Reattach stage: {stage}. Target PID: {target.Id}.");
+            TestContext.WriteLine(client?.ProtocolTranscript ?? "The adapter has not started.");
+            TestContext.WriteLine(client?.Diagnostics.ToString() ?? string.Empty);
+            throw;
+        }
+        finally
+        {
+            if (!target.HasExited)
+            {
+                target.Kill(entireProcessTree: true);
+            }
+            await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             File.Delete(waitPath);
         }
     }

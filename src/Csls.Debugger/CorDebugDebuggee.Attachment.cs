@@ -1,6 +1,4 @@
-using Csls.Debugger.Interop;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger;
 
@@ -67,9 +65,6 @@ internal sealed partial class CorDebugDebuggee
             .AcquireAsync(cancellationToken).ConfigureAwait(false);
         using var processOwner = new DisposableOwner<Process>();
         using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
-        using var registrationOwner =
-            new DisposableOwner<CorDebugRuntimeStartupRegistration>();
-        Task<CorDebugActivationResult>? startup = null;
         nint corDebug = 0;
         nint debugProcess = 0;
         try
@@ -82,7 +77,7 @@ internal sealed partial class CorDebugDebuggee
                 throw new InvalidOperationException($"Process {processId} has already exited.");
             }
 
-            _ = DbgShimRuntimeDiscovery.GetSingleRuntimePath(checked((uint)processId));
+            string runtimePath = DbgShimRuntimeDiscovery.GetSingleRuntimePath(checked((uint)processId));
             managedCallbackOwner.Acquire(() =>
                 new CorDebugManagedCallback(
                 actor,
@@ -99,31 +94,18 @@ internal sealed partial class CorDebugDebuggee
                 evaluationCompleted));
             CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
                 ?? throw new InvalidOperationException("The managed callback was not created.");
-            registrationOwner.Acquire(() =>
-                new CorDebugRuntimeStartupRegistration(
-                    checked((uint)processId),
-                    actor,
-                    managedCallback,
-                    sourceBreakpoints));
-            CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
-                ?? throw new InvalidOperationException(
-                    "The runtime-startup registration was not created.");
-            startup = registration.WaitAsync(CancellationToken.None);
-            var processExit = new CorDebugStartupProcessObservation(process, unixExitMonitor: null, cancellationToken);
-            await using ConfiguredAsyncDisposable processExitScope = processExit.ConfigureAwait(false);
-            CorDebugHResult.ThrowIfFailed(
-                DbgShimNativeMethods.RegisterForRuntimeStartup(
-                    checked((uint)processId),
-                    CorDebugRuntimeStartupRegistration.Callback,
-                    registration.Context,
-                    out nint unregisterToken),
-                "RegisterForRuntimeStartup");
-            registration.SetUnregisterToken(unregisterToken);
-
-            CorDebugActivationResult activation = await WaitForRuntimeStartupAsync(
-                startup, processExit.Completion, process.Id, cancellationToken).ConfigureAwait(false);
-            corDebug = activation.CorDebug;
-            debugProcess = activation.Process;
+            await actor.InvokeAsync(
+                token =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    nint debugger = DbgShimRuntimeDiscovery.CreateDebuggingInterface(
+                        checked((uint)processId), runtimePath);
+                    CorDebugActivationResult activation = CorDebugRuntimeActivation.Attach(
+                        debugger, checked((uint)processId), managedCallback, sourceBreakpoints);
+                    corDebug = activation.CorDebug;
+                    debugProcess = activation.Process;
+                    return ValueTask.CompletedTask;
+                }, cancellationToken).ConfigureAwait(false);
             await managedCallback.WaitForInitializationAsync(cancellationToken)
                 .ConfigureAwait(false);
             managedCallback.ThrowIfRuntimeFailed();
@@ -135,13 +117,13 @@ internal sealed partial class CorDebugDebuggee
                 instructionBreakpoints,
                 entryBreakpoint,
                 managedCallbackOwner,
-                registrationOwner,
+                registrationOwner: null,
                 standardStreamsOwner: null,
                 processOwner,
                 unixExitMonitor: null,
                 ownsProcess: false,
                 ownsRuntimeLease: true,
-                activation);
+                new CorDebugActivationResult(corDebug, debugProcess));
             activationLease.Transfer();
             corDebug = 0;
             debugProcess = 0;
@@ -149,13 +131,6 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
-            if (await DrainRuntimeStartupAsync(registrationOwner.Value, startup).ConfigureAwait(false)
-                is CorDebugActivationResult abandoned)
-            {
-                corDebug = abandoned.CorDebug;
-                debugProcess = abandoned.Process;
-            }
-
             await DetachRuntimeAsync(actor, corDebug, debugProcess, managedCallbackOwner.Value)
                 .ConfigureAwait(false);
         }

@@ -122,4 +122,32 @@ internal static unsafe partial class DbgShimNativeMethods
         nint handleArray,
         nint stringArray,
         uint arrayLength);
+
+    /// <summary>
+    /// Creates the opaque debugger version identifier for a loaded runtime module.
+    /// </summary>
+    /// <param name="processId">The process containing the runtime module.</param>
+    /// <param name="modulePath">The absolute runtime module path.</param>
+    /// <param name="buffer">The caller-owned UTF-16 output buffer, or null to query its size.</param>
+    /// <param name="bufferLength">The output capacity in UTF-16 code units.</param>
+    /// <param name="requiredLength">Receives the required capacity including the terminator.</param>
+    /// <returns>An HRESULT describing the operation result.</returns>
+    [LibraryImport("dbgshim", EntryPoint = "CreateVersionStringFromModule", StringMarshalling = StringMarshalling.Utf16)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    internal static partial int CreateVersionStringFromModule(
+        uint processId, string modulePath, char* buffer, uint bufferLength, out uint requiredLength);
+
+    /// <summary>
+    /// Creates an owned debugger interface for the exact runtime identified by dbgshim.
+    /// </summary>
+    /// <param name="debuggerVersion">The debugger interface contract version from cordebug.idl.</param>
+    /// <param name="runtimeVersion">The opaque null-terminated UTF-16 runtime identifier.</param>
+    /// <param name="debugger">Receives an owned IUnknown interface to release after activation.</param>
+    /// <returns>An HRESULT describing the operation result.</returns>
+    [LibraryImport("dbgshim", EntryPoint = "CreateDebuggingInterfaceFromVersionEx")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    internal static partial int CreateDebuggingInterfaceFromVersionEx(
+        int debuggerVersion, char* runtimeVersion, out nint debugger);
 }
