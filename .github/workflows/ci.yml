@@ -280,6 +280,9 @@ jobs:
     name: ${{ matrix.name }} (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
     needs:
       - debugger-unix-wait
       - debugger-test-binaries
@@ -722,6 +725,7 @@ jobs:
         with:
           name: debugger-test-binaries
           path: artifacts
+          github-token: ${{ github.token }}
 
       - name: Extract test binaries
         run: >-
@@ -734,6 +738,7 @@ jobs:
         with:
           name: debugger-unix-wait-${{ matrix.rid }}
           path: artifacts/bin/Csls.Debugger.Worker/debug
+          github-token: ${{ github.token }}
 
       - name: Prepare macOS debugger authorization
         id: debugger-authorization
