@@ -175,6 +175,19 @@ public sealed class DapTerminationTests : DapTestContext
                 Assert.IsFalse(descendant.HasExited, $"Child process {descendant.Id} should survive.");
             }
             Assert.IsFalse(sibling.HasExited);
+
+            // Preserved descendants may retain the adapter's inherited stderr pipe.
+            // Release these test-owned processes before requiring that pipe to reach EOF.
+            foreach (Process descendant in targets.Skip(1).Reverse())
+            {
+                if (!descendant.HasExited)
+                {
+                    descendant.Kill(entireProcessTree: true);
+                }
+
+                await descendant.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            }
+
             Volatile.Write(ref phase, "waiting for adapter exit");
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
             Volatile.Write(ref phase, "checking adapter diagnostics");

@@ -179,8 +179,6 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
         {
             int result = DuplicateDescriptor(saved, destination);
             ThrowIfUnixFailed(result, $"dup2({saved}, {destination})");
-            result = SetDescriptorFlags(destination, SetFileDescriptorFlags, CloseOnExec);
-            ThrowIfUnixFailed(result, $"fcntl({destination}, F_SETFD, FD_CLOEXEC)");
         }
         finally
         {

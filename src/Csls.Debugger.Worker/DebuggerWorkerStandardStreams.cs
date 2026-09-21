@@ -64,7 +64,6 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
                     throw new Win32Exception(Marshal.GetLastPInvokeError(), "dup2(stderr, stdout)");
                 }
 
-                MakeUnixStandardDescriptorsPrivate();
             }
 
             _error = new StreamWriter(
@@ -151,23 +150,6 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
         {
             handle.Dispose();
             throw;
-        }
-    }
-
-    private static void MakeUnixStandardDescriptorsPrivate()
-    {
-        MakeUnixStandardDescriptorPrivate(StandardInputDescriptor);
-        MakeUnixStandardDescriptorPrivate(StandardOutputDescriptor);
-        MakeUnixStandardDescriptorPrivate(StandardErrorDescriptor);
-    }
-
-    private static void MakeUnixStandardDescriptorPrivate(int descriptor)
-    {
-        if (SetDescriptorFlags(descriptor, SetFileDescriptorFlags, CloseOnExec) < 0)
-        {
-            throw new Win32Exception(
-                Marshal.GetLastPInvokeError(),
-                $"fcntl({descriptor}, F_SETFD, FD_CLOEXEC)");
         }
     }
 
