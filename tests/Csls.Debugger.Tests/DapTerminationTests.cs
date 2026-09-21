@@ -140,7 +140,7 @@ public sealed class DapTerminationTests : DapTestContext
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             string phase = "launching";
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(
-                client, () => Volatile.Read(ref phase));
+                client, () => $"{Volatile.Read(ref phase)} ({client.ExitWaitState})");
             await LaunchAsync(client, ["--debugger-process-tree", pipeName], noDebug,
                 terminateChildProcesses).ConfigureAwait(false);
             TestContext.WriteLine("Launched child-preserving target.");

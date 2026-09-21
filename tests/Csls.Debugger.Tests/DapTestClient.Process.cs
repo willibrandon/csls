@@ -9,6 +9,13 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 internal sealed partial class DapTestClient
 {
+    private string _exitWaitState = "not started";
+
+    /// <summary>
+    /// Gets the current adapter-exit wait phase for timeout diagnostics.
+    /// </summary>
+    internal string ExitWaitState => Volatile.Read(ref _exitWaitState);
+
     /// <summary>
     /// Waits for the production DAP process to finish.
     /// </summary>
@@ -18,8 +25,11 @@ internal sealed partial class DapTestClient
     {
         Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
+        Volatile.Write(ref _exitWaitState, "process exit");
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        Volatile.Write(ref _exitWaitState, "stderr EOF");
         await _diagnostics.ConfigureAwait(false);
+        Volatile.Write(ref _exitWaitState, "complete");
         return process.ExitCode;
     }
 

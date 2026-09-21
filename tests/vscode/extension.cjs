@@ -1,4 +1,4 @@
-const { writeFile } = require("node:fs/promises");
+const { rename, writeFile } = require("node:fs/promises");
 
 exports.activate = async function activate() {
   const resultPath = process.env.CSLS_VSCODE_REMOTE_RESULT_PATH;
@@ -22,5 +22,7 @@ exports.activate = async function activate() {
     };
   }
 
-  await writeFile(resultPath, JSON.stringify(result), "utf8");
+  const temporaryPath = `${resultPath}.${process.pid}.tmp`;
+  await writeFile(temporaryPath, JSON.stringify(result), "utf8");
+  await rename(temporaryPath, resultPath);
 };

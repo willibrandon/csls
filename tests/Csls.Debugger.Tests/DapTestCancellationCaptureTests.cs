@@ -59,5 +59,6 @@ public sealed class DapTestCancellationCaptureTests : DapTestContext
     }
 
     private string ExpectedCapture(DapTestClient client) =>
-        $"{TestContext.TestName}, adapter {client.HostProcessId}{Environment.NewLine}{client.ProtocolTranscript}";
+        $"{TestContext.TestName}, adapter {client.HostProcessId}, stage unknown" +
+        $"{Environment.NewLine}{client.ProtocolTranscript}";
 }
