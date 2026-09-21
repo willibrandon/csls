@@ -3,13 +3,13 @@
   "name": "io.github.willibrandon/csls-mcp",
   "title": "csls",
   "description": "C# language intelligence across selected workspaces and live editor sessions.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "websiteUrl": "https://willibrandon.github.io/csls/",
   "packages": [
     {
       "registryType": "nuget",
       "identifier": "csls-mcp",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "transport": {
         "type": "stdio"
       },

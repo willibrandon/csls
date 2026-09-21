@@ -41,6 +41,7 @@ VerifyCorDebugIdl(repositoryRoot, failures);
 await VerifyGeneratedCorDebugInteropAsync(repositoryRoot, failures).ConfigureAwait(false);
 VerifyGitHubActionReferences(repositoryRoot, failures);
 VerifyVsCodeActivationEvents(repositoryRoot, failures);
+VerifyMcpServerManifestVersion(repositoryRoot, failures);
 if (failures.Count != 0)
 {
     foreach (string failure in failures.Order(StringComparer.Ordinal))
@@ -118,6 +119,36 @@ static void VerifyVsCodeActivationEvents(
         {
             failures.Add($"VS Code wildcard activation is forbidden: {manifestPath}");
         }
+    }
+}
+
+static void VerifyMcpServerManifestVersion(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    var buildProperties = XDocument.Load(
+        Path.Join(repositoryRoot, "Directory.Build.props"));
+    string? version = buildProperties
+        .Descendants("VersionPrefix")
+        .Select(static element => element.Value)
+        .SingleOrDefault();
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        failures.Add("Directory.Build.props must declare one VersionPrefix.");
+        return;
+    }
+
+    using var manifest = JsonDocument.Parse(
+        File.ReadAllText(Path.Join(repositoryRoot, ".mcp", "server.json")));
+    string? serverVersion = manifest.RootElement.GetProperty("version").GetString();
+    string? packageVersion = manifest.RootElement
+        .GetProperty("packages")[0]
+        .GetProperty("version")
+        .GetString();
+    if (!string.Equals(serverVersion, version, StringComparison.Ordinal) ||
+        !string.Equals(packageVersion, version, StringComparison.Ordinal))
+    {
+        failures.Add("The MCP server and package versions must match VersionPrefix.");
     }
 }
 
