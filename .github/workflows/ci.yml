@@ -254,6 +254,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: runner.os != 'macOS'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -708,6 +709,7 @@ jobs:
 
     steps:
       - name: Set up .NET
+        if: runner.os != 'macOS'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x

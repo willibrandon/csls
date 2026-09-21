@@ -26,7 +26,8 @@ public sealed class DumpCancellationTests : DapTestContext
     public async Task CapturedReadCancellationPreservesSession(bool includeHeap, long checkpoint)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureFrameValues: true, includeHeap).ConfigureAwait(false);
+            TestContext.CancellationToken, captureFrameValues: true, includeHeap,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);

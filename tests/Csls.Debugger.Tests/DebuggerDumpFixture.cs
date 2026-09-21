@@ -136,6 +136,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
 
                 async Task CaptureAsync()
                 {
+                    Log("Starting dump writer.");
                     var diagnostics = new DiagnosticsClient(target.Id);
                     await diagnostics.WriteDumpAsync(selectedCaptureType, dump, logDumpGeneration: false, cancellationToken)
                         .ConfigureAwait(false);
