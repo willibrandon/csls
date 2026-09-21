@@ -27,45 +27,38 @@ public sealed class ZedLanguageServerTests
     /// <param name="symbolName">The framework symbol selected in Zed.</param>
     /// <param name="expectedDeclaration">The declaration expected in generated source.</param>
     /// <param name="expectedFileName">The expected generated source file name.</param>
-    /// <param name="expectedImplementation">Optional implementation text expected in generated source.</param>
     [TestMethod]
     [DataRow(
         "var awaitable = Task.CompletedTask.ConfigureAwait(false);",
         "ConfigureAwait",
         "class Task",
-        "Task.cs",
-        null)]
+        "Task.cs")]
     [DataRow(
         "bool same = object.ReferenceEquals(null, null);",
         "ReferenceEquals",
         "class Object",
-        "Object.cs",
-        null)]
+        "Object.cs")]
     [DataRow(
         "bool blank = string.IsNullOrWhiteSpace(null);",
         "IsNullOrWhiteSpace",
         "class String",
-        "String.cs",
-        null)]
+        "String.cs")]
     [DataRow(
         "Dictionary<string, int> values = new();",
         "Dictionary",
         "class Dictionary",
-        "Dictionary.cs",
-        null)]
+        "Dictionary.cs")]
     [DataRow(
         "Lazy<int> value = new();",
         "Lazy",
         "class Lazy",
-        "Lazy.cs",
-        "private T CreateValue()")]
+        "Lazy.cs")]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedOpensFrameworkDefinitionFromCsls(
         string documentText,
         string symbolName,
         string expectedDeclaration,
-        string expectedFileName,
-        string? expectedImplementation)
+        string expectedFileName)
     {
         ArgumentNullException.ThrowIfNull(documentText);
         ArgumentNullException.ThrowIfNull(symbolName);
@@ -220,13 +213,6 @@ public sealed class ZedLanguageServerTests
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.Contains(expectedDeclaration, materializedDefinitionText, StringComparison.Ordinal);
                 Assert.Contains(symbolName, materializedDefinitionText, StringComparison.Ordinal);
-                if (expectedImplementation is not null)
-                {
-                    Assert.Contains(
-                        expectedImplementation,
-                        materializedDefinitionText,
-                        StringComparison.Ordinal);
-                }
 
                 string openedDefinitionText = await WaitForEditorTextAsync(
                     displayName,

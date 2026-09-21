@@ -1,11 +1,14 @@
+using Microsoft.Win32.SafeHandles;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Csls.Debugger.Fixtures.CSharp;
 
 /// <summary>
 /// Keeps optimized storage lifetimes distinct while a real thread remains stopped in a native wait.
 /// </summary>
-internal static class UnavailableLocalsFixture
+internal static partial class UnavailableLocalsFixture
 {
     /// <summary>
     /// Expires the first local before retaining the following local across a blocking call.
@@ -31,6 +34,12 @@ internal static class UnavailableLocalsFixture
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void WaitForInspection()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            WaitForInspectionOnWindows();
+            return;
+        }
+
         Thread inspected = Thread.CurrentThread;
         using var gate = new ManualResetEvent(false);
         int enteringWait = 0;
@@ -48,4 +57,43 @@ internal static class UnavailableLocalsFixture
         Volatile.Write(ref enteringWait, 1);
         _ = gate.WaitOne();
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WaitForInspectionOnWindows()
+    {
+        using var readiness = new EventWaitHandle(false, EventResetMode.ManualReset);
+        using var gate = new EventWaitHandle(false, EventResetMode.ManualReset);
+        var observer = new Thread(() =>
+        {
+            _ = readiness.WaitOne();
+            WriteReadinessAndWait(gate, "ready");
+        })
+        {
+            IsBackground = true
+        };
+        observer.Start();
+        uint result = SignalObjectAndWait(
+            readiness.SafeWaitHandle,
+            gate.SafeWaitHandle,
+            uint.MaxValue,
+            alertable: 0);
+        throw new Win32Exception(Marshal.GetLastPInvokeError(),
+            $"SignalObjectAndWait unexpectedly returned 0x{result:X8}.");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WriteReadinessAndWait(WaitHandle gate, string announcement)
+    {
+        Console.Write(announcement);
+        Console.Out.Flush();
+        _ = gate.WaitOne();
+    }
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial uint SignalObjectAndWait(
+        SafeWaitHandle objectToSignal,
+        SafeWaitHandle objectToWaitOn,
+        uint milliseconds,
+        int alertable);
 }
