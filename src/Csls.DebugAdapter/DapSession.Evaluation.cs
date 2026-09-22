@@ -27,13 +27,14 @@ internal sealed partial class DapSession
                 request.Arguments,
                 "expression",
                 "evaluate");
+            bool allowTargetCodeExecution = AllowsTargetCodeExecution(request.Arguments);
             int frameId = await GetEvaluationFrameIdAsync(
                 request.Arguments,
                 cancellationToken).ConfigureAwait(false);
             DebugEvaluateResult result = await _engineSession.EvaluateAsync(
                 frameId,
                 expression,
-                allowTargetCodeExecution: true,
+                allowTargetCodeExecution,
                 cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -73,6 +74,26 @@ internal sealed partial class DapSession
         {
             await WriteStackVariablesInvalidatedAsync(_lifetime.Token).ConfigureAwait(false);
         }
+    }
+
+    private static bool AllowsTargetCodeExecution(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("context", out JsonElement context))
+        {
+            return false;
+        }
+
+        if (context.ValueKind != JsonValueKind.String)
+        {
+            throw new ArgumentException("The evaluate context value must be a string.");
+        }
+
+        return context.GetString() switch
+        {
+            "watch" or "repl" => true,
+            "hover" or "clipboard" or "variables" => false,
+            _ => throw new ArgumentException("The evaluate context value is not supported.")
+        };
     }
 
     private ValueTask WriteStackVariablesInvalidatedAsync(

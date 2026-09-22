@@ -156,6 +156,62 @@ public sealed class DapArrayPagingTests : DapTestContext
     }
 
     /// <summary>
+    /// Keeps automatic editor inspection from executing a target method.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NonInteractiveEvaluateContextsDoNotExecuteTargetCode()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string dangerousCall =
+            "Csls.TestProcessHost.DebuggerDumpArrayFixture.CrashDuringDebuggerEvaluation()";
+
+        foreach (string? context in new string?[] { "hover", "clipboard", "variables", null })
+        {
+            int sequence = await client.SendRequestAsync("evaluate", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("expression", dangerousCall);
+                writer.WriteNumber("frameId", frameId);
+                if (context is not null)
+                {
+                    writer.WriteString("context", context);
+                }
+
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(response.RootElement, sequence, "evaluate", success: false);
+            Assert.Contains("not authorized", Assert.IsInstanceOfType<string>(
+                response.RootElement.GetProperty("message").GetString()));
+
+            int inspection = await client.SendRequestAsync("evaluate", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("expression", "vector[0]");
+                writer.WriteNumber("frameId", frameId);
+                if (context is not null)
+                {
+                    writer.WriteString("context", context);
+                }
+
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument inspected = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(inspected.RootElement, inspection, "evaluate", success: true);
+            Assert.AreEqual("41", inspected.RootElement.GetProperty("body").GetProperty("result").GetString());
+        }
+
+        await DisconnectAsync(client).ConfigureAwait(false);
+        Assert.IsEmpty(client.Diagnostics.ToString());
+    }
+
+    /// <summary>
     /// Selects the nearest loaded reference overload and rejects an unrelated parameter type.
     /// </summary>
     [TestMethod]

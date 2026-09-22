@@ -55,6 +55,8 @@ DAP `evaluate`, breakpoint conditions, logpoint interpolation, and the MCP
 `debug_evaluate` tool share one language-neutral evaluator. C#, Visual Basic, and F#
 syntax is parsed in a supervised compiler worker selected from the frame's PDB language
 identity, then lowered to a bounded versioned plan consumed by the runtime engine.
+Editor hovers, clipboard inspection, and variable previews use the side-effect-free
+path. Debug Console and watch expressions can use supervised target-code evaluation.
 
 The side-effect-free subset includes:
 
