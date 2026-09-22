@@ -669,6 +669,7 @@ internal static class DebuggerDumpArrayFixture
         cycle[0] = cycle;
         List<int>?[] constructed = [[81, 82], null];
         (int, string)[] tuples = [(73, "captured pair")];
+        (int, int)[] unmanagedTuples = [(17, 23)];
         int?[] nullable = [37, null];
         decimal[] decimals = [12.5m];
         DebuggerOptionalStructFixture[] optionalStructs = [new()];
@@ -705,6 +706,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(cycle);
         GC.KeepAlive(constructed);
         GC.KeepAlive(tuples);
+        GC.KeepAlive(unmanagedTuples);
         GC.KeepAlive(nullable);
         GC.KeepAlive(decimals);
         GC.KeepAlive(optionalStructs);

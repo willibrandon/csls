@@ -44,7 +44,7 @@ internal static class ManagedFunctionGenericConstraintValidator
             ManagedBoundType argument = methodArguments[index];
             GenericParameterAttributes attributes = parameter.Attributes;
             if (!SatisfiesSpecialConstraints(argument, attributes, types, thread) ||
-                HasUnmanagedConstraint(reader, parameter))
+                HasUnmanagedConstraint(reader, parameter) && !types.IsUnmanaged(argument, thread))
             {
                 return false;
             }

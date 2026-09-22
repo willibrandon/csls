@@ -13,6 +13,7 @@ namespace Csls.Debugger;
 internal sealed class ManagedBoundTypeSystem
 {
     private const int MaximumDepth = 128;
+    private const int MaximumUnmanagedFields = 10_000;
     private readonly SourceBreakpointManager _modules;
     private readonly ManagedRuntimeTypeCatalog _catalog;
     private readonly ManagedCoreLibrary _coreLibrary;
@@ -109,6 +110,98 @@ internal sealed class ManagedBoundTypeSystem
             ManagedDebuggerAttributeReader.GetAttributeTypeName(
                 metadata, metadata.GetCustomAttribute(handle)) ==
             "System.Runtime.CompilerServices.IsByRefLikeAttribute");
+    }
+
+    /// <summary>
+    /// Checks whether an exact loaded value type contains only unmanaged instance storage.
+    /// </summary>
+    internal bool IsUnmanaged(ManagedBoundType type, nint thread)
+    {
+        int remainingFields = MaximumUnmanagedFields;
+        return IsUnmanagedCore(type, thread, depth: 0, ref remainingFields);
+    }
+
+    private bool IsUnmanagedCore(
+        ManagedBoundType type,
+        nint thread,
+        int depth,
+        ref int remainingFields)
+    {
+        CheckDepth(depth);
+        if (type.IsReference || type.IsArray || type.ElementType is 0x01 or 0x16)
+        {
+            return false;
+        }
+
+        if (type.ElementType is >= 0x02 and <= 0x0d or 0x0f or 0x18 or 0x19 or 0x1b)
+        {
+            return true;
+        }
+
+        if (type.ElementType != 0x11)
+        {
+            return false;
+        }
+
+        if (IsCoreType(type, "System.Nullable`1", thread) || IsByRefLike(type))
+        {
+            return false;
+        }
+
+        CorDebugLoadedModule module = GetModule(type);
+        using PEReader pe = OpenModule(module);
+        MetadataReader reader = pe.GetMetadataReader();
+        using var metadata = new ManagedMetadataImage(reader, module.MetadataDeltas);
+        TypeDefinition definition = GetDefinition(reader, type.DefinitionToken);
+        var provider = new ManagedMetadataTypeSignatureProvider(module.Pointer, metadata);
+        foreach (FieldDefinition field in definition.GetFields().Select(reader.GetFieldDefinition))
+        {
+            if ((field.Attributes & FieldAttributes.Static) != 0)
+            {
+                continue;
+            }
+
+            if (--remainingFields < 0)
+            {
+                return false;
+            }
+
+            ManagedMetadataTypeSignature signature = field.DecodeSignature(provider, genericContext: null);
+            if (!IsUnmanagedSignature(signature, type.TypeArguments, thread, depth + 1, ref remainingFields))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool IsUnmanagedSignature(
+        ManagedMetadataTypeSignature signature,
+        IReadOnlyList<ManagedBoundType> typeArguments,
+        nint thread,
+        int depth,
+        ref int remainingFields)
+    {
+        CheckDepth(depth);
+        if (signature.ArrayShapes.Count != 0 || signature.GenericMethodParameterIndex is not null)
+        {
+            return false;
+        }
+
+        if (signature.UnsupportedKind is string kind)
+        {
+            return kind is "pointer" or "function-pointer";
+        }
+
+        if (signature.GenericTypeParameterIndex is int index)
+        {
+            return (uint)index < (uint)typeArguments.Count &&
+                IsUnmanagedCore(typeArguments[index], thread, depth + 1, ref remainingFields);
+        }
+
+        ManagedBoundType fieldType = Bind(signature, typeArguments, [], thread);
+        return IsUnmanagedCore(fieldType, thread, depth + 1, ref remainingFields);
     }
 
     /// <summary>

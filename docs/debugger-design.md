@@ -601,7 +601,8 @@ elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;
 result binding uses the same inferred arguments before evaluation begins.
 The binder checks the current method's `class`, `struct`, `new()`, base-class,
-and interface constraints against exact loaded type identities before target execution.
+interface, and recursively loaded unmanaged-storage constraints against exact loaded
+type identities before target execution.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather
