@@ -67,7 +67,7 @@ internal static class DebuggerAsyncStepOutFixture
         answer += buffer[0]; // task resumption
         try
         {
-            return CollectAndReturn(answer + 1, coordination);
+            return await CollectAndReturnAsync(answer + 1, coordination).ConfigureAwait(false);
         }
         finally
         {
@@ -83,7 +83,7 @@ internal static class DebuggerAsyncStepOutFixture
         answer += buffer[0]; // value task resumption
         try
         {
-            return CollectAndReturn(answer + 1, coordination);
+            return await CollectAndReturnAsync(answer + 1, coordination).ConfigureAwait(false);
         }
         finally
         {
@@ -99,13 +99,15 @@ internal static class DebuggerAsyncStepOutFixture
         }
     }
 
-    private static int CollectAndReturn(int value, NamedPipeClientStream? coordination)
+    private static async Task<int> CollectAndReturnAsync(int value, NamedPipeClientStream? coordination)
     {
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
         if (coordination is not null)
         {
-            coordination.WriteByte(2);
-            if (coordination.ReadByte() != 1)
+            await coordination.WriteAsync(new byte[] { 2 }).ConfigureAwait(false);
+            byte[] handshake = new byte[1];
+            await coordination.ReadExactlyAsync(handshake).ConfigureAwait(false);
+            if (handshake[0] != 1)
             {
                 throw new IOException("The selected asynchronous callee was not released by its caller-order handshake.");
             }
