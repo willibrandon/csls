@@ -209,4 +209,97 @@ public sealed class DapOptionalArgumentTests : DapTestContext
 
         await DisconnectAsync(client).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Resets exact value-type storage through typed defaults and rejects a different type.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TypedDefaultsAssignOnlyToMatchingStructStorage()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+
+        int rejected = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "decimals[0]");
+            writer.WriteString("value", "default(System.Guid)");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, rejected, "setExpression", success: false);
+            Assert.Contains("typed default", Assert.IsInstanceOfType<string>(
+                response.RootElement.GetProperty("message").GetString()));
+        }
+
+        JsonElement unchanged = await ReadEvaluationAsync(client, frameId, "decimals[0]", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("12.5", unchanged.GetProperty("result").GetString());
+
+        foreach ((string destination, string value, string expected) in new[]
+        {
+            ("decimals[0]", "default(decimal)", "0"),
+            ("nullable[0]", "default(int?)", "null")
+        })
+        {
+            int sequence = await client.SendRequestAsync("setExpression", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("frameId", frameId);
+                writer.WriteString("expression", destination);
+                writer.WriteString("value", value);
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, sequence, "setExpression", success: true);
+            }
+
+            using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+            JsonElement result = await ReadEvaluationAsync(client, frameId, destination, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, result.GetProperty("result").GetString(), destination);
+        }
+
+        int structAssignment = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "optionalStructs[0]");
+            writer.WriteString("value", "default(Csls.TestProcessHost.DebuggerOptionalStructFixture)");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, structAssignment, "setExpression", success: true);
+        }
+
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement observed = await ReadEvaluationAsync(client, frameId,
+            "Csls.TestProcessHost.DebuggerDumpArrayFixture.OptionalStructWithoutConstantForDebugger(optionalStructs[0])",
+            success: true, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("1", observed.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
 }

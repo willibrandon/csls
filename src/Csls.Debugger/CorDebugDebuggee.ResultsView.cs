@@ -199,6 +199,7 @@ internal sealed partial class CorDebugDebuggee
                 MaterializesString = false,
                 Arguments = retainedEnumerable == 0 ? [enumerableArgument] : [],
                 RuntimeArguments = [targetHandle],
+                RuntimeArgumentIsHeapHandle = [true],
                 ThreadId = threadId,
                 ThreadStates = threadStates,
                 ResultsView = new ManagedResultsViewEvaluation(

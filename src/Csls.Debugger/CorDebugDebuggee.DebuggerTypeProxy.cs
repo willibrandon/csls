@@ -122,6 +122,7 @@ internal sealed partial class CorDebugDebuggee
                 MaterializesString = false,
                 Arguments = arguments,
                 RuntimeArguments = [targetHandle],
+                RuntimeArgumentIsHeapHandle = [true],
                 ThreadId = threadId,
                 ThreadStates = threadStates,
                 DebuggerTypeProxy = new ManagedDebuggerTypeProxyEvaluation(

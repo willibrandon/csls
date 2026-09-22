@@ -218,6 +218,29 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
+    private (nint Value, bool IsHeapHandle) RetainFunctionEvaluationArgument(nint value)
+    {
+        if (ManagedRuntimeValueIdentity.GetElementType(value) == 0x11)
+        {
+            _ = ComAbi.AddRef(value);
+            return (value, false);
+        }
+
+        return (CreateFunctionEvaluationHandle(value), true);
+    }
+
+    private void ReleaseFunctionEvaluationArgument(nint value, bool isHeapHandle, bool runtimeAvailable = true)
+    {
+        if (isHeapHandle)
+        {
+            ReleaseFunctionEvaluationHandle(value, runtimeAvailable);
+        }
+        else if (value != 0)
+        {
+            _ = ComAbi.Release(value);
+        }
+    }
+
     private void ReleaseFunctionEvaluationHandle(nint handle, bool runtimeAvailable = true)
     {
         if (handle == 0)

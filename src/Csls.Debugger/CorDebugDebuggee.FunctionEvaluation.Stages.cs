@@ -218,6 +218,7 @@ internal sealed partial class CorDebugDebuggee
 
             nextEvaluation = CreateEvaluation(active.Thread);
             active.RuntimeArguments[argumentIndex] = handle;
+            active.RuntimeArgumentIsHeapHandle[argumentIndex] = true;
             handle = 0;
             active.Pointer = nextEvaluation;
             nextEvaluation = 0;
@@ -284,10 +285,14 @@ internal sealed partial class CorDebugDebuggee
             ReleaseFunctionEvaluationHandle(evaluation.Receiver, runtimeAvailable);
         }
 
-        foreach (nint argument in evaluation.RuntimeArguments.Where(
-            argument => argument != retainedEnumerable))
+        for (int index = 0; index < evaluation.RuntimeArguments.Length; index++)
         {
-            ReleaseFunctionEvaluationHandle(argument, runtimeAvailable);
+            nint argument = evaluation.RuntimeArguments[index];
+            if (argument != retainedEnumerable)
+            {
+                ReleaseFunctionEvaluationArgument(
+                    argument, evaluation.RuntimeArgumentIsHeapHandle[index], runtimeAvailable);
+            }
         }
 
         ReleaseFunctionEvaluationHandle(

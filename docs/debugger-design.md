@@ -587,6 +587,11 @@ overload selection, then materialize from the selected loaded parameter type.
 Typed C# `default(T)` expressions bind `T` to an exact loaded runtime type before
 overload selection, preserving reference and value-type identity without running
 an authored value-type constructor.
+Direct assignment from `default(T)` requires exact loaded value-type identity and
+uses the destination's original CoreCLR storage for complete zero initialization.
+Function evaluation retains unboxed value-type arguments by owned `ICorDebugValue`
+pointers and heap references by owned strong handles, releasing each according to
+its native ownership contract.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather

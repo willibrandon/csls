@@ -28,6 +28,28 @@ internal sealed partial class CorDebugDebuggee
 
         if (ManagedRuntimeValueIdentity.GetElementType(destination) == 0x11)
         {
+            if (source.IsTypedDefault)
+            {
+                nint thread = GetThread(threadId);
+                try
+                {
+                    ManagedBoundType actual = _boundTypes.CaptureValue(destination, thread);
+                    if (source.DeclaredType?.IsSameType(actual) != true)
+                    {
+                        throw new InvalidOperationException(
+                            $"A typed default of '{source.DeclaredType?.DisplayName}' cannot be assigned " +
+                            $"to value-type storage of '{actual.DisplayName}'.");
+                    }
+                }
+                finally
+                {
+                    _ = ComAbi.Release(thread);
+                }
+
+                AssignManagedDefault(destination, mutations);
+                return;
+            }
+
             if (language == DebugExpressionLanguage.CSharp && sourceIsContextualLiteral &&
                 source is { HasScalar: true, Scalar: null, RuntimeValueReference: <= 0 } &&
                 ManagedNullableTypeIdentity.IsNullable(destination, OpenRuntimeModule))

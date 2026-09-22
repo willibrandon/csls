@@ -127,6 +127,7 @@ internal sealed partial class CorDebugDebuggee
             handle = CreateFunctionEvaluationHandle(value);
             nextEvaluation = CreateEvaluation(active.Thread);
             active.RuntimeArguments[index] = handle;
+            active.RuntimeArgumentIsHeapHandle[index] = true;
             handle = 0;
             active.Pointer = nextEvaluation;
             nextEvaluation = 0;

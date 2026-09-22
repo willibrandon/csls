@@ -66,9 +66,14 @@ internal sealed class ManagedFunctionEvaluation
     internal required ManagedExpressionValue[] Arguments { get; set; }
 
     /// <summary>
-    /// Gets or initializes owned strong handles for runtime and materialized arguments.
+    /// Gets or initializes owned runtime values for runtime and materialized arguments.
     /// </summary>
     internal required nint[] RuntimeArguments { get; init; }
+
+    /// <summary>
+    /// Gets whether each runtime argument owns a CoreCLR heap handle.
+    /// </summary>
+    internal required bool[] RuntimeArgumentIsHeapHandle { get; init; }
 
     /// <summary>
     /// Gets or initializes the managed thread selected for target execution.

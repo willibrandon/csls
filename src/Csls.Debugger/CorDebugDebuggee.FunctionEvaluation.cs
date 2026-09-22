@@ -171,6 +171,7 @@ internal sealed partial class CorDebugDebuggee
         nint receiverHandle = 0;
         nint[] callTypeArguments = [];
         nint[] runtimeArguments = new nint[argumentCount];
+        bool[] runtimeArgumentIsHeapHandle = new bool[argumentCount];
         bool argumentHandlesTransferred = false;
         bool callbackEvaluationActive = false;
         bool callScheduled = false;
@@ -272,6 +273,7 @@ internal sealed partial class CorDebugDebuggee
 
                 suppliedArguments = parameterOrderedArguments;
                 runtimeArguments = new nint[suppliedArguments.Length];
+                runtimeArgumentIsHeapHandle = new bool[suppliedArguments.Length];
             }
 
             setupPhase = "creating the CoreCLR evaluation";
@@ -286,8 +288,8 @@ internal sealed partial class CorDebugDebuggee
                     { RuntimeValueReference: > 0 } argument &&
                     (!argument.HasScalar || argument.Scalar is string))
                 {
-                    runtimeArguments[index] = CreateFunctionEvaluationHandle(
-                        GetRuntimeValue(suppliedArguments[index]));
+                    (runtimeArguments[index], runtimeArgumentIsHeapHandle[index]) =
+                        RetainFunctionEvaluationArgument(GetRuntimeValue(argument));
                 }
             }
 
@@ -306,6 +308,7 @@ internal sealed partial class CorDebugDebuggee
                 MaterializesString = materializesString,
                 Arguments = suppliedArguments,
                 RuntimeArguments = runtimeArguments,
+                RuntimeArgumentIsHeapHandle = runtimeArgumentIsHeapHandle,
                 ThreadId = frame.ThreadId,
                 ThreadStates = threadStates
             };
@@ -378,9 +381,10 @@ internal sealed partial class CorDebugDebuggee
         {
             if (!argumentHandlesTransferred)
             {
-                foreach (nint runtimeArgument in runtimeArguments)
+                for (int index = 0; index < runtimeArguments.Length; index++)
                 {
-                    ReleaseFunctionEvaluationHandle(runtimeArgument);
+                    ReleaseFunctionEvaluationArgument(
+                        runtimeArguments[index], runtimeArgumentIsHeapHandle[index]);
                 }
 
                 ReleaseFunctionEvaluationHandle(receiverHandle);

@@ -144,6 +144,7 @@ internal sealed partial class CorDebugDebuggee
                 return value with
                 {
                     DeclaredType = target,
+                    IsTypedDefault = true,
                     Display = value.Display with { Type = target.DisplayName }
                 };
             }

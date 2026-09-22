@@ -189,6 +189,8 @@ fields. Object references become null. Ref-like values such as spans are cleared
 in place. These writes preserve the stop
 generation and destination tuple names. C# `null` remains distinct from Visual
 Basic's `Nothing` conversion to non-nullable value types.
+Typed C# `default(T)` clears value-type storage when `T` is the destination's
+exact loaded type, including decimal, nullable, and authored structs.
 
 A C# `null` literal, including `(null)`, clears nullable value-type storage directly.
 The write clears both presence and payload, including managed reference fields,
