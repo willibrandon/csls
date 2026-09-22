@@ -107,6 +107,11 @@ internal sealed class ManagedFunctionEvaluation
     internal int PendingStringArgumentIndex { get; set; } = -1;
 
     /// <summary>
+    /// Gets or sets the value-type argument awaiting target allocation.
+    /// </summary>
+    internal int PendingStructuredArgumentIndex { get; set; } = -1;
+
+    /// <summary>
     /// Gets or sets whether the final user method call has been scheduled.
     /// </summary>
     internal bool MethodCallScheduled { get; set; }
@@ -120,6 +125,8 @@ internal sealed class ManagedFunctionEvaluation
         {
             string operation = PendingStringArgumentIndex >= 0
                 ? $"allocating string argument {PendingStringArgumentIndex + 1}"
+                : PendingStructuredArgumentIndex >= 0
+                    ? $"allocating value-type argument {PendingStructuredArgumentIndex + 1}"
                 : MaterializesString
                     ? "allocating a string result"
                     : ConstructsObject

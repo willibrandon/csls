@@ -291,6 +291,27 @@ internal static class DebuggerDumpArrayFixture
         (int)share;
 
     /// <summary>
+    /// Exposes a negative scaled decimal default through compiler metadata.
+    /// </summary>
+    /// <param name="amount">The optional decimal value.</param>
+    /// <returns>One when the target receives the declared value.</returns>
+    internal static int OptionalDecimalForDebugger(decimal amount = -12.50m)
+    {
+        int[] bits = decimal.GetBits(amount);
+        return bits is [1250, 0, 0, unchecked((int)0x80020000)] ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Exposes a nonzero DateTime default through compiler-recognized metadata.
+    /// </summary>
+    /// <param name="date">The optional date value.</param>
+    /// <returns>One when the target receives the declared ticks.</returns>
+    internal static int OptionalDateTimeForDebugger(
+        [System.Runtime.InteropServices.Optional]
+        [DateTimeConstant(637134336000000000L)] DateTime date) =>
+        date.Ticks == 637134336000000000L && date.Kind == DateTimeKind.Unspecified ? 1 : 0;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

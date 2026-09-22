@@ -23,6 +23,17 @@ internal sealed partial class CorDebugDebuggee
         }
 
         object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
+        if (scalar is decimal or DateTime)
+        {
+            if (runtimeArgument == 0 || !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
+            {
+                throw new InvalidOperationException("A structured optional argument has no retained runtime value.");
+            }
+
+            temporaryArguments.Add(unboxed);
+            return unboxed;
+        }
+
         uint elementType = GetFunctionArgumentElementType(argument.Type, scalar);
         nint value = 0;
         nint* valueAddress = &value;

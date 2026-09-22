@@ -83,6 +83,16 @@ internal sealed partial class CorDebugDebuggee
             }
         }
 
+        for (int index = 0; index < evaluation.Arguments.Length; index++)
+        {
+            if (evaluation.RuntimeArguments[index] == 0 &&
+                evaluation.Arguments[index].Scalar is decimal or DateTime)
+            {
+                ScheduleStructuredDefaultAllocation(evaluation, index);
+                return;
+            }
+        }
+
         var temporaryArguments = new List<nint>();
         try
         {
@@ -166,6 +176,7 @@ internal sealed partial class CorDebugDebuggee
                     ? "ICorDebugEval.NewObject"
                     : "ICorDebugEval.CallFunction");
             evaluation.PendingStringArgumentIndex = -1;
+            evaluation.PendingStructuredArgumentIndex = -1;
             evaluation.MethodCallScheduled = true;
         }
         finally

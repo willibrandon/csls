@@ -429,7 +429,14 @@ internal sealed partial class CorDebugDebuggee
         {
             try
             {
-                ContinueAfterStringMaterialization(active);
+                if (active.PendingStructuredArgumentIndex >= 0)
+                {
+                    ContinueAfterStructuredDefaultAllocation(active);
+                }
+                else
+                {
+                    ContinueAfterStringMaterialization(active);
+                }
                 return true;
             }
             catch (Exception exception) when (
@@ -437,7 +444,7 @@ internal sealed partial class CorDebugDebuggee
                 UnauthorizedAccessException or BadImageFormatException)
             {
                 stageFailure = new InvalidOperationException(
-                    "Managed function evaluation failed while materializing a string " +
+                    "Managed function evaluation failed while materializing an " +
                     $"argument: {exception.Message}",
                     exception);
             }

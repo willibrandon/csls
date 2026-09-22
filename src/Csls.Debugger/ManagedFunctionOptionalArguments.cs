@@ -18,6 +18,7 @@ internal static class ManagedFunctionOptionalArguments
         IReadOnlyList<ManagedBoundType> parameters,
         IReadOnlyList<int> parameterSourceIndices,
         ManagedBoundTypeSystem types,
+        nint module,
         nint thread)
     {
         var defaults = new ManagedExpressionValue?[parameters.Count];
@@ -26,9 +27,10 @@ internal static class ManagedFunctionOptionalArguments
             return defaults;
         }
 
-        var declarations = new Parameter?[parameters.Count];
-        foreach (Parameter parameter in metadata.GetParameters(method).Select(metadata.GetParameter))
+        var declarations = new (ParameterHandle Handle, Parameter Definition)?[parameters.Count];
+        foreach (ParameterHandle handle in metadata.GetParameters(method))
         {
+            Parameter parameter = metadata.GetParameter(handle);
             if (parameter.SequenceNumber == 0)
             {
                 continue;
@@ -40,7 +42,7 @@ internal static class ManagedFunctionOptionalArguments
                 throw new BadImageFormatException("A method parameter number is invalid or duplicated.");
             }
 
-            declarations[position] = parameter;
+            declarations[position] = (handle, parameter);
         }
 
         for (int index = 0; index < defaults.Length; index++)
@@ -50,10 +52,22 @@ internal static class ManagedFunctionOptionalArguments
                 continue;
             }
 
-            Parameter? declaration = declarations[index];
-            if (declaration is not Parameter parameter ||
-                (parameter.Attributes & (ParameterAttributes.Optional | ParameterAttributes.HasDefault)) !=
-                    (ParameterAttributes.Optional | ParameterAttributes.HasDefault) ||
+            if (declarations[index] is not { } declaration ||
+                (declaration.Definition.Attributes & ParameterAttributes.Optional) == 0)
+            {
+                return null;
+            }
+
+            ManagedExpressionValue? structured = ManagedFunctionStructuredDefaults.TryCreate(
+                metadata, declaration.Handle, parameters[index], types, module, thread);
+            if (structured is not null)
+            {
+                defaults[index] = structured;
+                continue;
+            }
+
+            Parameter parameter = declaration.Definition;
+            if ((parameter.Attributes & ParameterAttributes.HasDefault) == 0 ||
                 parameter.GetDefaultValue().IsNil)
             {
                 return null;
