@@ -129,9 +129,10 @@ internal sealed partial class CorDebugDebuggee
             {
                 int result = new ICorDebugControllerAbi(debugProcess).Detach();
                 managedCallback?.ThrowIfRuntimeFailed();
-                CorDebugHResult.ThrowIfFailed(
-                    result,
-                    "ICorDebugController.Detach");
+                if (!CorDebugHResult.IsRetiredProcess(result))
+                {
+                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Detach");
+                }
             }
         }
         finally

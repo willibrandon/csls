@@ -20,9 +20,11 @@ internal sealed partial class CorDebugDebuggee
         nint debugProcess = Volatile.Read(ref _debugProcess);
         if (debugProcess != 0)
         {
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugControllerAbi(debugProcess).Detach(),
-                "ICorDebugController.Detach");
+            int result = new ICorDebugControllerAbi(debugProcess).Detach();
+            if (!CorDebugHResult.IsRetiredProcess(result))
+            {
+                CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Detach");
+            }
         }
 
         _ = Interlocked.Exchange(ref _corDebug, 0);

@@ -7,6 +7,16 @@ namespace Csls.Debugger.Interop;
 /// </summary>
 internal static class CorDebugHResult
 {
+    private const int ProcessTerminated = unchecked((int)0x80131301);
+    private const int ProcessDetached = unchecked((int)0x80131335);
+    private const int ObjectNeutered = unchecked((int)0x8013134F);
+
+    /// <summary>
+    /// Identifies a CoreCLR process object retired by exit or detachment.
+    /// </summary>
+    internal static bool IsRetiredProcess(int hresult) =>
+        hresult is ProcessTerminated or ProcessDetached or ObjectNeutered;
+
     /// <summary>
     /// Throws when a native debugger operation returned a failing HRESULT.
     /// </summary>

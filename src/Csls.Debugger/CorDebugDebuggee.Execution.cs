@@ -10,28 +10,43 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Synchronizes the runtime and releases transient execution handles before detachment.
     /// </summary>
-    /// <returns>True when this operation stopped a previously running target.</returns>
-    internal unsafe bool PrepareForDetach()
+    /// <returns>Whether this operation stopped the target and whether CoreCLR still owns it.</returns>
+    internal unsafe (bool ResumeAfterFailure, bool RuntimeAvailable) PrepareForDetach()
     {
         _managedCallback.ThrowIfRuntimeFailed();
         _managedCallback.BeginDetach();
         var controller = new ICorDebugControllerAbi(_debugProcess);
         int isRunning = 0;
         int* isRunningAddress = &isRunning;
-        CorDebugHResult.ThrowIfFailed(
-            controller.IsRunning((nint)isRunningAddress),
-            "ICorDebugController.IsRunning");
+        int result = controller.IsRunning((nint)isRunningAddress);
+        if (CorDebugHResult.IsRetiredProcess(result))
+        {
+            return PrepareRetiredProcessForDetach();
+        }
+
+        CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.IsRunning");
         isRunning = Volatile.Read(ref *isRunningAddress);
         if (isRunning != 0)
         {
-            CorDebugHResult.ThrowIfFailed(
-                controller.Stop(dwTimeoutIgnored: 0),
-                "ICorDebugController.Stop");
+            result = controller.Stop(dwTimeoutIgnored: 0);
+            if (CorDebugHResult.IsRetiredProcess(result))
+            {
+                return PrepareRetiredProcessForDetach();
+            }
+
+            CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Stop");
         }
 
         CancelStep();
         ClearFrameHandles();
-        return isRunning != 0;
+        return (isRunning != 0, true);
+    }
+
+    private (bool ResumeAfterFailure, bool RuntimeAvailable) PrepareRetiredProcessForDetach()
+    {
+        CancelStep(runtimeAvailable: false);
+        ClearFrameHandles();
+        return (false, false);
     }
 
     /// <summary>

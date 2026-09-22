@@ -173,17 +173,18 @@ public sealed partial class DebuggerSession
                 _state = DebugSessionState.Terminating;
                 var managedDebuggee = _debuggee as CorDebugDebuggee;
                 bool resumeAfterFailure = false;
+                bool runtimeAvailable = true;
                 try
                 {
                     if (managedDebuggee is not null)
                     {
-                        resumeAfterFailure = managedDebuggee.PrepareForDetach();
+                        (resumeAfterFailure, runtimeAvailable) = managedDebuggee.PrepareForDetach();
                     }
 
-                    _sourceBreakpoints.ResetRuntimeBindings();
-                    _functionBreakpoints.ResetRuntimeBindings();
-                    _instructionBreakpoints.ResetRuntimeBindings();
-                    _entryBreakpoint.Reset();
+                    _sourceBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                    _functionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                    _instructionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                    _entryBreakpoint.Reset(runtimeAvailable);
                     _debuggee.Detach();
                 }
                 catch

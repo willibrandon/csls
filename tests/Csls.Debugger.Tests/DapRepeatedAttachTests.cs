@@ -47,7 +47,17 @@ public sealed class DapRepeatedAttachTests : DapTestContext
 
                 for (int attempt = 0; attempt < 10; attempt++)
                 {
-                    await AttachAndDetachAsync(target.Id, inspect: attempt == 9).ConfigureAwait(false);
+                    try
+                    {
+                        await AttachAndDetachAsync(target.Id, inspect: attempt == 9).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        TestContext.WriteLine(
+                            $"Attach attempt {attempt + 1} failed; target exited: {target.HasExited}.");
+                        throw;
+                    }
+
                     Assert.IsFalse(target.HasExited, $"The target exited after attach {attempt + 1}.");
                 }
 
