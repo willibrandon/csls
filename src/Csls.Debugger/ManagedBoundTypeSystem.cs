@@ -421,6 +421,67 @@ internal sealed class ManagedBoundTypeSystem
     }
 
     /// <summary>
+    /// Finds all exact loaded base, interface, and vector-interface constructions used for input inference.
+    /// </summary>
+    internal IReadOnlyList<ManagedBoundType> FindInferenceSources(
+        ManagedMetadataTypeSignature parameter,
+        ManagedBoundType argument,
+        nint thread)
+    {
+        const int maximumTypes = 4096;
+        if (parameter.TypeArguments.Count == 0 ||
+            !_catalog.TryResolveSignature(parameter, out CorDebugLoadedModule? module, out uint token) ||
+            module is null)
+        {
+            return [];
+        }
+
+        List<ManagedBoundType> matches = [];
+        if (parameter.TypeArguments.Count == 1 &&
+            argument.ElementType == 0x1d && argument.TypeArguments.Count == 1)
+        {
+            ManagedBoundType vectorInterface = CreateDefinition(
+                module, token, 0x12, [argument.TypeArguments[0]], thread);
+            if (IsVectorInterface(vectorInterface, thread))
+            {
+                matches.Add(vectorInterface);
+            }
+        }
+
+        List<ManagedBoundType> visited = [];
+        var pending = new Queue<ManagedBoundType>();
+        pending.Enqueue(argument);
+        while (pending.TryDequeue(out ManagedBoundType? current))
+        {
+            if (visited.Count >= maximumTypes)
+            {
+                throw new InvalidOperationException(
+                    "Generic input inference exceeds its bounded type-graph budget.");
+            }
+
+            if (visited.Any(current.IsSameType))
+            {
+                continue;
+            }
+
+            visited.Add(current);
+            if (current.ModuleId == module.Id && current.DefinitionToken == token &&
+                current.TypeArguments.Count == parameter.TypeArguments.Count &&
+                !matches.Any(current.IsSameType))
+            {
+                matches.Add(current);
+            }
+
+            foreach (ManagedBoundType parent in GetParents(current, thread))
+            {
+                pending.Enqueue(parent);
+            }
+        }
+
+        return matches;
+    }
+
+    /// <summary>
     /// Gets the declaration's variance flags in generic parameter order.
     /// </summary>
     internal IReadOnlyList<GenericParameterAttributes> GetVariance(ManagedBoundType type)

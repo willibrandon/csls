@@ -240,6 +240,12 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             ("IdentityGenericForDebugger(\"hello\")", "\"hello\""),
             ("FirstGenericArrayForDebugger(vector)", "41"),
             ("FirstGenericListForDebugger(constructed[0])", "81"),
+            ("FirstGenericListForDebugger(inheritedObject)", "81"),
+            ("FirstGenericEnumerableForDebugger(constructed[0])", "81"),
+            ("FirstGenericEnumerableForDebugger(inheritedObject)", "81"),
+            ("FirstGenericEnumerableForDebugger(vector)", "41"),
+            ("CompilerFirstGenericEnumerableForDebugger()", "41"),
+            ("CompilerFirstGenericBaseForDebugger()", "81"),
             ("StructNumberGenericForDebugger(optionalStructs[0])", "41"),
             ("PreferNonGenericForDebugger(41)", "2"),
             ("CommonGenericForDebugger(41, 42)", "32"),
@@ -279,7 +285,8 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             "ConstructorConstraintForDebugger(\"hello\")",
             "UnmanagedConstraintForDebugger(optionalStructs[0])",
             "UnmanagedConstraintForDebugger(tuples[0])",
-            "CommonGenericForDebugger(41, \"hello\")"
+            "CommonGenericForDebugger(41, \"hello\")",
+            "FirstGenericEnumerableForDebugger(ambiguousEnumerable)"
         })
         {
             JsonElement rejectedGeneric = await ReadEvaluationAsync(client, frameId,

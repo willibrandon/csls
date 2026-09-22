@@ -59,7 +59,7 @@ internal static class ManagedFunctionGenericMethodInference
 
             if (!TryInferParameter(
                     signature.ParameterTypes[index], argument, exactBounds, lowerBounds, upperBounds,
-                    GenericParameterAttributes.Covariant, types))
+                    GenericParameterAttributes.Covariant, types, thread))
             {
                 return null;
             }
@@ -89,6 +89,7 @@ internal static class ManagedFunctionGenericMethodInference
         IReadOnlyList<List<ManagedBoundType>> upperBounds,
         GenericParameterAttributes inference,
         ManagedBoundTypeSystem types,
+        nint thread,
         int depth = 0)
     {
         if (depth >= 128)
@@ -110,7 +111,7 @@ internal static class ManagedFunctionGenericMethodInference
             {
                 ArrayShapes = [.. signature.ArrayShapes.Take(signature.ArrayShapes.Count - 1)]
             }, argument.TypeArguments[0], exactBounds, lowerBounds, upperBounds,
-                inference, types, depth + 1);
+                inference, types, thread, depth + 1);
         }
 
         if (signature.GenericMethodParameterIndex is int index)
@@ -130,27 +131,34 @@ internal static class ManagedFunctionGenericMethodInference
             return true;
         }
 
-        if (signature.TypeArguments.Count == 0 ||
-            !string.Equals(signature.MetadataName, argument.Name, StringComparison.Ordinal) ||
-            signature.TypeArguments.Count != argument.TypeArguments.Count)
+        if (signature.TypeArguments.Count == 0)
         {
             return true;
         }
 
-        IReadOnlyList<GenericParameterAttributes> variance = types.GetVariance(argument);
-        if (variance.Count != signature.TypeArguments.Count)
+        IReadOnlyList<ManagedBoundType> sources = types.FindInferenceSources(signature, argument, thread);
+        if (sources.Count == 0)
         {
-            return false;
+            return true;
         }
 
-        for (int childIndex = 0; childIndex < signature.TypeArguments.Count; childIndex++)
+        foreach (ManagedBoundType source in sources)
         {
-            if (!TryInferParameter(
-                signature.TypeArguments[childIndex], argument.TypeArguments[childIndex],
-                exactBounds, lowerBounds, upperBounds,
-                ComposeInference(inference, variance[childIndex]), types, depth + 1))
+            IReadOnlyList<GenericParameterAttributes> variance = types.GetVariance(source);
+            if (variance.Count != signature.TypeArguments.Count)
             {
                 return false;
+            }
+
+            for (int childIndex = 0; childIndex < signature.TypeArguments.Count; childIndex++)
+            {
+                if (!TryInferParameter(
+                    signature.TypeArguments[childIndex], source.TypeArguments[childIndex],
+                    exactBounds, lowerBounds, upperBounds,
+                    ComposeInference(inference, variance[childIndex]), types, thread, depth + 1))
+                {
+                    return false;
+                }
             }
         }
 

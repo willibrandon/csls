@@ -470,6 +470,31 @@ internal static class DebuggerDumpArrayFixture
     internal static T FirstGenericListForDebugger<T>(List<T> values) => values[0];
 
     /// <summary>
+    /// Reads an element after inferring through a loaded enumerable interface.
+    /// </summary>
+    /// <typeparam name="T">The inferred sequence element type.</typeparam>
+    /// <param name="values">The target sequence.</param>
+    /// <returns>The first element.</returns>
+    internal static T FirstGenericEnumerableForDebugger<T>(IEnumerable<T> values) => values.First();
+
+    /// <summary>
+    /// Gets the C# compiler's interface-based generic inference result.
+    /// </summary>
+    /// <returns>The first compiler-inferred array element.</returns>
+    internal static int CompilerFirstGenericEnumerableForDebugger()
+    {
+        int[] values = [41];
+        return FirstGenericEnumerableForDebugger(values);
+    }
+
+    /// <summary>
+    /// Gets the C# compiler's base-class generic inference result.
+    /// </summary>
+    /// <returns>The first compiler-inferred list element.</returns>
+    internal static int CompilerFirstGenericBaseForDebugger() =>
+        FirstGenericListForDebugger(new DebuggerFixtureList(81));
+
+    /// <summary>
     /// Reads a struct passed through an inferred generic value parameter.
     /// </summary>
     /// <typeparam name="T">The inferred value type.</typeparam>
@@ -738,6 +763,7 @@ internal static class DebuggerDumpArrayFixture
         StrongBox<int> singletonObject = new(29);
         StrongBox<int>? absentObject = null;
         DebuggerFixtureList inheritedObject = new(81);
+        DebuggerAmbiguousEnumerable ambiguousEnumerable = new();
         DebuggerFixtureValue capturedObject = new(42, "answer!", path);
         object boxedPair = (73, "captured pair");
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
@@ -774,6 +800,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(singletonObject);
         GC.KeepAlive(absentObject);
         GC.KeepAlive(inheritedObject);
+        GC.KeepAlive(ambiguousEnumerable);
         GC.KeepAlive(capturedObject);
         GC.KeepAlive(boxedPair);
         GC.KeepAlive(chain);
