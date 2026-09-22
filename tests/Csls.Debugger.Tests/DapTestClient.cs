@@ -139,6 +139,50 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Answers one adapter-originated request through the real DAP input pipe.
+    /// </summary>
+    /// <param name="requestSequence">The adapter request sequence being answered.</param>
+    /// <param name="command">The adapter request command.</param>
+    /// <param name="success">Whether the client accepted the request.</param>
+    /// <param name="message">An optional client failure description.</param>
+    /// <param name="cancellationToken">Cancels the framed pipe write.</param>
+    /// <returns>The assigned client message sequence.</returns>
+    internal async Task<int> SendResponseAsync(
+        int requestSequence,
+        string command,
+        bool success,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestSequence);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        int sequence = Interlocked.Increment(ref _sequence);
+        ArrayBufferWriter<byte> payload = new();
+        using (Utf8JsonWriter writer = new(payload))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("seq", sequence);
+            writer.WriteString("type", "response");
+            writer.WriteNumber("request_seq", requestSequence);
+            writer.WriteString("command", command);
+            writer.WriteBoolean("success", success);
+            if (message is not null)
+            {
+                writer.WriteString("message", message);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        byte[] header = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+            $"Content-Length: {payload.WrittenCount}\r\n\r\n"));
+        await SendFrameAsync([.. header, .. payload.WrittenSpan], fragment: false, cancellationToken)
+            .ConfigureAwait(false);
+        RecordMessage("response", payload.WrittenSpan);
+        return sequence;
+    }
+
+    /// <summary>
     /// Sends caller-provided protocol bytes, optionally as single-byte writes.
     /// </summary>
     /// <param name="frame">The exact bytes to send.</param>
