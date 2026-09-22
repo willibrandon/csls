@@ -589,6 +589,8 @@ overload selection, preserving reference and value-type identity without running
 an authored value-type constructor.
 Direct assignment from `default(T)` requires exact loaded value-type identity and
 uses the destination's original CoreCLR storage for complete zero initialization.
+An empty typed `Nullable<T>` default presents as `null` while retaining its
+exact loaded value-type identity for calls and assignments.
 Function evaluation retains unboxed value-type arguments by owned `ICorDebugValue`
 pointers and heap references by owned strong handles, releasing each according to
 its native ownership contract.

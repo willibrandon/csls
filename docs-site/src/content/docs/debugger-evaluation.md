@@ -136,6 +136,7 @@ parameter type for method calls and constructors.
 Typed C# defaults such as `default(int)` and `default(MyStruct)` bind to the
 loaded type before overload selection and initialize value types without
 running their constructors.
+Evaluating `default(int?)` presents the empty nullable value as `null`.
 
 Function evaluation runs on the selected managed thread with a five-second deadline.
 Evaluations run one at a time. Overlapping DAP requests queue in arrival order.

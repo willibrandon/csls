@@ -172,6 +172,8 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             ("default(int)", "0"),
             ("default(int) + 3", "3"),
             ("default(string)", "null"),
+            ("default(int?)", "null"),
+            ("default(System.Nullable<int>)", "null"),
             ($"{receiver}.PreferContextualNumericForDebugger(default(long))", "2"),
             ($"{receiver}.CompilerTypedNumericForDebugger()", "2"),
             ($"{receiver}.PreferContextualReferenceForDebugger(default(object))", "2"),

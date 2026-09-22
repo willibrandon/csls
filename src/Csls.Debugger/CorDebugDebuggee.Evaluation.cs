@@ -141,11 +141,16 @@ internal sealed partial class CorDebugDebuggee
                     target, _boundTypes, defaultThread)
                     ?? throw new NotSupportedException(
                         $"A default value of type '{target.DisplayName}' cannot be materialized.");
+                bool nullableDefault = _boundTypes.IsCoreType(target, "System.Nullable`1", defaultThread);
                 return value with
                 {
                     DeclaredType = target,
                     IsTypedDefault = true,
-                    Display = value.Display with { Type = target.DisplayName }
+                    Display = value.Display with
+                    {
+                        Type = target.DisplayName,
+                        Value = nullableDefault ? "null" : value.Display.Value
+                    }
                 };
             }
             finally
