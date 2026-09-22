@@ -63,6 +63,80 @@ internal static class DebuggerDumpArrayFixture
     }
 
     /// <summary>
+    /// Reads a primitive after the target boxes it for an object parameter.
+    /// </summary>
+    /// <param name="value">The boxed primitive value.</param>
+    /// <returns>The boxed integer plus one hundred.</returns>
+    internal static int ReadBoxedIntegerForDebugger(object value) =>
+        value is int number ? number + 100 : -1;
+
+    /// <summary>
+    /// Reads an authored struct after the target boxes it for an object parameter.
+    /// </summary>
+    /// <param name="value">The boxed authored value type.</param>
+    /// <returns>The authored struct's stored number.</returns>
+    internal static int ReadBoxedStructForDebugger(object value) =>
+        value is DebuggerOptionalStructFixture fixture ? fixture.ReadNumber() : -1;
+
+    /// <summary>
+    /// Selects an implemented interface over object for a boxed integer.
+    /// </summary>
+    /// <param name="value">The boxed comparable value.</param>
+    /// <returns>The interface overload marker.</returns>
+    internal static int SelectBoxedIntegerForDebugger(IComparable value)
+    {
+        GC.KeepAlive(value);
+        return 37;
+    }
+
+    /// <summary>
+    /// Provides the object fallback for boxed integer overload selection.
+    /// </summary>
+    /// <param name="value">The boxed object value.</param>
+    /// <returns>The object overload marker.</returns>
+    internal static int SelectBoxedIntegerForDebugger(object value)
+    {
+        GC.KeepAlive(value);
+        return 39;
+    }
+
+    /// <summary>
+    /// Runs the compiler-selected boxing overload for comparison with debugger binding.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static int CompilerSelectBoxedIntegerForDebugger() =>
+        SelectBoxedIntegerForDebugger(41);
+
+    /// <summary>
+    /// Selects System.ValueType over object for a boxed integer.
+    /// </summary>
+    /// <param name="value">The boxed value-type instance.</param>
+    /// <returns>The value-type overload marker.</returns>
+    internal static int SelectBoxedValueTargetForDebugger(ValueType value)
+    {
+        GC.KeepAlive(value);
+        return 43;
+    }
+
+    /// <summary>
+    /// Provides the object fallback for boxed value-type overload selection.
+    /// </summary>
+    /// <param name="value">The boxed object value.</param>
+    /// <returns>The object overload marker.</returns>
+    internal static int SelectBoxedValueTargetForDebugger(object value)
+    {
+        GC.KeepAlive(value);
+        return 47;
+    }
+
+    /// <summary>
+    /// Runs the compiler-selected value-type overload for debugger comparison.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static int CompilerSelectBoxedValueTargetForDebugger() =>
+        SelectBoxedValueTargetForDebugger(41);
+
+    /// <summary>
     /// Marks the long overload selected after widening an integer argument.
     /// </summary>
     /// <param name="value">The widened argument.</param>

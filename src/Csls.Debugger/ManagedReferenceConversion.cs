@@ -68,6 +68,14 @@ internal sealed class ManagedReferenceConversion
             parent => IsImplicitCore(parent, destination, thread, depth: 0, ref work));
     }
 
+    /// <summary>
+    /// Determines whether an exact loaded value type has a built-in boxing conversion to a reference type.
+    /// </summary>
+    internal bool IsImplicitBoxing(ManagedBoundType source, ManagedBoundType destination, nint thread) =>
+        !source.IsReference && destination.IsReference &&
+        !_types.IsCoreType(source, "System.Nullable`1", thread) &&
+        IsRuntimeAssignable(source, destination, thread);
+
     private bool IsExplicitCore(ManagedBoundType source, ManagedBoundType destination, nint thread, int depth, ref int work)
     {
         CheckBudget(depth, ref work);

@@ -28,6 +28,13 @@ internal sealed partial class CorDebugDebuggee
                 throw new InvalidOperationException("A nullable argument has an invalid runtime type.");
             }
         }
+        else if (argument.RequiresBoxing)
+        {
+            if (declaredType.IsReference || _boundTypes.IsByRefLike(declaredType))
+            {
+                throw new InvalidOperationException("The boxing argument has an invalid runtime type.");
+            }
+        }
         else
         {
             string expectedType = argument.Scalar is decimal ? "System.Decimal" : "System.DateTime";
@@ -156,6 +163,10 @@ internal sealed partial class CorDebugDebuggee
             {
                 SetNullableArgument(unboxed, runtimeType, argument, active.RuntimeArguments[index]);
             }
+            else if (argument.RequiresBoxing && !argument.IsZeroValueTypeDefault)
+            {
+                SetBoxedArgument(unboxed, argument, active.RuntimeArguments[index]);
+            }
 
             handle = CreateFunctionEvaluationHandle(value);
             nextEvaluation = CreateEvaluation(active.Thread);
@@ -264,6 +275,38 @@ internal sealed partial class CorDebugDebuggee
             {
                 _ = ComAbi.Release(value);
             }
+        }
+    }
+
+    private void SetBoxedArgument(
+        nint destination,
+        ManagedExpressionValue argument,
+        nint sourceValue)
+    {
+        if (argument.HasScalar)
+        {
+            SetManagedPrimitiveValue(
+                destination,
+                argument.Type,
+                argument.Scalar ?? throw new InvalidOperationException(
+                    "A non-nullable boxed argument has no scalar value."));
+            return;
+        }
+
+        if (sourceValue == 0 || !TryDereferenceAndUnboxValue(sourceValue, out nint source))
+        {
+            throw new InvalidOperationException("A boxed argument has no retained source value.");
+        }
+
+        try
+        {
+            using var assignment = ManagedValueTypeAssignment.Prepare(
+                destination, source, OpenRuntimeModule);
+            assignment.Write();
+        }
+        finally
+        {
+            _ = ComAbi.Release(source);
         }
     }
 

@@ -17,6 +17,7 @@ namespace Csls.Debugger;
 /// <param name="IsTypedDefault">Whether the expression explicitly names the type of a default value.</param>
 /// <param name="IsNullableValue">Whether the value carries a non-executing nullable projection.</param>
 /// <param name="RequiresNullableMaterialization">Whether a later call must build exact nullable argument storage.</param>
+/// <param name="RequiresBoxing">Whether a later call must allocate an exact boxed argument copy.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -29,7 +30,8 @@ internal sealed record ManagedExpressionValue(
     bool IsZeroValueTypeDefault = false,
     bool IsTypedDefault = false,
     bool IsNullableValue = false,
-    bool RequiresNullableMaterialization = false)
+    bool RequiresNullableMaterialization = false,
+    bool RequiresBoxing = false)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

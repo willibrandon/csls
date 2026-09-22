@@ -94,9 +94,11 @@ internal sealed partial class CorDebugDebuggee
             ManagedExpressionValue argument = evaluation.Arguments[index];
             bool materializeNullable = argument.RequiresNullableMaterialization &&
                 !evaluation.RuntimeArgumentIsHeapHandle[index];
+            bool materializeBox = argument.RequiresBoxing &&
+                !evaluation.RuntimeArgumentIsHeapHandle[index];
             bool materializeOtherValue = evaluation.RuntimeArguments[index] == 0 &&
                 (argument.IsZeroValueTypeDefault || argument.Scalar is decimal or DateTime);
-            if (materializeNullable || materializeOtherValue)
+            if (materializeNullable || materializeBox || materializeOtherValue)
             {
                 ScheduleStructuredArgumentAllocation(evaluation, index);
                 return;

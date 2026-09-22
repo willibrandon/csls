@@ -13,6 +13,14 @@ internal sealed partial class CorDebugDebuggee
         nint runtimeArgument,
         List<nint> temporaryArguments)
     {
+        if (argument.RequiresBoxing)
+        {
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    "A boxed function argument has no retained runtime value.");
+        }
+
         if (!argument.HasScalar && argument.RuntimeValueReference > 0 ||
             argument.HasScalar && argument.Scalar is string)
         {

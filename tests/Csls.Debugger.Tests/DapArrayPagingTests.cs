@@ -226,7 +226,17 @@ public sealed class DapArrayPagingTests : DapTestContext
         {
             ($"{receiver}.SelectArrayReferenceForDebugger(vector)", "17"),
             ($"{receiver}.SelectArrayReferenceForDebugger((object)vector)", "23"),
-            ($"{receiver}.SelectArrayReferenceForDebugger(null)", "17")
+            ($"{receiver}.SelectArrayReferenceForDebugger(null)", "17"),
+            ($"{receiver}.ReadBoxedIntegerForDebugger(vector[0])", "141"),
+            ($"{receiver}.ReadBoxedIntegerForDebugger(41)", "141"),
+            ($"{receiver}.ReadBoxedStructForDebugger(" +
+                "(Csls.TestProcessHost.DebuggerOptionalStructFixture)boxedNullableStruct)", "41"),
+            ($"{receiver}.ReadBoxedStructForDebugger(" +
+                "default(Csls.TestProcessHost.DebuggerOptionalStructFixture))", "0"),
+            ($"{receiver}.SelectBoxedIntegerForDebugger(vector[0])", "37"),
+            ($"{receiver}.CompilerSelectBoxedIntegerForDebugger()", "37"),
+            ($"{receiver}.SelectBoxedValueTargetForDebugger(vector[0])", "43"),
+            ($"{receiver}.CompilerSelectBoxedValueTargetForDebugger()", "43")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,

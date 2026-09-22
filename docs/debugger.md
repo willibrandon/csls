@@ -173,7 +173,9 @@ compatible argument types through the selected language's implicit conversions a
 loaded base, interface, and array-collection declarations, then validate loaded
 reference, value, constructor, inheritance, interface, and unmanaged constraints before
 execution. Exact boxed and zero-initialized struct values can receive instance calls or
-flow into matching value-type parameters. Direct assignments update stopped target storage.
+flow into matching value-type parameters. Non-nullable value arguments use exact loaded
+boxing conversions for object, value-type, and interface parameters. Direct assignments
+update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the
 result to a local, field, or array element of the same runtime type to copy its

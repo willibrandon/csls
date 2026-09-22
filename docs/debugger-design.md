@@ -598,6 +598,10 @@ rule for its instance method call. A zero-initialized temporary receiver is allo
 as its exact loaded value type, retained by a strong handle between evaluation stages,
 and unboxed only while CoreCLR schedules the selected instance method. Explicitly
 unboxed struct values use the same call path as receivers and arguments.
+Implicit boxing binds non-nullable value types through their exact loaded base and
+interface graph. A supervised allocation stage creates the exact boxed source type,
+copies existing struct storage through CoreCLR's GC-aware value home or writes the
+selected primitive value, and retains the resulting strong handle for the user call.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

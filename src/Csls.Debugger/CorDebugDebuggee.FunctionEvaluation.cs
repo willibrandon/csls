@@ -227,6 +227,7 @@ internal sealed partial class CorDebugDebuggee
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;
+                var referenceConversions = new ManagedReferenceConversion(_boundTypes);
                 for (int index = 0; index < suppliedArguments.Length; index++)
                 {
                     ManagedBoundType? sourceType = argumentTypes[index];
@@ -236,6 +237,15 @@ internal sealed partial class CorDebugDebuggee
                         suppliedArguments[index] = ManagedFunctionImplicitDefaults.TryCreateContextual(
                             parameterType, _boundTypes, thread) ?? throw new InvalidOperationException(
                                 $"A default literal cannot be materialized as '{parameterType.DisplayName}'.");
+                    }
+                    else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
+                        referenceConversions.IsImplicitBoxing(sourceType, parameterType, thread))
+                    {
+                        suppliedArguments[index] = suppliedArguments[index] with
+                        {
+                            DeclaredType = sourceType,
+                            RequiresBoxing = true
+                        };
                     }
                     else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
                         ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(

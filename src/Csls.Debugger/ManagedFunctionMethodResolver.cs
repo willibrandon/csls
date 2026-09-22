@@ -232,6 +232,7 @@ internal static class ManagedFunctionMethodResolver
             }
             else if (!argument.IsSameType(parameter) &&
                 !conversions.IsImplicit(argument, parameter, thread) &&
+                !conversions.IsImplicitBoxing(argument, parameter, thread) &&
                 !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(argument, parameter, language) &&
                 !(constantArguments?[index] is ManagedExpressionValue constant &&
                     ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
