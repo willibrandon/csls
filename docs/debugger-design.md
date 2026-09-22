@@ -381,6 +381,28 @@ keep their independent identities and binding policies.
 the launched target; selecting `true` also ends its child process tree. Restart
 retains the selected policy. Attached processes remain externally owned.
 
+The terminal launch contract defines `console` as `internalConsole` by default,
+or `integratedTerminal` or `externalTerminal` when the client advertises
+`supportsRunInTerminalRequest`.
+For either terminal mode, the adapter sends a `runInTerminal` reverse request
+and matches its response by request sequence while continuing to accept client
+requests and cancellation. A client that declines the request receives a launch
+failure; the adapter never silently changes the selected console. The terminal
+launch path gives the target its terminal's real standard handles, including
+interactive input and terminal detection. Target output stays in that terminal;
+adapter diagnostics and DAP framing stay on their separate streams.
+
+The target remains debugger-owned and cannot execute managed entry code before
+breakpoint configuration and runtime-startup registration complete. A bundled
+terminal launcher and debugger worker coordinate process identity, readiness,
+resume, exit, restart, cancellation, and teardown through authenticated local
+IPC. The launcher accepts only a validated argument array and target environment,
+never a shell command string. Terminal and target ownership have separate lifetimes:
+closing the terminal ends the owned launch; disconnect and restart retire the
+matching target and launcher without affecting another session. Real-process
+DAP and editor tests cover input, output, entry stops, source breakpoints, target
+failure, early terminal closure, client refusal, and each supported platform.
+
 DAP frame and variable IDs are compact session-local handles, not process pointers.
 Paging is applied before expensive expansion. Memory references are opaque,
 generation-bound tokens. `writeMemory`, `setVariable`, `setExpression`, function
