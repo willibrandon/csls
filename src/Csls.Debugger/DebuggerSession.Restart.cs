@@ -58,11 +58,11 @@ public sealed partial class DebuggerSession
     }
 
     /// <summary>
-    /// Detaches and reattaches a managed target with the latest attach options.
+    /// Restarts an attached session without disconnecting from the live target.
     /// </summary>
     /// <param name="options">The validated replacement attachment.</param>
-    /// <param name="cancellationToken">Cancels detachment or activation.</param>
-    /// <returns>A task that completes after the replacement attachment starts.</returns>
+    /// <param name="cancellationToken">Cancels restarting or replacement attachment.</param>
+    /// <returns>A task that completes after the attachment resumes.</returns>
     public async Task RestartManagedAttachAsync(
         DebuggeeAttachOptions options,
         CancellationToken cancellationToken)
@@ -73,6 +73,17 @@ public sealed partial class DebuggerSession
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_debuggee is CorDebugDebuggee attachedDebuggee &&
+                !attachedDebuggee.OwnsProcess &&
+                attachedDebuggee.Id == options.ProcessId &&
+                _state is DebugSessionState.Running or DebugSessionState.Stopped)
+            {
+                await _actor.InvokeAsync(
+                    token => RestartAttachedProcessCoreAsync(attachedDebuggee, options, token),
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             await ResetTargetForRestartAsync(cancellationToken).ConfigureAwait(false);
             await AttachManagedCoreAsync(options, cancellationToken).ConfigureAwait(false);
         }
@@ -80,6 +91,48 @@ public sealed partial class DebuggerSession
         {
             _ = _lifecycleGate.Release();
         }
+    }
+
+    private async ValueTask RestartAttachedProcessCoreAsync(
+        CorDebugDebuggee debuggee,
+        DebuggeeAttachOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options.ExpressionEvaluationOptions);
+        if (options.JustMyCode != _attachedJustMyCode ||
+            options.EnableStepFiltering != _attachedEnableStepFiltering)
+        {
+            throw new InvalidOperationException(
+                "Just My Code and step filtering cannot change while attached to a live process. Disconnect before attaching with different runtime options.");
+        }
+
+        debuggee.CancelStep();
+        if (_state == DebugSessionState.Stopped)
+        {
+            debuggee.Continue();
+        }
+        else
+        {
+            debuggee.DiscardBreakpointInspection();
+        }
+
+        _sourceBreakpoints.SetSourceOptions(
+            options.SourceFileMap,
+            options.SourceLinkOptions,
+            options.SymbolOptions,
+            options.RequireExactSource);
+        debuggee.SetExpressionEvaluationOptions(options.ExpressionEvaluationOptions);
+        _stopGeneration = _stopGeneration.Value == 0
+            ? DebugStopGeneration.First
+            : _stopGeneration.Next();
+        _pendingStop = null;
+        _currentException = null;
+        _currentExceptionThreadId = null;
+        _state = DebugSessionState.Running;
+        await _observer.OnProcessStartedAsync(
+            debuggee.Name,
+            debuggee.Id,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ResetTargetForRestartAsync(CancellationToken cancellationToken)

@@ -21,6 +21,8 @@ public sealed partial class DebuggerSession : IDebuggerInspectionTarget, IAsyncD
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private CancellationTokenSource? _debuggeeObservationCancellation;
+    private bool _attachedJustMyCode;
+    private bool _attachedEnableStepFiltering;
     private DebugStopGeneration _stopGeneration;
     private volatile DebugSessionState _state = DebugSessionState.Created;
     private int _disposed;

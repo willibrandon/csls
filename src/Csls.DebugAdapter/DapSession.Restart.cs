@@ -1,4 +1,5 @@
 using Csls.DebugAdapter.Protocol;
+using Csls.Debugger.Contracts;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -97,17 +98,26 @@ internal sealed partial class DapSession
             _restartRequest = null;
             _restartTargetArguments = null;
             _isRestarting = false;
-            _state = DapSessionState.Terminated;
+            bool targetIsLive = _engineSession.State is
+                DebugSessionState.Running or DebugSessionState.Stopped;
+            _state = _engineSession.State == DebugSessionState.Stopped
+                ? DapSessionState.Stopped
+                : targetIsLive
+                    ? DapSessionState.Running
+                    : DapSessionState.Terminated;
             await _writer.WriteResponseAsync(
                 request,
                 success: false,
                 exception.Message,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
-            await _writer.WriteEventAsync(
-                "terminated",
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
+            if (!targetIsLive)
+            {
+                await _writer.WriteEventAsync(
+                    "terminated",
+                    writeBody: null,
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 }

@@ -79,6 +79,8 @@ public sealed partial class DebuggerSession
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options.ExpressionEvaluationOptions);
+        _attachedJustMyCode = options.JustMyCode;
+        _attachedEnableStepFiltering = options.EnableStepFiltering;
         _entryBreakpoint.Configure(enabled: false);
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,
