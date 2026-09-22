@@ -14,6 +14,7 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
     private Process? _target;
     private int _targetProcessId;
     private int _accepted;
+    private int _released;
     private int _disposed;
 
     /// <summary>
@@ -110,6 +111,11 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
         }
         catch (EndOfStreamException)
         {
+            if (Volatile.Read(ref _released) != 0)
+            {
+                return -1;
+            }
+
             if (_target is not null && !_target.HasExited)
             {
                 _target.Kill(entireProcessTree: false);
@@ -121,6 +127,38 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
             }
             return -1;
         }
+        catch (IOException) when (Volatile.Read(ref _released) != 0)
+        {
+            return -1;
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _released) != 0)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Lets the terminal launcher keep its target alive after debugger detachment.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the release request.</param>
+    /// <returns>A task that completes after the launcher receives the release signal.</returns>
+    public async Task ReleaseTargetAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        if (_targetProcessId == 0)
+        {
+            throw new InvalidOperationException("The terminal target has not started.");
+        }
+
+        if (Interlocked.Exchange(ref _released, 1) != 0)
+        {
+            return;
+        }
+
+        byte[] release = [DebuggerTerminalLaunchProtocol.ReleaseTarget];
+        await _pipe.WriteAsync(release, cancellationToken)
+            .ConfigureAwait(false);
+        await _pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -137,12 +175,15 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
             {
                 using (target)
                 {
-                    if (!target.HasExited)
+                    if (Volatile.Read(ref _released) == 0)
                     {
-                        target.Kill(entireProcessTree: false);
-                    }
+                        if (!target.HasExited)
+                        {
+                            target.Kill(entireProcessTree: false);
+                        }
 
-                    await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                        await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
             }
         }

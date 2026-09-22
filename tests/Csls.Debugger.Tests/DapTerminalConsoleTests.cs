@@ -360,6 +360,133 @@ public sealed class DapTerminalConsoleTests : DapTestContext
     }
 
     /// <summary>
+    /// Leaves managed and no-debug terminal targets running after an explicit detach.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TerminalDetachPreservesInteractiveTarget(bool noDebug)
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+        using var launcher = new Process();
+        bool launcherStarted = false;
+        try
+        {
+            int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
+                writeProperties: writer => writer.WriteBoolean("supportsRunInTerminalRequest", true))
+                .ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, initialize, "initialize", success: true);
+            }
+
+            int launch = await client.SendRequestAsync("launch", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("program", ResolveTestProcessHost());
+                writer.WriteString("console", "integratedTerminal");
+                writer.WriteBoolean("noDebug", noDebug);
+                writer.WriteStartArray("args");
+                writer.WriteStringValue("--debugger-terminal-stdio-fixture");
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(initialized.RootElement, "initialized");
+            }
+
+            int configuration = await client.SendRequestAsync(
+                "configurationDone", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using (JsonDocument reverseRequest = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                JsonElement message = reverseRequest.RootElement;
+                Assert.AreEqual("runInTerminal", message.GetProperty("command").GetString());
+                launcher.StartInfo = CreateTerminalStart(message.GetProperty("arguments"));
+                launcherStarted = launcher.Start();
+                Assert.IsTrue(launcherStarted);
+                _ = await client.SendResponseAsync(message.GetProperty("seq").GetInt32(),
+                    "runInTerminal", success: true, message: null, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, configuration, "configurationDone", success: true);
+            }
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, launch, "launch", success: true);
+            }
+            int targetId;
+            using (JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(process.RootElement, "process");
+                targetId = process.RootElement.GetProperty("body")
+                    .GetProperty("systemProcessId").GetInt32();
+            }
+
+            using var target = Process.GetProcessById(targetId);
+            try
+            {
+                Assert.AreEqual("ready", await launcher.StandardOutput
+                    .ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false));
+                int disconnect = await client.SendRequestAsync("disconnect", writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteBoolean("terminateDebuggee", false);
+                    writer.WriteEndObject();
+                }, TestContext.CancellationToken).ConfigureAwait(false);
+                using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    AssertResponse(response.RootElement, disconnect, "disconnect", success: true);
+                }
+
+                Assert.AreEqual(0, await client.WaitForProcessExitAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false));
+                Assert.IsFalse(target.HasExited, "Detach terminated the interactive target.");
+                await launcher.StandardInput.WriteLineAsync("hello").ConfigureAwait(false);
+                await launcher.StandardInput.FlushAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("echo:hello", await launcher.StandardOutput
+                    .ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false));
+                await launcher.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(0, launcher.ExitCode);
+                Assert.IsTrue(target.HasExited);
+            }
+            finally
+            {
+                if (!target.HasExited)
+                {
+                    target.Kill(entireProcessTree: true);
+                    await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            if (launcherStarted && !launcher.HasExited)
+            {
+                launcher.Kill(entireProcessTree: true);
+                await launcher.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            TestContext.WriteLine(client.ProtocolTranscript);
+            TestContext.WriteLine(client.Diagnostics.ToString());
+        }
+    }
+
+    /// <summary>
     /// Replaces an interactive no-debug child without keeping the old terminal target alive.
     /// </summary>
     [TestMethod]

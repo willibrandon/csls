@@ -74,6 +74,7 @@ public static class DebuggerTerminalLauncher
         ProcessStartInfo start = CreateStartInfo(instruction);
         using Process target = Process.Start(start) ??
             throw new InvalidOperationException("The terminal target did not start.");
+        bool detached = false;
         try
         {
             await DebuggerTerminalLaunchProtocol.WriteIntegerAsync(pipe, target.Id, cancellationToken)
@@ -86,7 +87,11 @@ public static class DebuggerTerminalLauncher
             if (completed == pipeClosed)
             {
                 int count = await pipeClosed.ConfigureAwait(false);
-                if (count != 0 || !target.HasExited)
+                if (count == 1 && unexpectedMessage[0] == DebuggerTerminalLaunchProtocol.ReleaseTarget)
+                {
+                    detached = true;
+                }
+                else if (count != 0 || !target.HasExited)
                 {
                     throw new IOException("The owning debugger worker closed the terminal launch channel.");
                 }
@@ -104,18 +109,25 @@ public static class DebuggerTerminalLauncher
             }
 
             int exitCode = target.ExitCode;
-            await DebuggerTerminalLaunchProtocol.WriteIntegerAsync(pipe, exitCode, cancellationToken)
-                .ConfigureAwait(false);
+            if (!detached)
+            {
+                await DebuggerTerminalLaunchProtocol.WriteIntegerAsync(pipe, exitCode, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             return exitCode;
         }
         finally
         {
-            if (!target.HasExited)
+            if (!detached && !target.HasExited)
             {
                 target.Kill(entireProcessTree: false);
             }
 
-            await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            if (!detached)
+            {
+                await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
         }
     }
 

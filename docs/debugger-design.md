@@ -398,8 +398,10 @@ terminal launcher and debugger worker coordinate process identity, readiness,
 resume, exit, restart, cancellation, and teardown through authenticated local
 IPC. The launcher accepts only a validated argument array and target environment,
 never a shell command string. Terminal and target ownership have separate lifetimes:
-closing the terminal ends the owned launch; disconnect and restart retire the
-matching target and launcher without affecting another session. Real-process
+closing the terminal ends the owned launch; restart retires the matching target
+and launcher without affecting another session. A terminating disconnect ends
+the target. An explicit nonterminating disconnect releases debugger ownership
+while the launcher keeps the target's terminal open until it exits. Real-process
 DAP and editor tests cover input, output, entry stops, source breakpoints, target
 failure, early terminal closure, client refusal, and each supported platform.
 

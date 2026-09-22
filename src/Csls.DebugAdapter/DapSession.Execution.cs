@@ -195,6 +195,10 @@ internal sealed partial class DapSession
         else
         {
             await _engineSession.DetachAsync(cancellationToken).ConfigureAwait(false);
+            if (_terminalLaunchServer is not null)
+            {
+                await _terminalLaunchServer.ReleaseTargetAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         await _writer.WriteResponseAsync(

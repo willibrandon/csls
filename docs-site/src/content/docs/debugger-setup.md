@@ -76,9 +76,10 @@ events. Set it to `integratedTerminal` for the editor's terminal. In VS Code,
 
 The target receives the selected terminal's input, output, and error handles.
 The adapter reports the target's process ID, stops at configured breakpoints,
-and retains ownership through restart and disconnect. The same setting works
-with `noDebug: true`. Zed accepts `internalConsole` and `integratedTerminal`
-in its `csls` debug configuration.
+and retains ownership through restart. Disconnect terminates the target by
+default; `terminateDebuggee: false` detaches and keeps it running in the
+terminal. The same setting works with `noDebug: true`. Zed accepts
+`internalConsole` and `integratedTerminal` in its `csls` debug configuration.
 
 ## Remote and container debugging
 

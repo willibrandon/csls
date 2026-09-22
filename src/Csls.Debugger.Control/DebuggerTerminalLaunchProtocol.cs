@@ -17,6 +17,11 @@ internal static class DebuggerTerminalLaunchProtocol
     /// Gets the fixed length of an authenticated terminal launch secret.
     /// </summary>
     internal const int SecretBytes = 32;
+
+    /// <summary>
+    /// Releases the terminal target after the debugger detaches from it.
+    /// </summary>
+    internal const byte ReleaseTarget = 1;
     private const int MaximumInstructionBytes = 4 * 1024 * 1024;
 
     /// <summary>
