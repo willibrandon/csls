@@ -42,12 +42,12 @@ an opening tag, one text line, and a closing tag.
 Repository automation is implemented only as .NET file-based C# apps under
 `scripts/`. Shell, PowerShell, batch, and command scripts are not used.
 
-Language-server, terminal-editor, and graphical-editor suites are sharded on
-Linux, while the release workflow also
-validates the Windows x86, Linux musl x64, and Linux musl arm64 tool packages.
-Every Native AOT launcher is checked from its ILC size report by Dotsider, and
-CodeQL findings fail the analysis job. The development container installs every
-required editor oracle and build dependency through
+CI builds the solution and runs focused language-server and debugger end-to-end
+checks alongside repository policy, formatting, Native AOT size, and secret
+scanning. The release workflow validates the Windows x86, Linux musl x64, and
+Linux musl arm64 tool packages. CodeQL findings fail the analysis job. The
+development container installs every required editor oracle and build
+dependency through
 `scripts/Initialize-DevContainer.cs`; its exported image is scanned by Picket.
 
 Provision the real editor and parity oracles locally with:
