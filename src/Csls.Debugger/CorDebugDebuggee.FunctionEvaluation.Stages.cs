@@ -282,7 +282,8 @@ internal sealed partial class CorDebugDebuggee
         nint retainedEnumerable = evaluation.ResultsView?.RetainedEnumerableValue ?? 0;
         if (evaluation.Receiver != retainedEnumerable)
         {
-            ReleaseFunctionEvaluationHandle(evaluation.Receiver, runtimeAvailable);
+            ReleaseFunctionEvaluationArgument(
+                evaluation.Receiver, evaluation.ReceiverIsHeapHandle, runtimeAvailable);
         }
 
         for (int index = 0; index < evaluation.RuntimeArguments.Length; index++)

@@ -118,6 +118,7 @@ internal sealed partial class CorDebugDebuggee
                 TypeArguments = typeArguments,
                 Thread = thread,
                 Receiver = 0,
+                ReceiverIsHeapHandle = true,
                 ConstructsObject = true,
                 MaterializesString = false,
                 Arguments = arguments,

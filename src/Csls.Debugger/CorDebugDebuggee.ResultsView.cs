@@ -195,6 +195,7 @@ internal sealed partial class CorDebugDebuggee
                 TypeArguments = typeArguments,
                 Thread = thread,
                 Receiver = retainedEnumerable,
+                ReceiverIsHeapHandle = true,
                 ConstructsObject = retainedEnumerable == 0,
                 MaterializesString = false,
                 Arguments = retainedEnumerable == 0 ? [enumerableArgument] : [],

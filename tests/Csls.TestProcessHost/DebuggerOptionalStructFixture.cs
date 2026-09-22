@@ -23,4 +23,10 @@ internal struct DebuggerOptionalStructFixture
         _number = 41;
         _text = "constructed";
     }
+
+    /// <summary>
+    /// Reads the value through an instance call on unboxed struct storage.
+    /// </summary>
+    /// <returns>The current stored number.</returns>
+    internal int ReadNumber() => _number;
 }

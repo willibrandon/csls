@@ -169,6 +169,7 @@ internal sealed partial class CorDebugDebuggee
         nint thread = 0;
         nint evaluation = 0;
         nint receiverHandle = 0;
+        bool receiverIsHeapHandle = true;
         nint[] callTypeArguments = [];
         nint[] runtimeArguments = new nint[argumentCount];
         bool[] runtimeArgumentIsHeapHandle = new bool[argumentCount];
@@ -280,7 +281,8 @@ internal sealed partial class CorDebugDebuggee
             evaluation = CreateEvaluation(thread);
             if (receiverValue != 0)
             {
-                receiverHandle = CreateFunctionEvaluationHandle(receiverValue);
+                (receiverHandle, receiverIsHeapHandle) =
+                    RetainFunctionEvaluationArgument(receiverValue);
             }
             for (int index = 0; index < suppliedArguments.Length; index++)
             {
@@ -304,6 +306,7 @@ internal sealed partial class CorDebugDebuggee
                 ResultFrameId = frame.Id,
                 Thread = thread,
                 Receiver = receiverHandle,
+                ReceiverIsHeapHandle = receiverIsHeapHandle,
                 ConstructsObject = constructsObject,
                 MaterializesString = materializesString,
                 Arguments = suppliedArguments,
@@ -387,7 +390,7 @@ internal sealed partial class CorDebugDebuggee
                         runtimeArguments[index], runtimeArgumentIsHeapHandle[index]);
                 }
 
-                ReleaseFunctionEvaluationHandle(receiverHandle);
+                ReleaseFunctionEvaluationArgument(receiverHandle, receiverIsHeapHandle);
                 foreach (nint typeArgument in callTypeArguments)
                 {
                     ReleaseFunctionEvaluationPointer(typeArgument);

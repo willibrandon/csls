@@ -224,6 +224,16 @@ public sealed class DapOptionalArgumentTests : DapTestContext
         using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
         int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
 
+        JsonElement initialReceiver = await ReadEvaluationAsync(client, frameId,
+            "optionalStructs[0].ReadNumber()", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("41", initialReceiver.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
         int rejected = await client.SendRequestAsync("setExpression", writer =>
         {
             writer.WriteStartObject();
@@ -296,6 +306,16 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             "Csls.TestProcessHost.DebuggerDumpArrayFixture.OptionalStructWithoutConstantForDebugger(optionalStructs[0])",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("1", observed.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement resetReceiver = await ReadEvaluationAsync(client, frameId,
+            "optionalStructs[0].ReadNumber()", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("0", resetReceiver.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {

@@ -594,6 +594,8 @@ exact loaded value-type identity for calls and assignments.
 Function evaluation retains unboxed value-type arguments by owned `ICorDebugValue`
 pointers and heap references by owned strong handles, releasing each according to
 its native ownership contract.
+An existing unboxed value-type receiver follows the same value-pointer ownership
+rule for its instance method call.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather

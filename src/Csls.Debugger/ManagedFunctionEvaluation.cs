@@ -41,9 +41,14 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Thread { get; init; }
 
     /// <summary>
-    /// Gets or sets the owned strong-handle receiver passed to the active call.
+    /// Gets or sets the owned receiver value passed to the active call.
     /// </summary>
     internal required nint Receiver { get; set; }
+
+    /// <summary>
+    /// Gets whether the receiver owns a CoreCLR heap handle rather than a value pointer.
+    /// </summary>
+    internal required bool ReceiverIsHeapHandle { get; init; }
 
     /// <summary>
     /// Gets or sets whether the active CoreCLR operation constructs a new managed object.
