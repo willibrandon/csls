@@ -1,3 +1,4 @@
+using Csls.DebugAdapter.Protocol;
 using Csls.Debugger;
 using Csls.Debugger.Control;
 using System.Diagnostics;
@@ -86,6 +87,7 @@ internal sealed partial class DapSession
             .CreateLinkedTokenSource(cancellationToken);
         handshakeCancellation.CancelAfter(TimeSpan.FromSeconds(30));
         Task<int> accepted = TerminalLaunchServer.AcceptAsync(instruction, handshakeCancellation.Token);
+        Task<Response>? terminalResponse = null;
         bool started = false;
         try
         {
@@ -94,25 +96,30 @@ internal sealed partial class DapSession
                 [DebuggerTerminalLauncher.PipeEnvironmentVariable] = TerminalLaunchServer.PipeName,
                 [DebuggerTerminalLauncher.SecretEnvironmentVariable] = TerminalLaunchServer.LaunchSecret
             };
-            _ = await RunInTerminalAsync(
+            terminalResponse = RunInTerminalAsync(
                 launch.Console == DapConsoleKind.Integrated ? "integrated" : "external",
                 launch.Options.WorkingDirectory,
                 Path.GetFileNameWithoutExtension(launch.Options.Program),
                 arguments,
                 launcherEnvironment,
-                cancellationToken).ConfigureAwait(false);
-            int processId;
-            try
+                handshakeCancellation.Token);
+            Task first = await Task.WhenAny(terminalResponse, accepted).ConfigureAwait(false);
+            if (first == accepted)
             {
-                processId = await accepted.WaitAsync(cancellationToken).ConfigureAwait(false);
+                _ = await accepted.ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (
-                handshakeCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                throw new TimeoutException("The terminal launcher did not report its target in time.");
-            }
+
+            _ = await terminalResponse.ConfigureAwait(false);
+            int processId = await accepted.WaitAsync(cancellationToken).ConfigureAwait(false);
             started = true;
             return processId;
+        }
+        catch (OperationCanceledException) when (
+            handshakeCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(accepted.IsCompletedSuccessfully
+                ? "The terminal client did not answer runInTerminal in time."
+                : "The terminal launcher did not report its target in time.");
         }
         finally
         {
@@ -129,7 +136,24 @@ internal sealed partial class DapSession
                 }
                 finally
                 {
-                    await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
+                    try
+                    {
+                        if (terminalResponse is not null)
+                        {
+                            try
+                            {
+                                _ = await terminalResponse.ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (handshakeCancellation.IsCancellationRequested)
+                            {
+                                Debug.Assert(terminalResponse.IsCanceled);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
+                    }
                 }
             }
         }

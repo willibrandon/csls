@@ -1,3 +1,4 @@
+using Csls.Debugger.Control;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -70,6 +71,61 @@ public sealed class DapTerminalConsoleTests : DapTestContext
         {
             AssertResponse(response.RootElement, launch, "launch", success: false);
         }
+    }
+
+    /// <summary>
+    /// Rejects an unauthenticated launcher without waiting for an unanswered editor reply.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnauthenticatedTerminalLauncherFailsPromptly()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
+            writeProperties: writer => writer.WriteBoolean("supportsRunInTerminalRequest", true))
+            .ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, initialize, "initialize", success: true);
+        }
+
+        int launch = await client.SendRequestAsync("launch", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("program", ResolveTestProcessHost());
+            writer.WriteString("console", "integratedTerminal");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(initialized.RootElement, "initialized");
+        }
+
+        int configuration = await client.SendRequestAsync(
+            "configurationDone", WriteEmptyObject, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        using Process launcher = await StartUnauthenticatedLauncherAsync(client).ConfigureAwait(false);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        using (JsonDocument response = await client.ReadMessageAsync(deadline.Token)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, configuration, "configurationDone", success: false);
+            Assert.Contains("authenticate", response.RootElement.GetProperty("message").GetString() ?? string.Empty,
+                StringComparison.Ordinal);
+        }
+        using (JsonDocument response = await client.ReadMessageAsync(deadline.Token)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, launch, "launch", success: false);
+        }
+
+        await launcher.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+        Assert.AreNotEqual(0, launcher.ExitCode);
     }
 
     /// <summary>
@@ -707,6 +763,21 @@ public sealed class DapTerminalConsoleTests : DapTestContext
         }
 
         return start;
+    }
+
+    private async Task<Process> StartUnauthenticatedLauncherAsync(DapTestClient client)
+    {
+        using JsonDocument reverseRequest = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        JsonElement request = reverseRequest.RootElement;
+        Assert.AreEqual("runInTerminal", request.GetProperty("command").GetString());
+        ProcessStartInfo start = CreateTerminalStart(request.GetProperty("arguments"));
+        string secretName = DebuggerTerminalLauncher.SecretEnvironmentVariable;
+        byte[] forgedSecret = Convert.FromBase64String(start.Environment[secretName]
+            ?? throw new InvalidDataException("The terminal request omitted its launch secret."));
+        forgedSecret[0] ^= byte.MaxValue;
+        start.Environment[secretName] = Convert.ToBase64String(forgedSecret);
+        return Process.Start(start) ?? throw new InvalidOperationException("The terminal launcher did not start.");
     }
 
     private static byte[] CreateFrame(string payload)
