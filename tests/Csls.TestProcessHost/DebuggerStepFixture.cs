@@ -8,6 +8,17 @@ namespace Csls.TestProcessHost;
 internal static class DebuggerStepFixture
 {
     /// <summary>
+    /// Exits the target while a source-level step is active.
+    /// </summary>
+    /// <returns>Zero only if the requested process exit did not occur.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    internal static int ExitOnStep()
+    {
+        Environment.Exit(37);
+        return 0;
+    }
+
+    /// <summary>
     /// Executes a caller and callee with distinct Portable PDB sequence points.
     /// </summary>
     /// <param name="path">The signal file path that permits the fixture to exit.</param>

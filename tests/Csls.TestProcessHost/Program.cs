@@ -199,6 +199,11 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is ["--debugger-exit-on-step-fixture"])
+{
+    return DebuggerStepFixture.ExitOnStep();
+}
+
 if (args is ["--debugger-response-order-fixture"])
 {
     return DebuggerResponseOrderFixture.Run();
