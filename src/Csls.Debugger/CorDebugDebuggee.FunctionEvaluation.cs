@@ -228,7 +228,8 @@ internal sealed partial class CorDebugDebuggee
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;
                 var referenceConversions = new ManagedReferenceConversion(_boundTypes);
-                var userDefinedConversions = new ManagedUserDefinedConversionResolver(_boundTypes, thread);
+                var userDefinedConversions = new ManagedUserDefinedConversionResolver(
+                    _boundTypes, thread, plan.Language);
                 for (int index = 0; index < suppliedArguments.Length; index++)
                 {
                     ManagedBoundType? sourceType = argumentTypes[index];
@@ -277,12 +278,11 @@ internal sealed partial class CorDebugDebuggee
                     {
                         ManagedUserDefinedConversion conversion = userDefinedConversions.Resolve(
                             sourceType, parameterType) ?? throw new InvalidOperationException(
-                            $"The selected method has no exact implicit conversion from " +
+                            $"The selected method has no loaded implicit conversion from " +
                             $"'{sourceType.DisplayName}' to '{parameterType.DisplayName}'.");
-                        suppliedArguments[index] = suppliedArguments[index] with
-                        {
-                            UserDefinedConversion = conversion
-                        };
+                        suppliedArguments[index] = PrepareUserDefinedConversionArgument(
+                            suppliedArguments[index], sourceType, conversion, referenceConversions,
+                            thread);
                     }
 
                     if (suppliedArguments[index].Scalar is decimal &&

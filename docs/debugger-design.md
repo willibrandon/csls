@@ -604,11 +604,13 @@ struct storage through CoreCLR's GC-aware value home or writes the selected prim
 value, and retains the resulting strong handle for the user call. Nullable boxing
 allocates the exact contained value when present and supplies a managed null reference
 when empty.
-Exact user-defined implicit conversions are resolved from the source and destination's
-current loaded metadata. The selected `op_Implicit` executes as a supervised evaluation
-stage, retains its exact primitive, reference, null, or value-type result, and supplies
-that result to the already-selected method call. Target exceptions use the ordinary
-function-evaluation recovery path and leave the process stopped for inspection.
+User-defined implicit conversions are resolved from the source hierarchy and destination's
+current loaded metadata. Standard implicit numeric and reference conversions select and
+materialize the operator parameter and result types. The selected `op_Implicit` executes
+as a supervised evaluation stage, retains its exact primitive, reference, null, or
+value-type result, and supplies that result to the already-selected method call. Target
+exceptions use the ordinary function-evaluation recovery path and leave the process
+stopped for inspection.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

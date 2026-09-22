@@ -175,9 +175,10 @@ reference, value, constructor, inheritance, interface, and unmanaged constraints
 execution. Exact boxed and zero-initialized struct values can receive instance calls or
 flow into matching value-type parameters. Value arguments use exact loaded boxing
 conversions for object, value-type, and interface parameters. Populated nullable values
-box their contained value, and empty nullable values become null references. Exact loaded
-implicit conversion operators participate in overload selection and execute as supervised
-target-code stages before the selected call. Direct
+box their contained value, and empty nullable values become null references. Loaded
+implicit conversion operators participate in overload selection with standard numeric and
+reference conversions around the operator, then execute as supervised target-code stages
+before the selected call. Direct
 assignments update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the

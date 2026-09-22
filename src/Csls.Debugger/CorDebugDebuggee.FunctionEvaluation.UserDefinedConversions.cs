@@ -8,6 +8,38 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private static ManagedExpressionValue PrepareUserDefinedConversionArgument(
+        ManagedExpressionValue value,
+        ManagedBoundType sourceType,
+        ManagedUserDefinedConversion conversion,
+        ManagedReferenceConversion referenceConversions,
+        nint thread)
+    {
+        ManagedExpressionValue prepared;
+        if (sourceType.IsSameType(conversion.ParameterType) ||
+            referenceConversions.IsImplicit(sourceType, conversion.ParameterType, thread))
+        {
+            prepared = value with { DeclaredType = conversion.ParameterType };
+        }
+        else if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+            sourceType, conversion.ParameterType, conversion.Language))
+        {
+            prepared = ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+                value, sourceType, conversion.ParameterType, conversion.Language) with
+            {
+                DeclaredType = conversion.ParameterType
+            };
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"The implicit conversion operator cannot receive " +
+                $"'{sourceType.DisplayName}' as '{conversion.ParameterType.DisplayName}'.");
+        }
+
+        return prepared with { UserDefinedConversion = conversion };
+    }
+
     private unsafe void ScheduleUserDefinedConversion(
         ManagedFunctionEvaluation evaluation,
         int index)
@@ -120,16 +152,8 @@ internal sealed partial class CorDebugDebuggee
                     _ = ComAbi.Release(dereferenced);
                     retained = CreateFunctionEvaluationHandle(value);
                     retainedIsHeapHandle = true;
-                    converted = active.Arguments[index] with
-                    {
-                        Scalar = null,
-                        HasScalar = false,
-                        Type = conversion.ResultType.DisplayName,
-                        RuntimeValueReference = 0,
-                        DeclaredType = conversion.ResultType,
-                        UserDefinedConversion = null,
-                        IsMaterializedFunctionArgument = true
-                    };
+                    converted = CreateMaterializedUserDefinedConversionValue(
+                        conversion.ResultType);
                 }
                 else
                 {
@@ -144,16 +168,8 @@ internal sealed partial class CorDebugDebuggee
             {
                 _ = ComAbi.AddRef(value);
                 retained = value;
-                converted = active.Arguments[index] with
-                {
-                    Scalar = null,
-                    HasScalar = false,
-                    Type = conversion.ResultType.DisplayName,
-                    RuntimeValueReference = 0,
-                    DeclaredType = conversion.ResultType,
-                    UserDefinedConversion = null,
-                    IsMaterializedFunctionArgument = true
-                };
+                converted = CreateMaterializedUserDefinedConversionValue(
+                    conversion.ResultType);
             }
             else
             {
@@ -177,6 +193,9 @@ internal sealed partial class CorDebugDebuggee
                         $"The conversion result '{conversion.ResultType.DisplayName}' cannot be materialized.");
                 }
             }
+
+            converted = ApplyUserDefinedConversionTarget(
+                converted, conversion, active.Thread);
 
             nextEvaluation = CreateEvaluation(active.Thread);
             active.Arguments[index] = converted;
@@ -226,5 +245,52 @@ internal sealed partial class CorDebugDebuggee
         }
 
         evaluation.PendingUserDefinedConversionTypeArguments = [];
+    }
+
+    private static ManagedExpressionValue CreateMaterializedUserDefinedConversionValue(
+        ManagedBoundType type) => new(
+            new DebugVariableInfo(
+                "$conversion",
+                "{...}",
+                type.DisplayName,
+                VariablesReference: 0,
+                MemoryReference: null,
+                EvaluateName: null),
+            Scalar: null,
+            HasScalar: false,
+            Type: type.DisplayName,
+            RuntimeValueReference: 0,
+            DeclaredType: type,
+            IsMaterializedFunctionArgument: true);
+
+    private ManagedExpressionValue ApplyUserDefinedConversionTarget(
+        ManagedExpressionValue value,
+        ManagedUserDefinedConversion conversion,
+        nint thread)
+    {
+        if (conversion.ResultType.IsSameType(conversion.TargetType))
+        {
+            return value with { DeclaredType = conversion.TargetType };
+        }
+
+        if (new ManagedReferenceConversion(_boundTypes).IsImplicit(
+            conversion.ResultType, conversion.TargetType, thread))
+        {
+            return value with { DeclaredType = conversion.TargetType };
+        }
+
+        if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+            conversion.ResultType, conversion.TargetType, conversion.Language))
+        {
+            return ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+                value, conversion.ResultType, conversion.TargetType, conversion.Language) with
+            {
+                DeclaredType = conversion.TargetType
+            };
+        }
+
+        throw new InvalidOperationException(
+            $"The implicit conversion result '{conversion.ResultType.DisplayName}' cannot flow to " +
+            $"'{conversion.TargetType.DisplayName}'.");
     }
 }

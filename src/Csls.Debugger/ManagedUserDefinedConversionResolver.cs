@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -12,6 +13,8 @@ internal sealed class ManagedUserDefinedConversionResolver
 {
     private readonly ManagedBoundTypeSystem _types;
     private readonly nint _thread;
+    private readonly DebugExpressionLanguage _language;
+    private readonly ManagedReferenceConversion _referenceConversions;
     private readonly List<(ManagedBoundType Source, ManagedBoundType Destination,
         ManagedUserDefinedConversion? Result)> _cache = [];
 
@@ -20,11 +23,17 @@ internal sealed class ManagedUserDefinedConversionResolver
     /// </summary>
     /// <param name="types">The exact loaded type system.</param>
     /// <param name="thread">The borrowed managed thread used for core-library identity.</param>
-    internal ManagedUserDefinedConversionResolver(ManagedBoundTypeSystem types, nint thread)
+    /// <param name="language">The source language controlling standard numeric conversions.</param>
+    internal ManagedUserDefinedConversionResolver(
+        ManagedBoundTypeSystem types,
+        nint thread,
+        DebugExpressionLanguage language)
     {
         ArgumentNullException.ThrowIfNull(types);
         _types = types;
         _thread = thread;
+        _language = language;
+        _referenceConversions = new ManagedReferenceConversion(types);
     }
 
     /// <summary>
@@ -52,13 +61,12 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         var matches = new List<ManagedUserDefinedConversion>();
-        AddMatches(source, source, destination, matches);
-        if (!source.IsSameType(destination))
+        foreach (ManagedBoundType declaringType in GetParticipatingTypes(source, destination))
         {
-            AddMatches(destination, source, destination, matches);
+            AddMatches(declaringType, source, destination, matches);
         }
 
-        ManagedUserDefinedConversion? resolved = matches.Count == 1 ? matches[0] : null;
+        ManagedUserDefinedConversion? resolved = SelectBest(matches, source, destination);
         _cache.Add((source, destination, resolved));
         return resolved;
     }
@@ -110,14 +118,137 @@ internal sealed class ManagedUserDefinedConversionResolver
                 parameter, declaringType.TypeArguments, [], _thread);
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
-            if (parameterType.IsSameType(source) && resultType.IsSameType(destination))
+            if (HasStandardImplicitConversion(source, parameterType) &&
+                HasStandardImplicitConversion(resultType, destination) &&
+                !matches.Any(match =>
+                    match.DeclaringType.ModuleId == declaringType.ModuleId &&
+                    match.MethodToken == checked((uint)MetadataTokens.GetToken(handle))))
             {
                 matches.Add(new ManagedUserDefinedConversion(
                     declaringType,
                     checked((uint)MetadataTokens.GetToken(handle)),
                     parameterType,
-                    resultType));
+                    resultType,
+                    destination,
+                    _language));
             }
         }
+    }
+
+    private List<ManagedBoundType> GetParticipatingTypes(
+        ManagedBoundType source,
+        ManagedBoundType destination)
+    {
+        const int maximumTypes = 128;
+        List<ManagedBoundType> result = [];
+        ManagedBoundType? current = source;
+        while (current is not null)
+        {
+            if (result.Count >= maximumTypes)
+            {
+                throw new InvalidOperationException(
+                    "Implicit conversion lookup exceeds its bounded type hierarchy.");
+            }
+
+            TypeAttributes attributes = _types.GetAttributes(current);
+            if ((attributes & TypeAttributes.Interface) != 0)
+            {
+                break;
+            }
+
+            result.Add(current);
+            if (!current.IsReference)
+            {
+                break;
+            }
+
+            current = _types.GetParents(current, _thread).FirstOrDefault(parent =>
+                (_types.GetAttributes(parent) & TypeAttributes.Interface) == 0);
+        }
+
+        if (!result.Any(destination.IsSameType) &&
+            (_types.GetAttributes(destination) & TypeAttributes.Interface) == 0)
+        {
+            result.Add(destination);
+        }
+
+        return result;
+    }
+
+    private ManagedUserDefinedConversion? SelectBest(
+        List<ManagedUserDefinedConversion> matches,
+        ManagedBoundType source,
+        ManagedBoundType destination)
+    {
+        if (matches.Count <= 1)
+        {
+            return matches.SingleOrDefault();
+        }
+
+        ManagedBoundType? bestSource = SelectBestType(
+            matches.Select(static match => match.ParameterType), source,
+            mostEncompassing: false);
+        if (bestSource is null)
+        {
+            return null;
+        }
+
+        ManagedBoundType? bestTarget = SelectBestType(
+            matches.Select(static match => match.ResultType), destination,
+            mostEncompassing: true);
+        if (bestTarget is null)
+        {
+            return null;
+        }
+
+        ManagedUserDefinedConversion[] best = [.. matches.Where(match =>
+            match.ParameterType.IsSameType(bestSource) &&
+            match.ResultType.IsSameType(bestTarget))];
+        return best.Length == 1 ? best[0] : null;
+    }
+
+    private ManagedBoundType? SelectBestType(
+        IEnumerable<ManagedBoundType> candidates,
+        ManagedBoundType exactType,
+        bool mostEncompassing)
+    {
+        List<ManagedBoundType> distinct = [];
+        foreach (ManagedBoundType candidate in candidates.Where(candidate =>
+            !distinct.Any(candidate.IsSameType)))
+        {
+            distinct.Add(candidate);
+        }
+
+        ManagedBoundType[] exact = [.. distinct.Where(exactType.IsSameType)];
+        if (exact.Length == 1)
+        {
+            return exact[0];
+        }
+
+        ManagedBoundType[] best = [.. distinct.Where(candidate => distinct.All(other =>
+            candidate.IsSameType(other) || (mostEncompassing
+                ? HasStandardImplicitConversion(other, candidate)
+                : HasStandardImplicitConversion(candidate, other))))];
+        return best.Length == 1 ? best[0] : null;
+    }
+
+    private bool HasStandardImplicitConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination)
+    {
+        if (source.IsSameType(destination))
+        {
+            return true;
+        }
+
+        if ((_types.GetAttributes(source) & TypeAttributes.Interface) != 0 ||
+            (_types.GetAttributes(destination) & TypeAttributes.Interface) != 0)
+        {
+            return false;
+        }
+
+        return _referenceConversions.IsImplicit(source, destination, _thread) ||
+            ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                source, destination, _language);
     }
 }

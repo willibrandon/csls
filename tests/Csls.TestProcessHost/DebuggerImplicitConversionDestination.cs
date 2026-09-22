@@ -27,4 +27,15 @@ internal readonly struct DebuggerImplicitConversionDestination
         DebuggerImplicitConversionFixture.RecordConversion();
         return new DebuggerImplicitConversionDestination(source.Number);
     }
+
+    /// <summary>
+    /// Converts a widened primitive source inside the target process.
+    /// </summary>
+    /// <param name="number">The primitive number supplied to the operator.</param>
+    /// <returns>The converted destination value.</returns>
+    public static implicit operator DebuggerImplicitConversionDestination(int number)
+    {
+        DebuggerImplicitConversionFixture.RecordConversion();
+        return new DebuggerImplicitConversionDestination(number);
+    }
 }

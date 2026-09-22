@@ -110,7 +110,7 @@ internal static class ManagedFunctionMethodResolver
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
         var conversions = new ManagedReferenceConversion(types);
-        var userDefinedConversions = new ManagedUserDefinedConversionResolver(types, thread);
+        var userDefinedConversions = new ManagedUserDefinedConversionResolver(types, thread, language);
         var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters,
             int[] ParameterSourceIndices, ManagedExpressionValue?[] OptionalArguments,
             ManagedBoundType[] MethodTypeArguments)>();

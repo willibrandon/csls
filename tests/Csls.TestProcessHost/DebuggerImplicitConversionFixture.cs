@@ -58,4 +58,42 @@ internal static class DebuggerImplicitConversionFixture
     /// <param name="value">The converted nullable reference.</param>
     /// <returns>The text length, or minus one for null.</returns>
     internal static int RequireStringForDebugger(string? value) => value?.Length ?? -1;
+
+    /// <summary>
+    /// Reads a widened primitive produced by an implicit conversion operator.
+    /// </summary>
+    /// <param name="value">The widened operator result.</param>
+    /// <returns>The widened value plus three hundred.</returns>
+    internal static long RequireLongForDebugger(long value) => value + 300;
+
+    /// <summary>
+    /// Runs the compiler's numeric conversion before an implicit operator.
+    /// </summary>
+    /// <returns>The compiler-selected destination overload result.</returns>
+    internal static int CompilerSelectByteForDebugger() => SelectForDebugger((byte)41);
+
+    /// <summary>
+    /// Runs the compiler's numeric conversion after an implicit operator.
+    /// </summary>
+    /// <param name="source">The authored source value.</param>
+    /// <returns>The compiler-produced widened result.</returns>
+    internal static long CompilerRequireLongForDebugger(
+        DebuggerImplicitConversionSource source) => RequireLongForDebugger(source);
+
+    /// <summary>
+    /// Reads a derived operator result through its loaded base declaration.
+    /// </summary>
+    /// <param name="value">The reference-converted operator result.</param>
+    /// <returns>The converted number plus three hundred.</returns>
+    internal static int RequireReferenceBaseForDebugger(
+        DebuggerImplicitConversionReferenceResultBase value) => value.Number + 300;
+
+    /// <summary>
+    /// Runs the compiler's standard conversions around an inherited implicit operator.
+    /// </summary>
+    /// <param name="source">The derived authored source.</param>
+    /// <returns>The compiler-produced reference conversion result.</returns>
+    internal static int CompilerRequireReferenceBaseForDebugger(
+        DebuggerImplicitConversionReferenceDerived source) =>
+        RequireReferenceBaseForDebugger(source);
 }

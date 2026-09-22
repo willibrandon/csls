@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -7,8 +9,12 @@ namespace Csls.Debugger;
 /// <param name="MethodToken">The aggregate metadata token for the conversion operator.</param>
 /// <param name="ParameterType">The exact loaded operator parameter type.</param>
 /// <param name="ResultType">The exact loaded operator result type.</param>
+/// <param name="TargetType">The exact loaded call parameter receiving the converted result.</param>
+/// <param name="Language">The source language controlling standard numeric conversions.</param>
 internal sealed record ManagedUserDefinedConversion(
     ManagedBoundType DeclaringType,
     uint MethodToken,
     ManagedBoundType ParameterType,
-    ManagedBoundType ResultType);
+    ManagedBoundType ResultType,
+    ManagedBoundType TargetType,
+    DebugExpressionLanguage Language);

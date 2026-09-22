@@ -140,10 +140,11 @@ implemented-interface parameters. The engine allocates an exact boxed copy and
 preserves embedded managed references while selecting the same preferred overload
 as the source language. Populated nullable values box their contained value, and
 empty nullable values become managed null references.
-Exact implicit conversion operators declared by the loaded source or destination type
-participate in overload selection. The debugger executes the selected operator under the
-same deadline, cancellation, thread isolation, and exception recovery as the final call,
-then passes its primitive, reference, null, or value-type result to that call.
+Implicit conversion operators declared by the loaded source hierarchy or destination type
+participate in overload selection with standard numeric and reference conversions around
+the operator. The debugger executes the selected operator under the same deadline,
+cancellation, thread isolation, and exception recovery as the final call, then passes its
+primitive, reference, null, or value-type result to that call.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.
