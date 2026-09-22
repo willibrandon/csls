@@ -200,6 +200,7 @@ internal sealed partial class CorDebugDebuggee
     private void BeginVariableMutation(ManagedVariableMutationState mutations)
     {
         mutations.Advance();
+        _retainedValueKeys.Clear();
         RetireResultsViewSnapshot();
     }
 

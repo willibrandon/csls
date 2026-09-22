@@ -457,6 +457,61 @@ public sealed class DapArrayPagingTests : DapTestContext
         }
     }
 
+    /// <summary>
+    /// Reuses stopped-state array elements until a direct assignment replaces their storage.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task RepeatedArrayPagesReuseRetainedElements()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        JsonElement array = await ReadEvaluationAsync(client, frameId, "many", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        int reference = array.GetProperty("variablesReference").GetInt32();
+        JsonElement[] first = await ReadPageAsync(client, reference, 0, 3).ConfigureAwait(false);
+        Assert.HasCount(3, first);
+        int[] expected = [.. first.Select(value => value.GetProperty("variablesReference").GetInt32())];
+        Assert.IsTrue(expected.All(id => id > 0));
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            JsonElement[] refreshed = await ReadPageAsync(client, reference, 0, 3).ConfigureAwait(false);
+            Assert.AreSequenceEqual(expected,
+                refreshed.Select(value => value.GetProperty("variablesReference").GetInt32()));
+        }
+
+        int locals = await ReadLocalsReferenceAsync(client, frameId).ConfigureAwait(false);
+        int assignment = await client.SendRequestAsync("setVariable", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("variablesReference", locals);
+            writer.WriteString("name", "many");
+            writer.WriteString("value", "jagged");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, assignment, "setVariable", success: true);
+        }
+
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement replacement = await ReadEvaluationAsync(client, frameId, "many", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        int replacementReference = replacement.GetProperty("variablesReference").GetInt32();
+        Assert.AreNotEqual(reference, replacementReference);
+        JsonElement[] replacementElements = await ReadPageAsync(client, replacementReference, 0, 0)
+            .ConfigureAwait(false);
+        Assert.HasCount(4, replacementElements);
+
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
+
     private async Task<int> StopAtInitializedArraysAsync(DapTestClient client, bool paging = true)
     {
         string path = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "DebuggerDumpArrayFixture.cs");

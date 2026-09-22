@@ -35,8 +35,14 @@ internal sealed partial class CorDebugDebuggee
                 continue;
             }
 
-            _valueIdentities.Remove((value.Identity, value.FrameId, value.EvaluateName,
-                value.View, value.Origin, value.Lifetime));
+            ManagedRetainedValueKey key = new(value.Origin is null ? value.Identity : (nint)0,
+                value.FrameId, value.EvaluateName, value.View, value.Origin,
+                value.Lifetime, value.TupleCustomTypeInfo);
+            if (_retainedValueKeys.TryGetValue(key, out ManagedValueHandle? indexed) &&
+                ReferenceEquals(indexed, value))
+            {
+                _retainedValueKeys.Remove(key);
+            }
             if (value.MemoryReference is { } memoryReference)
             {
                 _memoryValues.Remove(memoryReference);
@@ -140,15 +146,15 @@ internal sealed partial class CorDebugDebuggee
                 $"required COM identity: {exception.Message}",
                 exception);
         }
-        (nint Identity, int? FrameId, string? EvaluateName, ManagedValueView View,
-            ManagedValueOrigin? Origin, ManagedResultsViewLifetime? Lifetime) key = (
-            identity,
+        ManagedRetainedValueKey key = new(
+            origin is null ? identity : (nint)0,
             frameId,
             evaluateName,
             view,
             origin,
-            lifetime);
-        if (_valueIdentities.TryGetValue(key, out ManagedValueHandle? existing))
+            lifetime,
+            tupleCustomTypeInfo);
+        if (_retainedValueKeys.TryGetValue(key, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);
             return existing;
@@ -185,7 +191,7 @@ internal sealed partial class CorDebugDebuggee
         };
         _values.Add(handle.Id, handle);
         _operationValues?.Track(handle);
-        _valueIdentities.Add(key, handle);
+        _retainedValueKeys.Add(key, handle);
         if (memoryReference is not null)
         {
             _memoryValues.Add(memoryReference, handle);

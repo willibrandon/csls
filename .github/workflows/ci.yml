@@ -197,8 +197,8 @@ jobs:
       - name: Run debugger E2E
         run: >-
           dotnet test --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
-          --filter "FullyQualifiedName=Csls.Debugger.Tests.DapMessageReaderTests.FragmentedOperatingSystemPipeRequestIsReassembled|FullyQualifiedName=Csls.Debugger.Tests.DapMessageReaderTests.CoalescedOperatingSystemPipeRequestsRemainIndependent|FullyQualifiedName=Csls.Debugger.Tests.DebugAdapterProcessTests.DebuggerCommandKeepsStandardOutputProtocolOnly|FullyQualifiedName=Csls.Debugger.Tests.DapAsyncEntryPointTests.StopAtEntryUsesAsyncTopLevelSource|FullyQualifiedName~Csls.Debugger.Tests.DapTerminationTests"
-          --minimum-expected-tests 16
+          --filter "FullyQualifiedName=Csls.Debugger.Tests.DapMessageReaderTests.FragmentedOperatingSystemPipeRequestIsReassembled|FullyQualifiedName=Csls.Debugger.Tests.DapMessageReaderTests.CoalescedOperatingSystemPipeRequestsRemainIndependent|FullyQualifiedName=Csls.Debugger.Tests.DebugAdapterProcessTests.DebuggerCommandKeepsStandardOutputProtocolOnly|FullyQualifiedName=Csls.Debugger.Tests.DapAsyncEntryPointTests.StopAtEntryUsesAsyncTopLevelSource|FullyQualifiedName=Csls.Debugger.Tests.DapArrayPagingTests.RepeatedArrayPagesReuseRetainedElements|FullyQualifiedName~Csls.Debugger.Tests.DapTerminationTests"
+          --minimum-expected-tests 17
 
   secret-scan:
     name: Secret scan

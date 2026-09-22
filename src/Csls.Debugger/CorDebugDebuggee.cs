@@ -41,14 +41,7 @@ internal sealed partial class CorDebugDebuggee :
     private readonly Dictionary<int, ManagedGotoTargetHandle> _gotoTargets = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private readonly Dictionary<int, ManagedValueHandle> _values = [];
-    private readonly Dictionary<(
-        nint Identity,
-        int? FrameId,
-        string? EvaluateName,
-        ManagedValueView View,
-        ManagedValueOrigin? Origin,
-        ManagedResultsViewLifetime? Lifetime),
-        ManagedValueHandle> _valueIdentities = [];
+    private readonly Dictionary<ManagedRetainedValueKey, ManagedValueHandle> _retainedValueKeys = [];
     private readonly Dictionary<(
         ulong Address,
         ManagedResultsViewLifetime? Lifetime),

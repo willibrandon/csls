@@ -194,7 +194,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         _values.Clear();
-        _valueIdentities.Clear();
+        _retainedValueKeys.Clear();
         _heapValueOrigins.Clear();
         _memoryValues.Clear();
     }
