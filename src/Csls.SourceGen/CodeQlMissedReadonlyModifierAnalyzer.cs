@@ -78,7 +78,10 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
             field.IsConst ||
             field.IsReadOnly ||
             field.IsVolatile ||
-            field.ContainingType.TypeKind != TypeKind.Class ||
+            field.ContainingType.TypeKind is not (TypeKind.Class or TypeKind.Struct) ||
+            field.ContainingType.GetAttributes().Any(static attribute =>
+                attribute.AttributeClass?.ToDisplayString() ==
+                "System.Runtime.InteropServices.StructLayoutAttribute") ||
             field.Locations.FirstOrDefault(static location => location.IsInSource) is not
                 Location location)
         {

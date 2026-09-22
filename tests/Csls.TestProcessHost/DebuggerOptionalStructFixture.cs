@@ -8,12 +8,12 @@ internal struct DebuggerOptionalStructFixture
     /// <summary>
     /// Stores a primitive that remains zero under default initialization.
     /// </summary>
-    internal int _number;
+    internal readonly int _number;
 
     /// <summary>
     /// Stores a reference that remains null under default initialization.
     /// </summary>
-    internal string? _text;
+    internal readonly string? _text;
 
     /// <summary>
     /// Initializes deliberately nondefault fields when the constructor executes.
