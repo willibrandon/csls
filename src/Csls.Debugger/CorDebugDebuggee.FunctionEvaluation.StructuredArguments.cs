@@ -7,34 +7,67 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private void ScheduleStructuredArgumentAllocation(ManagedFunctionEvaluation evaluation, int index)
+    private unsafe void ScheduleStructuredArgumentAllocation(ManagedFunctionEvaluation evaluation, int index)
     {
         ManagedExpressionValue argument = evaluation.Arguments[index];
         nint thread = evaluation.Thread;
         ManagedBoundType declaredType = argument.DeclaredType ?? throw new InvalidOperationException(
             "A structured argument has no exact declared type.");
-        string expectedType = argument.Scalar is decimal ? "System.Decimal" : "System.DateTime";
-        if (!_boundTypes.IsCoreType(declaredType, expectedType, thread))
+        if (argument.IsZeroValueTypeDefault)
         {
-            throw new InvalidOperationException("A structured argument has an invalid runtime type.");
+            if (declaredType.ElementType != 0x11 || _boundTypes.IsByRefLike(declaredType))
+            {
+                throw new InvalidOperationException("The optional value type cannot be boxed safely.");
+            }
+        }
+        else
+        {
+            string expectedType = argument.Scalar is decimal ? "System.Decimal" : "System.DateTime";
+            if (!_boundTypes.IsCoreType(declaredType, expectedType, thread))
+            {
+                throw new InvalidOperationException("A structured argument has an invalid runtime type.");
+            }
+        }
+
+        if (declaredType.TypeArguments.Count > MaximumFunctionEvaluationArgumentCount)
+        {
+            throw new NotSupportedException("A structured argument exceeds the supported generic arity.");
         }
 
         nint runtimeType = 0;
         nint runtimeClass = 0;
         nint evaluation2 = 0;
+        nint[] typeArguments = new nint[declaredType.TypeArguments.Count];
         try
         {
             runtimeType = _boundTypes.ResolveRuntimeType(declaredType, thread);
             runtimeClass = GetRuntimeTypeClass(runtimeType);
+            for (int argumentIndex = 0; argumentIndex < typeArguments.Length; argumentIndex++)
+            {
+                typeArguments[argumentIndex] = _boundTypes.ResolveRuntimeType(
+                    declaredType.TypeArguments[argumentIndex], thread);
+            }
+
             evaluation2 = ComAbi.QueryInterface(evaluation.Pointer, ICorDebugEval2Abi.InterfaceId);
-            ThrowIfFunctionEvaluationUnavailable(
-                new ICorDebugEval2Abi(evaluation2).NewParameterizedObjectNoConstructor(
-                    runtimeClass, nTypeArgs: 0, ppTypeArgs: 0),
-                "ICorDebugEval2.NewParameterizedObjectNoConstructor");
+            fixed (nint* argumentsAddress = typeArguments)
+            {
+                ThrowIfFunctionEvaluationUnavailable(
+                    new ICorDebugEval2Abi(evaluation2).NewParameterizedObjectNoConstructor(
+                        runtimeClass,
+                        checked((uint)typeArguments.Length),
+                        typeArguments.Length == 0 ? 0 : (nint)argumentsAddress),
+                    "ICorDebugEval2.NewParameterizedObjectNoConstructor");
+            }
+
             evaluation.PendingStructuredArgumentIndex = index;
         }
         finally
         {
+            foreach (nint typeArgument in typeArguments.Where(static argument => argument != 0))
+            {
+                _ = ComAbi.Release(typeArgument);
+            }
+
             if (evaluation2 != 0)
             {
                 _ = ComAbi.Release(evaluation2);

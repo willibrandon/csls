@@ -384,6 +384,68 @@ internal static class DebuggerDumpArrayFixture
         date.Ticks == 0 && date.Kind == DateTimeKind.Unspecified ? 1 : 0;
 
     /// <summary>
+    /// Observes the compiler's default for an optional ordinary value type.
+    /// </summary>
+    /// <param name="value">The optional globally unique identifier.</param>
+    /// <returns>One when the target receives a zero-initialized value.</returns>
+    internal static int OptionalGuidWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] Guid value) => value == Guid.Empty ? 1 : 0;
+
+    /// <summary>
+    /// Gets the compiler's result for the omitted globally unique identifier.
+    /// </summary>
+    /// <returns>The target-observed result.</returns>
+    internal static int CompilerOptionalGuidWithoutConstantForDebugger() =>
+        OptionalGuidWithoutConstantForDebugger();
+
+    /// <summary>
+    /// Observes the compiler's default for a generic value type containing a reference.
+    /// </summary>
+    /// <param name="value">The optional key-value pair.</param>
+    /// <returns>One when both fields have their default values.</returns>
+    internal static int OptionalPairWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] KeyValuePair<int, string?> value) =>
+        value.Key == 0 && value.Value is null ? 1 : 0;
+
+    /// <summary>
+    /// Gets the compiler's result for the omitted generic value type.
+    /// </summary>
+    /// <returns>The target-observed result.</returns>
+    internal static int CompilerOptionalPairWithoutConstantForDebugger() =>
+        OptionalPairWithoutConstantForDebugger();
+
+    /// <summary>
+    /// Observes the compiler's default for an optional nullable value type.
+    /// </summary>
+    /// <param name="value">The optional nullable integer.</param>
+    /// <returns>One when the target receives an empty nullable value.</returns>
+    internal static int OptionalNullableWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] int? value) => value.HasValue ? 0 : 1;
+
+    /// <summary>
+    /// Gets the compiler's result for the omitted nullable value type.
+    /// </summary>
+    /// <returns>The target-observed result.</returns>
+    internal static int CompilerOptionalNullableWithoutConstantForDebugger() =>
+        OptionalNullableWithoutConstantForDebugger();
+
+    /// <summary>
+    /// Observes an optional struct without invoking its explicit parameterless constructor.
+    /// </summary>
+    /// <param name="value">The optional authored value type.</param>
+    /// <returns>One when its fields retain their zero-initialized values.</returns>
+    internal static int OptionalStructWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] DebuggerOptionalStructFixture value) =>
+        value._number == 0 && value._text is null ? 1 : 0;
+
+    /// <summary>
+    /// Gets the compiler's result for the omitted authored value type.
+    /// </summary>
+    /// <returns>The target-observed result.</returns>
+    internal static int CompilerOptionalStructWithoutConstantForDebugger() =>
+        OptionalStructWithoutConstantForDebugger();
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

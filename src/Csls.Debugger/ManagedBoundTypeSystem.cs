@@ -58,6 +58,20 @@ internal sealed class ManagedBoundTypeSystem
         type.ModuleId == _coreLibrary.GetModule(thread).Id && type.Name == name;
 
     /// <summary>
+    /// Identifies stack-only value types from their exact loaded definition.
+    /// </summary>
+    internal bool IsByRefLike(ManagedBoundType type)
+    {
+        using PEReader pe = OpenModule(GetModule(type));
+        MetadataReader metadata = pe.GetMetadataReader();
+        TypeDefinition definition = GetDefinition(metadata, type.DefinitionToken);
+        return definition.GetCustomAttributes().Any(handle =>
+            ManagedDebuggerAttributeReader.GetAttributeTypeName(
+                metadata, metadata.GetCustomAttribute(handle)) ==
+            "System.Runtime.CompilerServices.IsByRefLikeAttribute");
+    }
+
+    /// <summary>
     /// Resolves the exact primitive storage type of a loaded enum declaration.
     /// </summary>
     internal ManagedBoundType? TryGetEnumUnderlyingType(ManagedBoundType type, nint thread)

@@ -18,6 +18,15 @@ internal static class ManagedExpressionValueFactory
         Scalar: null, HasScalar: false, Type: "default", IsContextualDefault: true);
 
     /// <summary>
+    /// Carries an exact zero-initialized value type until CoreCLR materializes its storage.
+    /// </summary>
+    internal static ManagedExpressionValue FromZeroValueTypeDefault(ManagedBoundType type) => new(
+        new DebugVariableInfo("$result", "default", type.DisplayName, VariablesReference: 0,
+            MemoryReference: null, EvaluateName: null),
+        Scalar: null, HasScalar: false, Type: type.DisplayName,
+        DeclaredType: type, IsZeroValueTypeDefault: true);
+
+    /// <summary>
     /// Wraps one runtime variable and decodes its scalar representation when possible.
     /// </summary>
     /// <param name="variable">The runtime-backed debugger variable.</param>

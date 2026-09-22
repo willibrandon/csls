@@ -579,7 +579,9 @@ runtime handles across those stages; unsupported argument materialization fails 
 execution. Exact metadata parameter identities select primitive overloads;
 an overload set that cannot be selected uniquely fails before execution. The engine
 evaluates named arguments in source order, maps them to CLR parameter positions, and
-materializes omitted primitive, string, and null defaults from the loaded declaration.
+materializes omitted primitive, string, null, decimal, DateTime, and zero-initialized
+value-type defaults from the loaded declaration. Generic value types retain their
+exact loaded arguments, and zero initialization does not execute authored constructors.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather

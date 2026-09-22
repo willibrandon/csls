@@ -810,4 +810,76 @@ public abstract class DapTestContext
 
         writer.WriteEndObject();
     }
+
+    /// <summary>
+    /// Stops the real array fixture after its values have been initialized.
+    /// </summary>
+    private protected async Task<int> StopAtInitializedArraysAsync(DapTestClient client, bool paging = true)
+    {
+        string path = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "DebuggerDumpArrayFixture.cs");
+        int line = FindSourceLine(await File.ReadAllLinesAsync(path, TestContext.CancellationToken).ConfigureAwait(false),
+            "DebuggerBlockingWait.Wait(announcement);");
+        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
+            writeProperties: writer => writer.WriteBoolean("supportsVariablePaging", paging)).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, initialize, "initialize", success: true);
+        }
+
+        int launch = await client.SendRequestAsync("launch", writer => WriteLaunchArguments(writer,
+            ResolveTestProcessHost(), ["--debugger-dump-arrays", nameof(DapArrayPagingTests)], wait: true, noDebug: false),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(initialized.RootElement, "initialized");
+        }
+
+        int breakpoint = await client.SendRequestAsync("setBreakpoints",
+            writer => WriteSourceBreakpointArguments(writer, path, line), TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, breakpoint, "setBreakpoints", success: true);
+        }
+
+        int configuration = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        int threadId = await ReadInitialBreakpointStopAsync(client, configuration, launch,
+            TestContext.CancellationToken, TestContext).ConfigureAwait(false);
+        JsonElement stack = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+        JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray());
+        Assert.AreEqual("Csls.TestProcessHost.DebuggerDumpArrayFixture.Run", frame.GetProperty("name").GetString());
+        Assert.AreEqual(line, frame.GetProperty("line").GetInt32());
+        return frame.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>
+    /// Reads one variables page from the real DAP adapter.
+    /// </summary>
+    private protected async Task<JsonElement[]> ReadPageAsync(DapTestClient client, int reference, int start, int count,
+        string filter = "indexed")
+    {
+        JsonElement response = await RequestPageAsync(client, reference, start, count, success: true, filter)
+            .ConfigureAwait(false);
+        return [.. response.GetProperty("body").GetProperty("variables").EnumerateArray()];
+    }
+
+    /// <summary>
+    /// Sends a variables request and preserves its validated response outside the document lifetime.
+    /// </summary>
+    private protected async Task<JsonElement> RequestPageAsync(DapTestClient client, int reference, int start, int count,
+        bool success, string filter = "indexed")
+    {
+        int sequence = await client.SendRequestAsync("variables", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("variablesReference", reference);
+            writer.WriteNumber("start", start);
+            writer.WriteNumber("count", count);
+            writer.WriteString("filter", filter);
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "variables", success);
+        return response.RootElement.Clone();
+    }
 }

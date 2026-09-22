@@ -13,6 +13,7 @@ namespace Csls.Debugger;
 /// <param name="IsContextualDefault">Whether the value still requires a type from its expression context.</param>
 /// <param name="DeclaredType">The exact declared source type, including typed null values.</param>
 /// <param name="ExplicitReceiverType">The receiver declaration selected by an explicit cast for member binding.</param>
+/// <param name="IsZeroValueTypeDefault">Whether the value is an exact zero-initialized struct argument.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -21,7 +22,8 @@ internal sealed record ManagedExpressionValue(
     int RuntimeValueReference = 0,
     bool IsContextualDefault = false,
     ManagedBoundType? DeclaredType = null,
-    ManagedBoundType? ExplicitReceiverType = null)
+    ManagedBoundType? ExplicitReceiverType = null,
+    bool IsZeroValueTypeDefault = false)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

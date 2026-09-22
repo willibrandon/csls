@@ -127,8 +127,9 @@ The binder validates type identity and resolves the overload before execution.
 C# and Visual Basic calls bind named arguments to the loaded method or constructor's
 parameter names. Argument values are evaluated in source order and passed in CLR
 parameter order; Visual Basic names are matched case-insensitively.
-Omitted optional parameters receive primitive, enum, string, and null defaults from
-the loaded declaration metadata. An exact-arity overload wins when explicit
+Omitted optional parameters use loaded declaration defaults for primitives, enums,
+strings, decimal, DateTime, and zero-initialized value types such as Guid and
+`Nullable<T>`. An exact-arity overload wins when explicit
 argument conversions are otherwise tied.
 
 Function evaluation runs on the selected managed thread with a five-second deadline.

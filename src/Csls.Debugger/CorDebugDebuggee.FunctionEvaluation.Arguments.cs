@@ -22,8 +22,7 @@ internal sealed partial class CorDebugDebuggee
                     $"Function argument '{argument.Display.Name}' has no retained runtime value.");
         }
 
-        object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
-        if (scalar is decimal or DateTime)
+        if (argument.IsZeroValueTypeDefault || argument.Scalar is decimal or DateTime)
         {
             if (runtimeArgument == 0 || !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
             {
@@ -34,6 +33,7 @@ internal sealed partial class CorDebugDebuggee
             return unboxed;
         }
 
+        object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
         uint elementType = GetFunctionArgumentElementType(argument.Type, scalar);
         nint value = 0;
         nint* valueAddress = &value;

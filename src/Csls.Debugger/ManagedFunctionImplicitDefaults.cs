@@ -45,6 +45,11 @@ internal static class ManagedFunctionImplicitDefaults
         }
 
         ManagedBoundType storage = types.TryGetEnumUnderlyingType(parameter, thread) ?? parameter;
+        if (storage.ElementType == 0x11 && !types.IsByRefLike(storage))
+        {
+            return ManagedExpressionValueFactory.FromZeroValueTypeDefault(parameter);
+        }
+
         (object? Value, string? Name) zero = storage.ElementType switch
         {
             0x02 => (false, "bool"),
