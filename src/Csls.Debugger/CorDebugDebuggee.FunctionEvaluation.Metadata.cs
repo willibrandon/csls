@@ -51,6 +51,7 @@ internal sealed partial class CorDebugDebuggee
         string methodName,
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
         nint thread,
         ManagedBoundType? selectedReceiverType,
         uint? exactMethodToken = null)
@@ -107,7 +108,8 @@ internal sealed partial class CorDebugDebuggee
                                 staticMethod: false,
                                 _boundTypes,
                                 thread,
-                                declaringType.TypeArguments)
+                                declaringType.TypeArguments,
+                                constantArguments)
                         : null;
                     if (method is { } resolvedMethod)
                     {

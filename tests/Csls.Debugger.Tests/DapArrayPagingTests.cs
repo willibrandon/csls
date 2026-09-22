@@ -213,7 +213,13 @@ public sealed class DapArrayPagingTests : DapTestContext
             ($"{receiver}.SelectNativeForDebugger((byte)vector[0])", "3041"),
             ($"{receiver}.CompilerSelectNativeForDebugger()", "3041"),
             ($"{receiver}.SelectNativeUnsignedForDebugger((uint)vector[0])", "5041"),
-            ($"{receiver}.CompilerSelectNativeUnsignedForDebugger()", "5041")
+            ($"{receiver}.CompilerSelectNativeUnsignedForDebugger()", "5041"),
+            ($"{receiver}.RequireByteForDebugger(41)", "7041"),
+            ($"{receiver}.CompilerRequireByteForDebugger()", "7041"),
+            ($"{receiver}.SelectConstantForDebugger(41)", "9041"),
+            ($"{receiver}.CompilerSelectConstantForDebugger()", "9041"),
+            ($"{receiver}.RequireUlongForDebugger(41L)", "8041"),
+            ($"{receiver}.CompilerRequireUlongForDebugger()", "8041")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
@@ -229,6 +235,11 @@ public sealed class DapArrayPagingTests : DapTestContext
             TestContext.CancellationToken).ConfigureAwait(false);
         string message = Assert.IsInstanceOfType<string>(rejected.GetProperty("message").GetString());
         Assert.Contains("No static method", message);
+        JsonElement outOfRange = await ReadEvaluationAsync(client, frameId,
+            $"{receiver}.RequireByteForDebugger(256)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("No static method", Assert.IsInstanceOfType<string>(
+            outOfRange.GetProperty("message").GetString()));
         JsonElement stillStopped = await ReadEvaluationAsync(client, frameId, "vector[0]", success: true,
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("41", stillStopped.GetProperty("result").GetString());

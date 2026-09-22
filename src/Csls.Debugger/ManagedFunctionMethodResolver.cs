@@ -41,7 +41,8 @@ internal static class ManagedFunctionMethodResolver
         bool staticMethod,
         ManagedBoundTypeSystem types,
         nint thread,
-        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null)
+        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
+        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null)
     {
         using PEReader? reader = module.OpenPeReader();
         if (reader is null)
@@ -51,7 +52,7 @@ internal static class ManagedFunctionMethodResolver
 
         using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), module.MetadataDeltas);
         return ResolveCall(metadata, module.Pointer, typeToken, methodName, language, arguments,
-            staticMethod, types, thread, declaringTypeArguments);
+            staticMethod, types, thread, declaringTypeArguments, constantArguments);
     }
 
     /// <summary>
@@ -86,7 +87,8 @@ internal static class ManagedFunctionMethodResolver
         bool staticMethod,
         ManagedBoundTypeSystem types,
         nint thread,
-        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null)
+        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
+        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -123,7 +125,7 @@ internal static class ManagedFunctionMethodResolver
 
             ManagedBoundType[] parameters = [.. signature.ParameterTypes.Select(parameter =>
                 types.Bind(parameter, declaringTypeArguments ?? [], [], thread))];
-            if (IsApplicable(arguments, parameters, language, conversions, thread))
+            if (IsApplicable(arguments, parameters, constantArguments, language, conversions, thread))
             {
                 matches.Add((methodHandle, parameters));
             }
@@ -152,6 +154,7 @@ internal static class ManagedFunctionMethodResolver
     private static bool IsApplicable(
         IReadOnlyList<ManagedBoundType?> arguments,
         ManagedBoundType[] parameters,
+        IReadOnlyList<ManagedExpressionValue?>? constantArguments,
         DebugExpressionLanguage language,
         ManagedReferenceConversion conversions,
         nint thread)
@@ -169,7 +172,10 @@ internal static class ManagedFunctionMethodResolver
             }
             else if (!argument.IsSameType(parameter) &&
                 !conversions.IsImplicit(argument, parameter, thread) &&
-                !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(argument, parameter, language))
+                !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(argument, parameter, language) &&
+                !(constantArguments?[index] is ManagedExpressionValue constant &&
+                    ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
+                        constant, argument, parameter, language)))
             {
                 return false;
             }

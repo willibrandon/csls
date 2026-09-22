@@ -120,6 +120,66 @@ internal static class ManagedPrimitiveConversionEvaluator
     }
 
     /// <summary>
+    /// Tests an integral constant expression against C#'s range-limited invocation conversions.
+    /// </summary>
+    internal static bool IsImplicitConstantInvocationConversion(
+        ManagedExpressionValue value,
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (language != DebugExpressionLanguage.CSharp ||
+            !AreLoadedNumericTypes(source, target))
+        {
+            return false;
+        }
+
+        string? sourceName = TryNormalizeTypeName(source.Name, language);
+        string? targetName = TryNormalizeTypeName(target.Name, language);
+        bool permitted = sourceName switch
+        {
+            "int" when value is { HasScalar: true, Scalar: int } =>
+                targetName is "sbyte" or "byte" or "short" or "ushort" or "uint" or "nuint" or "ulong",
+            "long" when value is { HasScalar: true, Scalar: long } => targetName == "ulong",
+            _ => false
+        };
+        if (!permitted)
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = ConvertNumeric(value.Scalar!, targetName!, checkedConversion: true);
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Materializes an applicable integral constant in its selected parameter type.
+    /// </summary>
+    internal static ManagedExpressionValue ConvertInvocationConstant(
+        ManagedExpressionValue value,
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (!IsImplicitConstantInvocationConversion(value, source, target, language))
+        {
+            throw new InvalidOperationException(
+                $"Constant '{value.Display.Value}' cannot convert to '{target.DisplayName}'.");
+        }
+
+        string targetName = TryNormalizeTypeName(target.Name, language)
+            ?? throw new InvalidOperationException($"Unsupported numeric parameter '{target.DisplayName}'.");
+        return ConvertNumeric(value.Scalar!, targetName, checkedConversion: true);
+    }
+
+    /// <summary>
     /// Applies C#'s signed-integral better-target rule to two loaded numeric parameters.
     /// </summary>
     internal static bool IsPreferredSignedInvocationTarget(

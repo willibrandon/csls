@@ -108,6 +108,52 @@ internal static class DebuggerDumpArrayFixture
     }
 
     /// <summary>
+    /// Receives an integer constant narrowed to the byte parameter by C# overload resolution.
+    /// </summary>
+    /// <param name="value">The converted constant.</param>
+    /// <returns>The byte overload marker and its received value.</returns>
+    internal static int RequireByteForDebugger(byte value) => value + 7000;
+
+    /// <summary>
+    /// Gets the compiler's result for an integer constant passed to a byte parameter.
+    /// </summary>
+    /// <returns>The compiler-selected result.</returns>
+    internal static int CompilerRequireByteForDebugger() => RequireByteForDebugger(41);
+
+    /// <summary>
+    /// Marks the smaller applicable parameter for an integer constant.
+    /// </summary>
+    /// <param name="value">The converted byte constant.</param>
+    /// <returns>The byte overload marker.</returns>
+    internal static int SelectConstantForDebugger(byte value) => value + 9000;
+
+    /// <summary>
+    /// Marks the competing wider parameter for an integer constant.
+    /// </summary>
+    /// <param name="value">The converted short constant.</param>
+    /// <returns>The short overload marker.</returns>
+    internal static int SelectConstantForDebugger(short value) => value + 10000;
+
+    /// <summary>
+    /// Gets the compiler-selected overload for the integer constant.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static int CompilerSelectConstantForDebugger() => SelectConstantForDebugger(41);
+
+    /// <summary>
+    /// Receives a long constant converted to an unsigned long parameter.
+    /// </summary>
+    /// <param name="value">The converted constant.</param>
+    /// <returns>The unsigned result marker.</returns>
+    internal static ulong RequireUlongForDebugger(ulong value) => value + 8000;
+
+    /// <summary>
+    /// Gets the compiler's result for a long constant passed to an unsigned long parameter.
+    /// </summary>
+    /// <returns>The compiler-selected result.</returns>
+    internal static ulong CompilerRequireUlongForDebugger() => RequireUlongForDebugger(41L);
+
+    /// <summary>
     /// Marks the native signed overload preferred before widening to Int64.
     /// </summary>
     /// <param name="value">The widened native integer argument.</param>

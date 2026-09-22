@@ -106,6 +106,7 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedExpressionValue? receiver = null;
         var suppliedArguments = new ManagedExpressionValue[argumentCount];
+        var constantArguments = new ManagedExpressionValue?[argumentCount];
         try
         {
             if (materializesString)
@@ -121,11 +122,17 @@ internal sealed partial class CorDebugDebuggee
 
                 for (int index = 0; index < suppliedArguments.Length; index++)
                 {
+                    DebugExpressionNode argumentNode = operation.Children[index + argumentOffset];
                     suppliedArguments[index] = EvaluateNode(
                         frame,
                         plan,
-                        operation.Children[index + argumentOffset],
+                        argumentNode,
                         generation);
+                    if (argumentNode.Kind == DebugExpressionNodeKind.Literal &&
+                        suppliedArguments[index].Scalar is int or long)
+                    {
+                        constantArguments[index] = suppliedArguments[index];
+                    }
                 }
             }
         }
@@ -181,10 +188,10 @@ internal sealed partial class CorDebugDebuggee
                 ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
                     suppliedArguments, plan.Language, thread);
                 ManagedFunctionBinding binding = constructsObject
-                    ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes, thread)
+                    ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes, constantArguments, thread)
                     : receiverValue == 0
-                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, argumentTypes, thread)
-                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, argumentTypes, thread,
+                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, argumentTypes, constantArguments, thread)
+                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, argumentTypes, constantArguments, thread,
                             property?.DeclaringType ?? receiver?.ExplicitReceiverType, property?.Getter.MethodToken);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
@@ -199,6 +206,14 @@ internal sealed partial class CorDebugDebuggee
                     {
                         suppliedArguments[index] = ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
                             suppliedArguments[index], sourceType, parameterType, plan.Language);
+                    }
+                    else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
+                        constantArguments[index] is ManagedExpressionValue constant &&
+                        ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
+                            constant, sourceType, parameterType, plan.Language))
+                    {
+                        suppliedArguments[index] = ManagedPrimitiveConversionEvaluator.ConvertInvocationConstant(
+                            constant, sourceType, parameterType, plan.Language);
                     }
                 }
             }

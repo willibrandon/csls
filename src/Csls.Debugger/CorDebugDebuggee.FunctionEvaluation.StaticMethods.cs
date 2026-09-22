@@ -12,6 +12,7 @@ internal sealed partial class CorDebugDebuggee
         string methodName,
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
         nint thread)
     {
         if (!TryGetQualifiedTypeName(receiver, out string typeName))
@@ -32,7 +33,8 @@ internal sealed partial class CorDebugDebuggee
             arguments,
             staticMethod: true,
             _boundTypes,
-            thread);
+            thread,
+            constantArguments: constantArguments);
         if (method is null)
         {
             throw new InvalidOperationException(

@@ -15,6 +15,7 @@ internal sealed partial class CorDebugDebuggee
         string typeName,
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
         nint thread)
     {
         ManagedRuntimeTypeReference runtimeType = ManagedRuntimeTypeNameParser.Parse(
@@ -63,7 +64,8 @@ internal sealed partial class CorDebugDebuggee
             staticMethod: false,
             _boundTypes,
             thread,
-            declaringTypeArguments: boundTypeArguments);
+            declaringTypeArguments: boundTypeArguments,
+            constantArguments: constantArguments);
         if (constructor is null)
         {
             throw new InvalidOperationException(
