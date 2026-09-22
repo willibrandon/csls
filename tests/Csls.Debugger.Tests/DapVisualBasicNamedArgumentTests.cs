@@ -69,7 +69,8 @@ public sealed class DapVisualBasicNamedArgumentTests : DapTestContext
             foreach ((string expression, string expected) in new[]
             {
                 ("value.CombineNamed(SeCoNd:=answer, FIRST:=41)", "4183"),
-                ("DebuggerFixtureValue.CombineNamedStatic(SeCoNd:=answer, FIRST:=41)", "4142")
+                ("DebuggerFixtureValue.CombineNamedStatic(SeCoNd:=answer, FIRST:=41)", "4142"),
+                ("DebuggerFixtureValue.CombineOptionalStatic(FIRST:=41)", "4142")
             })
             {
                 JsonElement result = await ReadEvaluationAsync(client, frameId, expression, success: true,

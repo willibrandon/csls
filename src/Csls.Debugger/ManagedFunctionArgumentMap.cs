@@ -14,6 +14,7 @@ internal static class ManagedFunctionArgumentMap
     /// <param name="metadata">The loaded method metadata generation.</param>
     /// <param name="method">The candidate declaration.</param>
     /// <param name="argumentNames">Names aligned with source-order arguments, or null for positional calls.</param>
+    /// <param name="argumentCount">The number of supplied source arguments.</param>
     /// <param name="parameterCount">The candidate's exact CLR parameter count.</param>
     /// <param name="language">The source language's identifier comparison policy.</param>
     /// <returns>Parameter-to-source indexes, or null when names cannot bind this candidate.</returns>
@@ -21,16 +22,29 @@ internal static class ManagedFunctionArgumentMap
         ManagedMetadataImage metadata,
         MethodDefinitionHandle method,
         IReadOnlyList<string?>? argumentNames,
+        int argumentCount,
         int parameterCount,
         DebugExpressionLanguage language)
     {
         ArgumentNullException.ThrowIfNull(metadata);
-        if (argumentNames is null || !argumentNames.Any(static name => name is not null))
+        if (argumentCount > parameterCount)
         {
-            return [.. Enumerable.Range(0, parameterCount)];
+            return null;
         }
 
-        if (argumentNames.Count != parameterCount)
+        if (argumentNames is null || !argumentNames.Any(static name => name is not null))
+        {
+            int[] positional = new int[parameterCount];
+            Array.Fill(positional, -1);
+            for (int index = 0; index < argumentCount; index++)
+            {
+                positional[index] = index;
+            }
+
+            return positional;
+        }
+
+        if (argumentNames.Count != argumentCount)
         {
             throw new InvalidDataException("Call argument names do not match the argument count.");
         }
@@ -79,6 +93,6 @@ internal static class ManagedFunctionArgumentMap
             seenOutOfPositionName |= name is not null && position != sourceIndex;
         }
 
-        return sourceIndices.Contains(-1) ? null : sourceIndices;
+        return sourceIndices;
     }
 }

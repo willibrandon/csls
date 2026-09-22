@@ -227,19 +227,25 @@ internal sealed partial class CorDebugDebuggee
                     }
                 }
 
-                if (binding.ParameterSourceIndices.Length != suppliedArguments.Length)
+                if (binding.ParameterSourceIndices.Length != binding.OptionalArguments.Length ||
+                    binding.ParameterSourceIndices.Length > MaximumFunctionEvaluationArgumentCount)
                 {
                     throw new InvalidDataException(
                         "The resolved method argument map does not match the supplied call.");
                 }
 
-                var parameterOrderedArguments = new ManagedExpressionValue[suppliedArguments.Length];
+                var parameterOrderedArguments = new ManagedExpressionValue[binding.ParameterSourceIndices.Length];
                 for (int index = 0; index < parameterOrderedArguments.Length; index++)
                 {
-                    parameterOrderedArguments[index] = suppliedArguments[binding.ParameterSourceIndices[index]];
+                    int sourceIndex = binding.ParameterSourceIndices[index];
+                    parameterOrderedArguments[index] = sourceIndex >= 0
+                        ? suppliedArguments[sourceIndex]
+                        : binding.OptionalArguments[index] ?? throw new InvalidDataException(
+                            "The resolved method omitted a required argument.");
                 }
 
                 suppliedArguments = parameterOrderedArguments;
+                runtimeArguments = new nint[suppliedArguments.Length];
             }
 
             setupPhase = "creating the CoreCLR evaluation";

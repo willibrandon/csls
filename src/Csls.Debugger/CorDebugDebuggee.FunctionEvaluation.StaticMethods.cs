@@ -26,7 +26,8 @@ internal sealed partial class CorDebugDebuggee
             typeName,
             language,
             "static call");
-        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? method =
+        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+            ManagedExpressionValue?[] OptionalArguments)? method =
             ManagedFunctionMethodResolver.ResolveCall(
             resolvedModule,
             typeToken,
@@ -49,7 +50,8 @@ internal sealed partial class CorDebugDebuggee
             resolvedModule.Pointer, method.Value.Token, [], thread);
         return new ManagedFunctionBinding(
             GetModuleFunction(resolvedModule.Pointer, method.Value.Token), [], resultType,
-            method.Value.Parameters, method.Value.ParameterSourceIndices);
+            method.Value.Parameters, method.Value.ParameterSourceIndices,
+            method.Value.OptionalArguments);
     }
 
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(

@@ -55,7 +55,8 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedBoundType[] boundTypeArguments = [.. runtimeType.TypeArguments.Select(
             argument => _boundTypes.BindName(argument.DebuggerTypeName, language, thread))];
-        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? constructor =
+        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+            ManagedExpressionValue?[] OptionalArguments)? constructor =
             ManagedFunctionMethodResolver.ResolveCall(
             metadata,
             module.Pointer,
@@ -94,7 +95,8 @@ internal sealed partial class CorDebugDebuggee
                 module.Pointer, constructor.Value.Token, boundArguments, thread, constructsObject: true);
             function = GetModuleFunction(module.Pointer, constructor.Value.Token);
             return new ManagedFunctionBinding(function, typeArguments, resultType,
-                constructor.Value.Parameters, constructor.Value.ParameterSourceIndices);
+                constructor.Value.Parameters, constructor.Value.ParameterSourceIndices,
+                constructor.Value.OptionalArguments);
         }
         catch
         {

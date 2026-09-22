@@ -138,6 +138,15 @@ internal sealed class ManagedMetadataImage : IDisposable
     }
 
     /// <summary>
+    /// Reads the current constant row for an aggregate metadata handle.
+    /// </summary>
+    internal Constant GetConstant(ConstantHandle handle)
+    {
+        (MetadataReader reader, EntityHandle relative) = Resolve(handle);
+        return reader.GetConstant((ConstantHandle)relative);
+    }
+
+    /// <summary>
     /// Reads current custom attributes associated with an aggregate parent token.
     /// </summary>
     internal IReadOnlyList<CustomAttribute> GetCustomAttributes(EntityHandle parent)

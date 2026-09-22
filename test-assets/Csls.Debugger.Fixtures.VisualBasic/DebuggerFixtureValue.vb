@@ -83,6 +83,16 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         End Function
 
         ''' <summary>
+        ''' Exposes a Visual Basic optional parameter through loaded method metadata.
+        ''' </summary>
+        ''' <param name="first">The required high-order value.</param>
+        ''' <param name="second">The optional low-order value.</param>
+        ''' <returns>The order-sensitive result.</returns>
+        Friend Shared Function CombineOptionalStatic(first As Integer, Optional second As Integer = 42) As Integer
+            Return first * 100 + second
+        End Function
+
+        ''' <summary>
         ''' Returns the length of a debugger-materialized string.
         ''' </summary>
         ''' <param name="value">The string supplied by managed function evaluation.</param>

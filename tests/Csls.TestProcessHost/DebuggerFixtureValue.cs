@@ -11,7 +11,10 @@ internal sealed class DebuggerFixtureValue
     /// <param name="number">The numeric field value.</param>
     /// <param name="text">The textual field value.</param>
     /// <param name="evaluationSignalPath">The path written when a cancelable evaluation starts.</param>
-    internal DebuggerFixtureValue(int number, string text, string evaluationSignalPath)
+    internal DebuggerFixtureValue(
+        int number,
+        string text = "loaded constructor",
+        string evaluationSignalPath = "")
     {
         Number = number;
         Text = text;
@@ -74,6 +77,15 @@ internal sealed class DebuggerFixtureValue
     /// <param name="second">The low-order value.</param>
     /// <returns>The order-sensitive result.</returns>
     public int CombineNamedForDebugger(int first, int second) => first * 100 + second + Number;
+
+    /// <summary>
+    /// Applies a loaded optional parameter through an instance receiver.
+    /// </summary>
+    /// <param name="first">The required high-order value.</param>
+    /// <param name="second">The optional low-order value.</param>
+    /// <returns>The receiver-adjusted result.</returns>
+    public int CombineOptionalForDebugger(int first, int second = 42) =>
+        first * 100 + second + Number;
 
     /// <summary>
     /// Gets the tuple field through its declared element names.

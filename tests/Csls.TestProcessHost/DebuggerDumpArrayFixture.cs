@@ -220,6 +220,45 @@ internal static class DebuggerDumpArrayFixture
         first * 10000 + second * 100 + third;
 
     /// <summary>
+    /// Exposes declaration defaults and named omissions to the debugger evaluator.
+    /// </summary>
+    /// <param name="first">The required high-order value.</param>
+    /// <param name="second">The optional middle value.</param>
+    /// <param name="third">The optional low-order value.</param>
+    /// <returns>The order-sensitive result.</returns>
+    internal static int CombineOptionalForDebugger(int first, int second = 42, int third = 43) =>
+        first * 10000 + second * 100 + third;
+
+    /// <summary>
+    /// Identifies the exact-arity overload when an optional overload is also applicable.
+    /// </summary>
+    /// <param name="first">The supplied value.</param>
+    /// <returns>The exact-arity marker.</returns>
+    internal static int PreferExactForDebugger(int first) => first + 100;
+
+    /// <summary>
+    /// Identifies the optional overload when its second parameter is supplied.
+    /// </summary>
+    /// <param name="first">The first supplied value.</param>
+    /// <param name="second">The optional second value.</param>
+    /// <returns>The two-parameter marker.</returns>
+    internal static int PreferExactForDebugger(int first, int second = 99) => first * 100 + second;
+
+    /// <summary>
+    /// Exposes a metadata string default to target-side execution.
+    /// </summary>
+    /// <param name="text">The optional string value.</param>
+    /// <returns>The selected text.</returns>
+    internal static string OptionalStringForDebugger(string text = "loaded default") => text;
+
+    /// <summary>
+    /// Exposes a null reference default to target-side execution.
+    /// </summary>
+    /// <param name="text">The optional reference value.</param>
+    /// <returns>One when the default null was supplied.</returns>
+    internal static int OptionalNullForDebugger(string? text = null) => text is null ? 1 : 0;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

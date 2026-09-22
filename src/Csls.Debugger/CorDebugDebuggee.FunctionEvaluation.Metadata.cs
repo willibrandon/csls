@@ -102,9 +102,10 @@ internal sealed partial class CorDebugDebuggee
                         ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
                     ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
                     selectedTypeReached |= selectedReceiverType?.IsSameType(declaringType) == true;
-                    (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? method = selectedTypeReached
+                    (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+                        ManagedExpressionValue?[] OptionalArguments)? method = selectedTypeReached
                         ? exactMethodToken is uint getterToken
-                            ? (getterToken, [], [])
+                            ? (getterToken, [], [], [])
                             : ManagedFunctionMethodResolver.ResolveCall(
                                 loadedModule,
                                 typeToken,
@@ -127,7 +128,8 @@ internal sealed partial class CorDebugDebuggee
                         {
                             return new ManagedFunctionBinding(
                                 GetModuleFunction(module, resolvedMethod.Token), typeArguments, resultType,
-                                resolvedMethod.Parameters, resolvedMethod.ParameterSourceIndices);
+                                resolvedMethod.Parameters, resolvedMethod.ParameterSourceIndices,
+                                resolvedMethod.OptionalArguments);
                         }
                         catch
                         {
