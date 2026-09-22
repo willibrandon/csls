@@ -179,6 +179,13 @@ internal sealed partial class CorDebugDebuggee
                 ? _boundTypes.CaptureValue(GetRuntimeValue(operand), thread)
                 : _boundTypes.BindName(operand.Type, DebugExpressionLanguage.CSharp, thread);
             string displayName = ManagedRuntimeTypeNameParser.Parse(typeName, typeLanguage).DebuggerTypeName;
+            if (node.Kind == DebugExpressionNodeKind.TryCast &&
+                _boundTypes.IsCoreType(target, "System.Nullable`1", thread))
+            {
+                return EvaluateNullableTryCast(
+                    operand, declared, actual, target, displayName, frame, generation, plan.Language, thread);
+            }
+
             ManagedExpressionValue result = _referenceExpressions.Evaluate(
                 operand, declared, actual, target, displayName, node.Kind, thread);
             if (result.ExplicitReceiverType is null)
@@ -227,6 +234,11 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
+        if (TryEvaluateNullableMember(receiver, node.Text!, plan.Language, out ManagedExpressionValue? nullableMember))
+        {
+            return nullableMember;
+        }
+
         (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin, ManagedBoundType? declaredType) = ResolveInstanceMemberValue(
             receiver, node.Text!, plan.Language, out property, allowFieldBackedProperty: true);
         if (property is not null)

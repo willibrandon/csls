@@ -22,7 +22,8 @@ internal sealed partial class CorDebugDebuggee
                     $"Function argument '{argument.Display.Name}' has no retained runtime value.");
         }
 
-        if (argument.IsZeroValueTypeDefault || argument.Scalar is decimal or DateTime)
+        if (argument.IsZeroValueTypeDefault || argument.RequiresNullableMaterialization ||
+            argument.Scalar is decimal or DateTime)
         {
             if (runtimeArgument == 0 || !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
             {

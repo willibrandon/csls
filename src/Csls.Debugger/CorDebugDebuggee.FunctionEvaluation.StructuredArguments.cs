@@ -20,6 +20,14 @@ internal sealed partial class CorDebugDebuggee
                 throw new InvalidOperationException("The optional value type cannot be boxed safely.");
             }
         }
+        else if (argument.RequiresNullableMaterialization)
+        {
+            if (!_boundTypes.IsCoreType(declaredType, "System.Nullable`1", thread) ||
+                declaredType.TypeArguments.Count != 1)
+            {
+                throw new InvalidOperationException("A nullable argument has an invalid runtime type.");
+            }
+        }
         else
         {
             string expectedType = argument.Scalar is decimal ? "System.Decimal" : "System.DateTime";
@@ -99,6 +107,8 @@ internal sealed partial class CorDebugDebuggee
         nint runtimeType = 0;
         nint handle = 0;
         nint nextEvaluation = 0;
+        nint sourceArgument = active.RuntimeArguments[index];
+        bool sourceArgumentIsHeapHandle = active.RuntimeArgumentIsHeapHandle[index];
         try
         {
             nint* address = &value;
@@ -123,12 +133,17 @@ internal sealed partial class CorDebugDebuggee
             {
                 SetDateTimeArgument(unboxed, runtimeType, date);
             }
+            else if (argument.RequiresNullableMaterialization && !argument.IsZeroValueTypeDefault)
+            {
+                SetNullableArgument(unboxed, runtimeType, argument, active.RuntimeArguments[index]);
+            }
 
             handle = CreateFunctionEvaluationHandle(value);
             nextEvaluation = CreateEvaluation(active.Thread);
             active.RuntimeArguments[index] = handle;
             active.RuntimeArgumentIsHeapHandle[index] = true;
             handle = 0;
+            ReleaseFunctionEvaluationArgument(sourceArgument, sourceArgumentIsHeapHandle);
             active.Pointer = nextEvaluation;
             nextEvaluation = 0;
             active.PendingStructuredArgumentIndex = -1;
@@ -228,6 +243,59 @@ internal sealed partial class CorDebugDebuggee
         if (!found)
         {
             throw new InvalidOperationException("System.DateTime does not expose its required date-data field.");
+        }
+    }
+
+    private void SetNullableArgument(
+        nint value,
+        nint runtimeType,
+        ManagedExpressionValue argument,
+        nint sourceValue)
+    {
+        bool foundHasValue = false;
+        bool foundValue = false;
+        VisitDeclaredRuntimeFields(value, runtimeType, (name, field) =>
+        {
+            if (string.Equals(name, "hasValue", StringComparison.Ordinal))
+            {
+                SetManagedPrimitiveValue(field, "bool", true);
+                foundHasValue = true;
+                return;
+            }
+
+            if (!string.Equals(name, "value", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (argument.HasScalar)
+            {
+                SetManagedPrimitiveValue(field, argument.Type, argument.Scalar!);
+            }
+            else
+            {
+                if (sourceValue == 0 || !TryDereferenceAndUnboxValue(sourceValue, out nint source))
+                {
+                    throw new InvalidOperationException("A nullable argument has no retained underlying value.");
+                }
+
+                try
+                {
+                    using var assignment = ManagedValueTypeAssignment.Prepare(
+                        field, source, OpenRuntimeModule);
+                    assignment.Write();
+                }
+                finally
+                {
+                    _ = ComAbi.Release(source);
+                }
+            }
+
+            foundValue = true;
+        });
+        if (!foundHasValue || !foundValue)
+        {
+            throw new InvalidOperationException("System.Nullable<T> does not expose its required runtime fields.");
         }
     }
 

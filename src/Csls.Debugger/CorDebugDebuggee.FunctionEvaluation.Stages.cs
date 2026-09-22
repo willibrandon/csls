@@ -85,9 +85,12 @@ internal sealed partial class CorDebugDebuggee
 
         for (int index = 0; index < evaluation.Arguments.Length; index++)
         {
-            if (evaluation.RuntimeArguments[index] == 0 &&
-                (evaluation.Arguments[index].IsZeroValueTypeDefault ||
-                 evaluation.Arguments[index].Scalar is decimal or DateTime))
+            ManagedExpressionValue argument = evaluation.Arguments[index];
+            bool materializeNullable = argument.RequiresNullableMaterialization &&
+                !evaluation.RuntimeArgumentIsHeapHandle[index];
+            bool materializeOtherValue = evaluation.RuntimeArguments[index] == 0 &&
+                (argument.IsZeroValueTypeDefault || argument.Scalar is decimal or DateTime);
+            if (materializeNullable || materializeOtherValue)
             {
                 ScheduleStructuredArgumentAllocation(evaluation, index);
                 return;

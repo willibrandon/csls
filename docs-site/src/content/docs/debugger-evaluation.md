@@ -96,6 +96,12 @@ value snapshots from an exact matching runtime type. Expand the result to inspec
 its copied fields. Reference fields keep the identity of their referenced objects.
 Visual Basic uses `DirectCast` and F# uses `:?>` for the same unboxing operation.
 
+C# nullable safe casts, such as `boxedValue as int?`, project an exact boxed
+underlying value or an empty nullable value without running target code. `HasValue`
+and `Value` remain available to side-effect-free inspection. When the result is passed
+to an explicit target call, csls materializes exact `Nullable<T>` storage and copies
+authored structs through CoreCLR's GC-aware value home.
+
 The private `debugger/evaluate` RPC and MCP `debug_evaluate` use this side-effect-free
 path to read stopped storage and compute results in the debugger host.
 

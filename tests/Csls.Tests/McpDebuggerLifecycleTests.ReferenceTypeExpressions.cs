@@ -68,6 +68,8 @@ public sealed partial class McpDebuggerLifecycleTests
             $"({StructCast}).Item1", "17", cancellationToken).ConfigureAwait(false);
         await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId,
             $"({StructCast}).Item2.Value", "23", cancellationToken).ConfigureAwait(false);
+        await AssertMcpNullableSafeCastsAsync(client, session, generation, frameId, cancellationToken)
+            .ConfigureAwait(false);
 
         await AssertMcpReferenceCastWatchesAsync(client, session, generation, frameId, cancellationToken).ConfigureAwait(false);
         await AssertToolErrorAsync(client, "debug_expression_set", new Dictionary<string, object?>
@@ -110,6 +112,25 @@ public sealed partial class McpDebuggerLifecycleTests
         string diagnostics = await mcp.DisconnectAsync(TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);
         Assert.DoesNotContain("fail:", diagnostics, StringComparison.OrdinalIgnoreCase);
         await ProcessExitWaiter.WaitAsync(exit, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task AssertMcpNullableSafeCastsAsync(
+        McpClient client, string session, long generation, int frameId, CancellationToken cancellationToken)
+    {
+        foreach ((string expression, string result, string type) in new[]
+        {
+            ("boxedNullableValue as int?", "43", "int?"),
+            ("(boxedNullableValue as int?).HasValue", "true", "bool"),
+            ("(boxedNullableValue as int?).Value", "43", "int"),
+            ("boxedNullableEmpty as int?", "null", "int?"),
+            ("boxedNullableMismatch as int?", "null", "int?")
+        })
+        {
+            JsonElement evaluation = await EvaluateMcpStructAssignmentAsync(
+                client, session, generation, frameId, expression, cancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(result, evaluation.GetProperty("result").GetString());
+            Assert.AreEqual(type, evaluation.GetProperty("type").GetString());
+        }
     }
 
     private static async Task AssertMcpReferenceCastWatchesAsync(

@@ -15,6 +15,8 @@ namespace Csls.Debugger;
 /// <param name="ExplicitReceiverType">The receiver declaration selected by an explicit cast for member binding.</param>
 /// <param name="IsZeroValueTypeDefault">Whether the value is an exact zero-initialized struct argument.</param>
 /// <param name="IsTypedDefault">Whether the expression explicitly names the type of a default value.</param>
+/// <param name="IsNullableValue">Whether the value carries a non-executing nullable projection.</param>
+/// <param name="RequiresNullableMaterialization">Whether a later call must build exact nullable argument storage.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -25,7 +27,9 @@ internal sealed record ManagedExpressionValue(
     ManagedBoundType? DeclaredType = null,
     ManagedBoundType? ExplicitReceiverType = null,
     bool IsZeroValueTypeDefault = false,
-    bool IsTypedDefault = false)
+    bool IsTypedDefault = false,
+    bool IsNullableValue = false,
+    bool RequiresNullableMaterialization = false)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

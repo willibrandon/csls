@@ -430,6 +430,14 @@ internal static class DebuggerDumpArrayFixture
         OptionalNullableWithoutConstantForDebugger();
 
     /// <summary>
+    /// Reads an authored struct carried through nullable storage.
+    /// </summary>
+    /// <param name="value">The nullable authored value type.</param>
+    /// <returns>The stored number, or minus one for an empty nullable value.</returns>
+    internal static int ReadNullableStructForDebugger(DebuggerOptionalStructFixture? value) =>
+        value.HasValue ? value.Value._number : -1;
+
+    /// <summary>
     /// Observes an optional struct without invoking its explicit parameterless constructor.
     /// </summary>
     /// <param name="value">The optional authored value type.</param>
@@ -770,6 +778,10 @@ internal static class DebuggerDumpArrayFixture
         object explicitInterfaceObject = explicitInterface;
         DebuggerFixtureValue capturedObject = new(42, "answer!", path);
         object boxedPair = (73, "captured pair");
+        object boxedNullableValue = (int?)47;
+        object? boxedNullableEmpty = (int?)null;
+        object boxedNullableMismatch = "not an integer";
+        object boxedNullableStruct = (DebuggerOptionalStructFixture?)new DebuggerOptionalStructFixture();
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
         cycleObject.Value = cycleObject;
@@ -811,6 +823,10 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(explicitInterfaceObject);
         GC.KeepAlive(capturedObject);
         GC.KeepAlive(boxedPair);
+        GC.KeepAlive(boxedNullableValue);
+        GC.KeepAlive(boxedNullableEmpty);
+        GC.KeepAlive(boxedNullableMismatch);
+        GC.KeepAlive(boxedNullableStruct);
         GC.KeepAlive(chain);
         GC.KeepAlive(cycleObject);
         GC.KeepAlive(hiddenFields.GetDerivedValue());

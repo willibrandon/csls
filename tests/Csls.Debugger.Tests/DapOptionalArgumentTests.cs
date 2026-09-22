@@ -223,6 +223,7 @@ public sealed class DapOptionalArgumentTests : DapTestContext
         await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
         using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
         int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string receiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
 
         JsonElement initialReceiver = await ReadEvaluationAsync(client, frameId,
             "optionalStructs[0].ReadNumber()", success: true,
@@ -291,6 +292,25 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             using JsonDocument interfaceInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             AssertEvent(interfaceInvalidated.RootElement, "invalidated");
+        }
+
+        foreach ((string expression, string expected) in new[]
+        {
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableValue as int?)", "0"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableEmpty as int?)", "1"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableMismatch as int?)", "1"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(nullable[0] as int?)", "0"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(nullable[1] as int?)", "1"),
+            ($"{receiver}.ReadNullableStructForDebugger(" +
+                "boxedNullableStruct as Csls.TestProcessHost.DebuggerOptionalStructFixture?)", "41")
+        })
+        {
+            JsonElement nullableResult = await ReadEvaluationAsync(client, frameId, expression,
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, nullableResult.GetProperty("result").GetString());
+            using JsonDocument nullableInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(nullableInvalidated.RootElement, "invalidated");
         }
 
         foreach (string rejectedCall in new[]
