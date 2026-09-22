@@ -95,6 +95,39 @@ internal sealed class DapMessageWriter : IAsyncDisposable
             },
             cancellationToken);
 
+    /// <summary>
+    /// Writes an adapter-originated request after registering its response sequence.
+    /// </summary>
+    /// <param name="command">The reverse-request command.</param>
+    /// <param name="writeArguments">Writes the required request arguments object.</param>
+    /// <param name="onSequenceAssigned">Registers the sequence before any bytes reach the client.</param>
+    /// <param name="cancellationToken">Cancels before the request header is written.</param>
+    /// <returns>A task that completes after the framed request is flushed.</returns>
+    internal ValueTask WriteRequestAsync(
+        string command,
+        Action<Utf8JsonWriter> writeArguments,
+        Action<int> onSequenceAssigned,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        ArgumentNullException.ThrowIfNull(writeArguments);
+        ArgumentNullException.ThrowIfNull(onSequenceAssigned);
+        return WriteMessageAsync(
+            writer =>
+            {
+                int sequence = Interlocked.Increment(ref _sequence);
+                onSequenceAssigned(sequence);
+                writer.WriteStartObject();
+                writer.WriteNumber("seq", sequence);
+                writer.WriteString("type", "request");
+                writer.WriteString("command", command);
+                writer.WritePropertyName("arguments");
+                writeArguments(writer);
+                writer.WriteEndObject();
+            },
+            cancellationToken);
+    }
+
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {

@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Csls.DebugAdapter;
 
 /// <summary>
-/// Reads bounded Debug Adapter Protocol requests from a byte stream.
+/// Reads bounded Debug Adapter Protocol client messages from a byte stream.
 /// </summary>
 internal sealed class DapMessageReader
 {
@@ -27,11 +27,6 @@ internal sealed class DapMessageReader
     private readonly byte[] _readBuffer = new byte[DefaultMaximumHeaderBytes];
     private int _readOffset;
     private int _readLength;
-
-    /// <summary>
-    /// Gets the wire payload size of the last successfully read request.
-    /// </summary>
-    internal int LastPayloadBytes { get; private set; }
 
     /// <summary>
     /// Creates a bounded DAP request reader.
@@ -55,11 +50,11 @@ internal sealed class DapMessageReader
     }
 
     /// <summary>
-    /// Reads and validates the next request or returns null at a clean end of stream.
+    /// Reads and validates the next client message or returns null at a clean end of stream.
     /// </summary>
     /// <param name="cancellationToken">Cancels the pending stream read.</param>
-    /// <returns>The next validated DAP request, or null before a new header starts.</returns>
-    internal async ValueTask<Request?> ReadRequestAsync(CancellationToken cancellationToken)
+    /// <returns>The next validated DAP message, or null before a new header starts.</returns>
+    internal async ValueTask<DapInboundMessage?> ReadMessageAsync(CancellationToken cancellationToken)
     {
         int headerLength = 0;
         while (true)
@@ -123,28 +118,67 @@ internal sealed class DapMessageReader
             payloadOffset += count;
         }
 
-        Request? request;
+        Request? request = null;
+        Response? response = null;
         try
         {
-            request = JsonSerializer.Deserialize(
-                payload,
-                DapProtocolJsonSerializerContext.Default.Request);
+            using var document = JsonDocument.Parse(payload);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("type", out JsonElement type) ||
+                type.ValueKind != JsonValueKind.String)
+            {
+                throw new InvalidDataException("A DAP client message envelope has an invalid type.");
+            }
+
+            if (type.ValueEquals("request"))
+            {
+                request = JsonSerializer.Deserialize(
+                    payload, DapProtocolJsonSerializerContext.Default.Request);
+            }
+            else if (type.ValueEquals("response"))
+            {
+                if (!root.TryGetProperty("success", out JsonElement success) ||
+                    success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    throw new InvalidDataException("A DAP response requires a Boolean success value.");
+                }
+
+                response = JsonSerializer.Deserialize(
+                    payload, DapProtocolJsonSerializerContext.Default.Response);
+            }
+            else
+            {
+                throw new InvalidDataException("A DAP client message envelope must be a request or response.");
+            }
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException("A DAP request contains invalid JSON.", exception);
+            throw new InvalidDataException("A DAP client message contains invalid JSON.", exception);
         }
 
-        if (request is null ||
-            request.Seq <= 0 ||
-            !string.Equals(request.Type, "request", StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(request.Command))
+        if (request is not null &&
+            (request.Seq <= 0 ||
+                !string.Equals(request.Type, "request", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(request.Command)))
         {
             throw new InvalidDataException("A DAP request envelope is invalid.");
         }
 
-        LastPayloadBytes = payloadLength;
-        return request;
+        if (response is not null &&
+            (response.Seq <= 0 || response.RequestSeq <= 0 ||
+                !string.Equals(response.Type, "response", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(response.Command)))
+        {
+            throw new InvalidDataException("A DAP response envelope is invalid.");
+        }
+
+        if (request is null && response is null)
+        {
+            throw new InvalidDataException("A DAP client message envelope is invalid.");
+        }
+
+        return new DapInboundMessage(request, response, payloadLength);
     }
 
     private int ParseContentLength(ReadOnlySpan<byte> headerBytes)

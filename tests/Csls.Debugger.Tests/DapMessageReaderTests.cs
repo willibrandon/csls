@@ -70,6 +70,44 @@ public sealed class DapMessageReaderTests
     }
 
     /// <summary>
+    /// Ignores a late terminal reply after its reverse request has already retired.
+    /// </summary>
+    [TestMethod]
+    public async Task UnmatchedReverseResponseDoesNotDisruptNextRequest()
+    {
+        const string LateResponse = "{\"seq\":8,\"type\":\"response\",\"request_seq\":3," +
+            "\"command\":\"runInTerminal\",\"success\":true}";
+        const string Initialize = "{\"seq\":9,\"type\":\"request\",\"command\":\"initialize\"}";
+        DapTestClient client = await DapTestClient
+            .CreateAsync(CancellationToken.None).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+
+        await client.SendFrameAsync(
+            [.. CreateFrame(LateResponse), .. CreateFrame(Initialize)],
+            fragment: false,
+            CancellationToken.None).ConfigureAwait(false);
+
+        using JsonDocument response = await client.ReadMessageAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+        Assert.AreEqual("initialize", response.RootElement.GetProperty("command").GetString());
+        Assert.AreEqual(9, response.RootElement.GetProperty("request_seq").GetInt32());
+        Assert.IsTrue(response.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    /// <summary>
+    /// Rejects a terminal reply whose success field is absent.
+    /// </summary>
+    [TestMethod]
+    public async Task ReverseResponseRequiresBooleanSuccess()
+    {
+        string diagnostics = await ReadInvalidFrameAsync(CreateFrame(
+            "{\"seq\":8,\"type\":\"response\",\"request_seq\":3," +
+            "\"command\":\"runInTerminal\"}")).ConfigureAwait(false);
+
+        Assert.Contains("Boolean success", diagnostics, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Rejects duplicate content lengths before allocating the payload.
     /// </summary>
     [TestMethod]

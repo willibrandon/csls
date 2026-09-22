@@ -17,6 +17,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private readonly CancellationTokenSource _lifetime;
     private readonly TaskCompletionSource _targetCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _stopEventGate = new(1, 1);
+    private readonly Lock _reverseRequestGate = new();
     private readonly DebuggerSession _engineSession;
     private IDebuggerInspectionTarget _inspectionTarget;
     private DapDumpSession? _dumpSession;
@@ -47,6 +48,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private CancellationTokenSource? _cancelableRequestCancellation;
     private int _cancelableRequestSequence;
     private int _protocolClosed;
+    private TaskCompletionSource<Response>? _pendingReverseResponse;
+    private int _pendingReverseSequence;
 
     /// <summary>
     /// Creates a DAP session over explicit protocol and diagnostic streams.
@@ -77,7 +80,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     {
         CancellationToken sessionToken = _lifetime.Token;
         using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(sessionToken);
-        Task<Request?>? pendingRead = null;
+        Task<DapInboundMessage?>? pendingRead = null;
         try
         {
             while (_state is not DapSessionState.Terminated and not DapSessionState.Faulted)
@@ -97,7 +100,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 Request? request;
                 if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
-                    pendingRead ??= _reader.ReadRequestAsync(readCancellation.Token).AsTask();
+                    pendingRead ??= _reader.ReadMessageAsync(readCancellation.Token).AsTask();
                     Task dumpCompletion = _dumpSession?.Completion ?? _targetCompletion.Task;
                     _ = await (_cancelableRequest is null
                         ? Task.WhenAny(pendingRead, _targetCompletion.Task, dumpCompletion)
@@ -120,13 +123,23 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                         continue;
                     }
 
-                    Task<Request?> completedRead = pendingRead;
+                    Task<DapInboundMessage?> completedRead = pendingRead;
                     pendingRead = null;
-                    request = await completedRead.WaitAsync(sessionToken).ConfigureAwait(false);
-                    if (request is null)
+                    DapInboundMessage? message = await completedRead.WaitAsync(sessionToken)
+                        .ConfigureAwait(false);
+                    if (message is null)
                     {
                         break;
                     }
+
+                    if (message.Response is Response response)
+                    {
+                        CompleteReverseResponse(response);
+                        continue;
+                    }
+
+                    request = message.Request ?? throw new InvalidDataException(
+                        "A DAP client message has no request or response.");
 
                     if (string.Equals(request.Command, "cancel", StringComparison.Ordinal))
                     {
@@ -136,7 +149,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 
                     if (_cancelableRequest is not null)
                     {
-                        if (!_pendingRequests.TryEnqueue(request, _reader.LastPayloadBytes))
+                        if (!_pendingRequests.TryEnqueue(request, message.PayloadBytes))
                         {
                             await WriteRequestFailureAsync(request,
                                 "The DAP pending request limit was reached. Wait for pending " +
@@ -169,12 +182,12 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 await CompleteTerminatedRequestsAsync(sessionToken).ConfigureAwait(false);
                 if (pendingRead is not null)
                 {
-                    Request? unread = await SettleProtocolReadAsync(pendingRead, readCancellation.Token)
+                    DapInboundMessage? unread = await SettleProtocolReadAsync(pendingRead, readCancellation.Token)
                         .ConfigureAwait(false);
                     pendingRead = null;
-                    if (unread is not null)
+                    if (unread?.Request is Request unreadRequest)
                     {
-                        await WriteStateFailureAsync(unread, sessionToken).ConfigureAwait(false);
+                        await WriteStateFailureAsync(unreadRequest, sessionToken).ConfigureAwait(false);
                     }
                 }
             }
@@ -221,8 +234,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
     }
 
-    private static async Task<Request?> SettleProtocolReadAsync(
-        Task<Request?> pendingRead,
+    private static async Task<DapInboundMessage?> SettleProtocolReadAsync(
+        Task<DapInboundMessage?> pendingRead,
         CancellationToken cancellationToken)
     {
         try
