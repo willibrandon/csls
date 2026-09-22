@@ -26,6 +26,11 @@ internal sealed class ManagedFunctionEvaluation
     internal ManagedBoundType? DeclaredResultType { get; init; }
 
     /// <summary>
+    /// Gets the user-defined conversion whose standard result conversion completes this evaluation.
+    /// </summary>
+    internal ManagedUserDefinedConversion? ExplicitUserDefinedConversion { get; init; }
+
+    /// <summary>
     /// Gets the property result's tuple names captured before the target executes.
     /// </summary>
     internal ManagedTupleCustomTypeInfo? ResultTupleCustomTypeInfo { get; init; }

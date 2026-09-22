@@ -123,6 +123,16 @@ internal sealed partial class CorDebugDebuggee
             };
         }
 
+        if (ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+            sourceType, conversion.ParameterType, conversion.Language))
+        {
+            return ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
+                value, sourceType, conversion.ParameterType, conversion.Language) with
+            {
+                DeclaredType = conversion.ParameterType
+            };
+        }
+
         throw new InvalidOperationException(
             $"The conversion operator cannot receive " +
             $"'{sourceType.DisplayName}' as '{conversion.ParameterType.DisplayName}'.");
@@ -458,8 +468,18 @@ internal sealed partial class CorDebugDebuggee
             };
         }
 
+        if (ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+            conversion.ResultType, conversion.TargetType, conversion.Language))
+        {
+            return ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
+                value, conversion.ResultType, conversion.TargetType, conversion.Language) with
+            {
+                DeclaredType = conversion.TargetType
+            };
+        }
+
         throw new InvalidOperationException(
-            $"The implicit conversion result '{conversion.ResultType.DisplayName}' cannot flow to " +
+            $"The conversion result '{conversion.ResultType.DisplayName}' cannot flow to " +
             $"'{conversion.TargetType.DisplayName}'.");
     }
 
@@ -482,6 +502,47 @@ internal sealed partial class CorDebugDebuggee
             Display = empty.Display with { Value = "null" },
             IsNullableValue = true
         };
+    }
+
+    private bool TryCreateExplicitUserDefinedConversionResult(
+        nint value,
+        ManagedFunctionEvaluation evaluation,
+        DebugStopGeneration generation,
+        out ManagedFunctionEvaluationResult result)
+    {
+        ManagedUserDefinedConversion? conversion = evaluation.ExplicitUserDefinedConversion;
+        if (conversion is null ||
+            conversion.ResultType.IsSameType(conversion.TargetType) ||
+            !ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                conversion.ResultType, conversion.TargetType, conversion.Language))
+        {
+            result = null!;
+            return false;
+        }
+
+        ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+        ManagedExpressionValue operatorResult = ManagedExpressionValueFactory.FromVariable(
+            new DebugVariableInfo(
+                "$conversion",
+                display.Value,
+                display.Type,
+                VariablesReference: 0,
+                MemoryReference: null,
+                EvaluateName: null),
+            runtimeValueReference: 0,
+            display) with
+        {
+            DeclaredType = conversion.ResultType
+        };
+        ManagedExpressionValue converted = ApplyUserDefinedConversionTarget(
+            operatorResult, conversion, evaluation.Thread);
+        result = new ManagedFunctionEvaluationResult(
+            converted.ToResult() with { TargetCodeExecuted = true },
+            RuntimeValueReference: 0,
+            generation,
+            DebuggerTypeProxyApplied: false,
+            DeclaredType: conversion.TargetType);
+        return true;
     }
 
     private ManagedFunctionBinding ResolveUserDefinedExplicitConversion(

@@ -149,6 +149,14 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerImplicitConversionSource source) => (double)source;
 
     /// <summary>
+    /// Runs the compiler's numeric widening after an implicit operator selected by an explicit cast.
+    /// </summary>
+    /// <param name="source">The authored source value.</param>
+    /// <returns>The widened operator result.</returns>
+    internal static long CompilerExplicitLongForDebugger(
+        DebuggerImplicitConversionSource source) => (long)source;
+
+    /// <summary>
     /// Runs the compiler's numeric widening before an explicit conversion operator.
     /// </summary>
     /// <param name="source">The primitive source value.</param>
@@ -163,6 +171,22 @@ internal static class DebuggerImplicitConversionFixture
     /// <returns>The number carried through the explicit conversion.</returns>
     internal static int CompilerExplicitBoxedSourceForDebugger(int source) =>
         ((DebuggerExplicitConversionGenericDestination<IComparable>)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's numeric narrowing before an explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The primitive source value.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static byte CompilerExplicitNarrowedSourceForDebugger(int source) =>
+        ((DebuggerExplicitNarrowingDestination)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's numeric narrowing after an explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The narrowed operator result.</returns>
+    internal static int CompilerExplicitNarrowedResultForDebugger(
+        DebuggerExplicitNumericResultSource source) => (int)source;
 
     /// <summary>
     /// Runs the compiler's reference conversions around an inherited conversion operator.

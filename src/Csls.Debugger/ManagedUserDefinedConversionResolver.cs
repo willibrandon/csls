@@ -156,9 +156,10 @@ internal sealed class ManagedUserDefinedConversionResolver
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
             uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
-            bool hasInputConversion = HasStandardImplicitConversion(source, parameterType);
-            bool hasResultConversion = destination.IsSameType(resultType) ||
-                _referenceConversions.IsImplicit(resultType, destination, _thread);
+            bool hasInputConversion = HasSupportedStandardExplicitInputConversion(
+                source, parameterType);
+            bool hasResultConversion = HasSupportedStandardExplicitResultConversion(
+                resultType, destination);
             if (hasInputConversion && hasResultConversion &&
                 !matches.Any(match =>
                     match.DeclaringType.ModuleId == declaringType.ModuleId &&
@@ -396,4 +397,17 @@ internal sealed class ManagedUserDefinedConversionResolver
             ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
                 source, destination, _language);
     }
+
+    private bool HasSupportedStandardExplicitInputConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) => HasStandardImplicitConversion(source, destination) ||
+        ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+            source, destination, _language);
+
+    private bool HasSupportedStandardExplicitResultConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) => source.IsSameType(destination) ||
+        _referenceConversions.IsImplicit(source, destination, _thread) ||
+        ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+            source, destination, _language);
 }

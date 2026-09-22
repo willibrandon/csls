@@ -120,6 +120,59 @@ internal static class ManagedPrimitiveConversionEvaluator
     }
 
     /// <summary>
+    /// Tests whether loaded numeric types have a standard explicit conversion around a user-defined operator.
+    /// </summary>
+    internal static bool IsStandardExplicitUserDefinedConversion(
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (!AreLoadedNumericTypes(source, target))
+        {
+            return false;
+        }
+
+        string? sourceName = TryNormalizeTypeName(source.Name, DebugExpressionLanguage.CSharp);
+        string? targetName = TryNormalizeTypeName(target.Name, DebugExpressionLanguage.CSharp);
+        return sourceName is not null && targetName is not null &&
+            (string.Equals(sourceName, targetName, StringComparison.Ordinal) ||
+             IsImplicitNumericConversion(sourceName, targetName, language) ||
+             IsImplicitNumericConversion(targetName, sourceName, language));
+    }
+
+    /// <summary>
+    /// Materializes a standard explicit numeric conversion around a user-defined operator.
+    /// </summary>
+    internal static ManagedExpressionValue ConvertStandardExplicitUserDefinedConversion(
+        ManagedExpressionValue value,
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (!IsStandardExplicitUserDefinedConversion(source, target, language))
+        {
+            throw new InvalidOperationException(
+                $"Type '{source.DisplayName}' has no standard explicit numeric conversion to " +
+                $"'{target.DisplayName}'.");
+        }
+
+        object? scalar = ManagedExpressionValueFactory.RequireScalar(value);
+        if (scalar is null)
+        {
+            throw new InvalidOperationException(
+                "A null value cannot participate in a standard explicit numeric conversion.");
+        }
+
+        string targetName = TryNormalizeTypeName(target.Name, DebugExpressionLanguage.CSharp)
+            ?? throw new InvalidOperationException(
+                $"Unsupported numeric conversion target '{target.DisplayName}'.");
+        return ConvertNumeric(
+            scalar,
+            targetName,
+            checkedConversion: language == DebugExpressionLanguage.VisualBasic);
+    }
+
+    /// <summary>
     /// Tests an integral constant expression against C#'s range-limited invocation conversions.
     /// </summary>
     internal static bool IsImplicitConstantInvocationConversion(

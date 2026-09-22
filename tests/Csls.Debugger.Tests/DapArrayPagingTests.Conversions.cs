@@ -168,11 +168,44 @@ public sealed partial class DapArrayPagingTests
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerExplicitReferenceResultForDebugger(implicitReferenceConversion)",
             "41").ConfigureAwait(false);
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitNarrowingDestination)vector[0]",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNarrowedSourceForDebugger(vector[0])",
+            "41").ConfigureAwait(false);
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "(long)implicitConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitLongForDebugger(implicitConversion)",
+            "41",
+            "long").ConfigureAwait(false);
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "(int)explicitNumericResultSource",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNarrowedResultForDebugger(explicitNumericResultSource)",
+            "41",
+            "int").ConfigureAwait(false);
+
+        JsonElement nonStandardNumericBridge = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitDecimalDestination)41.5",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("conversion", Assert.IsInstanceOfType<string>(
+            nonStandardNumericBridge.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
 
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("26", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("32", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {
@@ -235,6 +268,33 @@ public sealed partial class DapArrayPagingTests
 
         JsonElement number = Assert.ContainsSingle(numbers);
         Assert.AreEqual(expected, number.GetProperty("value").GetString());
+
+        JsonElement compiler = await ReadEvaluationAsync(client, frameId, compilerExpression, success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(expected, compiler.GetProperty("result").GetString());
+        using JsonDocument compilerInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(compilerInvalidated.RootElement, "invalidated");
+    }
+
+    private async Task AssertScalarExplicitConversionAsync(
+        DapTestClient client,
+        int frameId,
+        string expression,
+        string compilerExpression,
+        string expected,
+        string expectedType)
+    {
+        JsonElement converted = await ReadEvaluationAsync(client, frameId, expression, success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(expected, converted.GetProperty("result").GetString());
+        Assert.AreEqual(expectedType, converted.GetProperty("type").GetString());
+        Assert.AreEqual(0, converted.GetProperty("variablesReference").GetInt32());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
 
         JsonElement compiler = await ReadEvaluationAsync(client, frameId, compilerExpression, success: true,
             TestContext.CancellationToken).ConfigureAwait(false);

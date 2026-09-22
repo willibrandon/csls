@@ -203,6 +203,7 @@ internal sealed partial class CorDebugDebuggee
             thread = GetThread(frame.ThreadId);
             setupPhase = "resolving the runtime method";
             ManagedBoundType? declaredResultType;
+            ManagedUserDefinedConversion? explicitConversion = null;
             if (materializesString)
             {
                 declaredResultType = _boundTypes.Bind(
@@ -213,7 +214,6 @@ internal sealed partial class CorDebugDebuggee
             {
                 ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
                     suppliedArguments, plan.Language, thread);
-                ManagedUserDefinedConversion? explicitConversion = null;
                 ManagedFunctionBinding binding = convertsValue
                     ? ResolveUserDefinedExplicitConversion(
                         argumentTypes[0] ?? throw new InvalidOperationException(
@@ -371,6 +371,7 @@ internal sealed partial class CorDebugDebuggee
                 Function = function,
                 TypeArguments = callTypeArguments,
                 DeclaredResultType = declaredResultType,
+                ExplicitUserDefinedConversion = explicitConversion,
                 ResultTupleCustomTypeInfo = property?.Getter.TupleCustomTypeInfo,
                 ResultFrameId = frame.Id,
                 Thread = thread,
@@ -601,6 +602,11 @@ internal sealed partial class CorDebugDebuggee
                     {
                         failure = new InvalidOperationException(
                             $"Managed function evaluation threw {display.Type}: {display.Value}");
+                    }
+                    else if (TryCreateExplicitUserDefinedConversionResult(
+                        value, active, resultGeneration, out ManagedFunctionEvaluationResult converted))
+                    {
+                        result = converted;
                     }
                     else
                     {
