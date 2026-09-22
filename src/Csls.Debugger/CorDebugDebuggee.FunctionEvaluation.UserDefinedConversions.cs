@@ -8,7 +8,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private static ManagedExpressionValue PrepareUserDefinedConversionArgument(
+    private ManagedExpressionValue PrepareUserDefinedConversionArgument(
         ManagedExpressionValue value,
         ManagedBoundType sourceType,
         ManagedUserDefinedConversion conversion,
@@ -20,6 +20,24 @@ internal sealed partial class CorDebugDebuggee
             referenceConversions.IsImplicit(sourceType, conversion.ParameterType, thread))
         {
             prepared = value with { DeclaredType = conversion.ParameterType };
+        }
+        else if (referenceConversions.IsImplicitBoxing(
+            sourceType, conversion.ParameterType, thread))
+        {
+            bool boxesNullable = _boundTypes.IsCoreType(
+                sourceType, "System.Nullable`1", thread);
+            bool boxesNullableAsNull = boxesNullable &&
+                IsNullableBoxingEmpty(value, sourceType, thread);
+            prepared = value with
+            {
+                DeclaredType = sourceType,
+                RequiresNullableMaterialization = false,
+                RequiresBoxing = !boxesNullableAsNull,
+                BoxingType = boxesNullable
+                    ? sourceType.TypeArguments[0]
+                    : sourceType,
+                BoxesNullableAsNull = boxesNullableAsNull
+            };
         }
         else if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
             sourceType, conversion.ParameterType, conversion.Language))
@@ -273,7 +291,8 @@ internal sealed partial class CorDebugDebuggee
             return value with { DeclaredType = conversion.TargetType };
         }
 
-        if (new ManagedReferenceConversion(_boundTypes).IsImplicit(
+        var referenceConversions = new ManagedReferenceConversion(_boundTypes);
+        if (referenceConversions.IsImplicit(
             conversion.ResultType, conversion.TargetType, thread))
         {
             return value with { DeclaredType = conversion.TargetType };

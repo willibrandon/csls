@@ -241,13 +241,8 @@ internal sealed class ManagedUserDefinedConversionResolver
             return true;
         }
 
-        if ((_types.GetAttributes(source) & TypeAttributes.Interface) != 0 ||
-            (_types.GetAttributes(destination) & TypeAttributes.Interface) != 0)
-        {
-            return false;
-        }
-
         return _referenceConversions.IsImplicit(source, destination, _thread) ||
+            _referenceConversions.IsImplicitBoxing(source, destination, _thread) ||
             ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
                 source, destination, _language);
     }

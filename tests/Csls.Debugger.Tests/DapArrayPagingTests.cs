@@ -281,7 +281,11 @@ public sealed class DapArrayPagingTests : DapTestContext
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerRequireReferenceBaseForDebugger(implicitReferenceConversion)", "341"),
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
-                "GetConversionCountForDebugger()", "11")
+                "RequireBoxedSourceForDebugger(vector[0])", "441"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerRequireBoxedSourceForDebugger(vector[0])", "441"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "13")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,

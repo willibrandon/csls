@@ -96,4 +96,21 @@ internal static class DebuggerImplicitConversionFixture
     internal static int CompilerRequireReferenceBaseForDebugger(
         DebuggerImplicitConversionReferenceDerived source) =>
         RequireReferenceBaseForDebugger(source);
+
+    /// <summary>
+    /// Reads a destination whose constructed operator parameter receives a boxed source.
+    /// </summary>
+    /// <param name="value">The generic conversion destination.</param>
+    /// <returns>The converted number plus four hundred.</returns>
+    internal static int RequireBoxedSourceForDebugger(
+        DebuggerImplicitConversionGenericDestination<IComparable> value) =>
+        value.Number + 400;
+
+    /// <summary>
+    /// Runs the compiler's boxing conversion before a constructed implicit operator.
+    /// </summary>
+    /// <param name="source">The primitive source value.</param>
+    /// <returns>The compiler-produced generic destination result.</returns>
+    internal static int CompilerRequireBoxedSourceForDebugger(int source) =>
+        RequireBoxedSourceForDebugger(source);
 }

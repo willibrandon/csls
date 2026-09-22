@@ -606,7 +606,8 @@ allocates the exact contained value when present and supplies a managed null ref
 when empty.
 User-defined implicit conversions are resolved from the source hierarchy and destination's
 current loaded metadata. Standard implicit numeric and reference conversions select and
-materialize the operator parameter and result types. The selected `op_Implicit` executes
+materialize the operator parameter and result types, including boxing into constructed generic
+operator parameters. The selected `op_Implicit` executes
 as a supervised evaluation stage, retains its exact primitive, reference, null, or
 value-type result, and supplies that result to the already-selected method call. Target
 exceptions use the ordinary function-evaluation recovery path and leave the process
