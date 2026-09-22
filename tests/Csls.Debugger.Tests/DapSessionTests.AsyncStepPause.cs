@@ -37,11 +37,16 @@ public sealed partial class DapSessionTests
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
             environment: crashReports.Variables).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        var stage = new StrongBox<string?>("launching to initial breakpoint");
+        using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client,
+            () => Volatile.Read(ref stage.Value));
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-concurrent-async-step-out-fixture", pipeName, kind], ResolveAsyncIteratorProgram(configuration),
             suppressJitOptimizations: true).ConfigureAwait(false);
+        Volatile.Write(ref stage.Value, "connecting fixture pipes");
         await connections.ConfigureAwait(false);
         await ClearSourceBreakpointsAsync(client, sourcePath).ConfigureAwait(false);
+        Volatile.Write(ref stage.Value, "stepping across the selected await");
         Task<int> initialStep = StepAndReadStopAsync(client, "next", initialThread, TestContext.CancellationToken);
         byte[] handshake = new byte[1];
         await selected.ReadExactlyAsync(handshake, TestContext.CancellationToken).ConfigureAwait(false);
@@ -51,6 +56,7 @@ public sealed partial class DapSessionTests
         Assert.AreNotEqual(initialThread, resumedThread);
         await AssertAsyncStepOutFrameAsync(client, resumedThread, sourcePath, FindSourceLine(lines, marker + " resumption"),
             "Read" + kind + "Async", "40").ConfigureAwait(false);
+        Volatile.Write(ref stage.Value, "arming asynchronous step out");
         int stepSequence = await client.SendRequestAsync("stepOut", writer =>
         {
             writer.WriteStartObject();
@@ -64,7 +70,9 @@ public sealed partial class DapSessionTests
         await selected.ReadExactlyAsync(handshake, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual((byte)2, handshake[0]);
 
+        Volatile.Write(ref stage.Value, "pausing with asynchronous step out pending");
         await PauseFixtureAsync(client).ConfigureAwait(false);
+        Volatile.Write(ref stage.Value, "resuming both callers after pause");
         int continueSequence = await client.SendRequestAsync("continue", WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
         await competing.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
@@ -72,6 +80,7 @@ public sealed partial class DapSessionTests
         // Complete the duplex handshake before awaiting exit: the fixture awaits this write.
         await selected.ReadExactlyAsync(handshake, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual((byte)3, handshake[0]);
+        Volatile.Write(ref stage.Value, "waiting for target termination");
         await ReadSuccessfulTerminationAsync(client, continueSequence, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
