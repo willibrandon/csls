@@ -312,6 +312,56 @@ internal static class DebuggerDumpArrayFixture
         date.Ticks == 637134336000000000L && date.Kind == DateTimeKind.Unspecified ? 1 : 0;
 
     /// <summary>
+    /// Observes the compiler's default for an optional integer without a constant.
+    /// </summary>
+    /// <param name="number">The optional integer value.</param>
+    /// <returns>One when the target receives zero.</returns>
+    internal static int OptionalIntegerWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] int number) => number == 0 ? 1 : 0;
+
+    /// <summary>
+    /// Observes the compiler's default for an optional Boolean without a constant.
+    /// </summary>
+    /// <param name="enabled">The optional Boolean value.</param>
+    /// <returns>One when the target receives false.</returns>
+    internal static int OptionalBooleanWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] bool enabled) => enabled ? 0 : 1;
+
+    /// <summary>
+    /// Observes the compiler's default for an optional external enum without a constant.
+    /// </summary>
+    /// <param name="share">The optional enum value.</param>
+    /// <returns>One when the target receives its zero member.</returns>
+    internal static int OptionalEnumWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] FileShare share) => share == FileShare.None ? 1 : 0;
+
+    /// <summary>
+    /// Observes the compiler's default for an optional string without a constant.
+    /// </summary>
+    /// <param name="text">The optional string value.</param>
+    /// <returns>One when the target receives null.</returns>
+    internal static int OptionalStringWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] string? text) => text is null ? 1 : 0;
+
+    /// <summary>
+    /// Observes the compiler's default for an optional decimal without a constant.
+    /// </summary>
+    /// <param name="amount">The optional decimal value.</param>
+    /// <returns>One when the target receives zero with scale zero.</returns>
+    internal static int OptionalDecimalWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] decimal amount) =>
+        decimal.GetBits(amount) is [0, 0, 0, 0] ? 1 : 0;
+
+    /// <summary>
+    /// Observes the compiler's default for an optional DateTime without a constant.
+    /// </summary>
+    /// <param name="date">The optional DateTime value.</param>
+    /// <returns>One when the target receives its zero representation.</returns>
+    internal static int OptionalDateTimeWithoutConstantForDebugger(
+        [System.Runtime.InteropServices.Optional] DateTime date) =>
+        date.Ticks == 0 && date.Kind == DateTimeKind.Unspecified ? 1 : 0;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

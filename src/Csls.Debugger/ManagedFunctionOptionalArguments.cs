@@ -58,6 +58,12 @@ internal static class ManagedFunctionOptionalArguments
                 return null;
             }
 
+            if (ManagedFunctionImplicitDefaults.HasCallSiteOrCollectionAttribute(
+                metadata, declaration.Handle, module))
+            {
+                return null;
+            }
+
             ManagedExpressionValue? structured = ManagedFunctionStructuredDefaults.TryCreate(
                 metadata, declaration.Handle, parameters[index], types, module, thread);
             if (structured is not null)
@@ -67,8 +73,19 @@ internal static class ManagedFunctionOptionalArguments
             }
 
             Parameter parameter = declaration.Definition;
-            if ((parameter.Attributes & ParameterAttributes.HasDefault) == 0 ||
-                parameter.GetDefaultValue().IsNil)
+            if ((parameter.Attributes & ParameterAttributes.HasDefault) == 0)
+            {
+                defaults[index] = ManagedFunctionImplicitDefaults.TryCreate(
+                    parameters[index], types, thread);
+                if (defaults[index] is null)
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            if (parameter.GetDefaultValue().IsNil)
             {
                 return null;
             }

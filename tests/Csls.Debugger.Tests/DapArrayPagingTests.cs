@@ -388,6 +388,12 @@ public sealed class DapArrayPagingTests : DapTestContext
             ($"{staticReceiver}.OptionalExternalEnumForDebugger()", "3"),
             ($"{staticReceiver}.OptionalDecimalForDebugger()", "1"),
             ($"{staticReceiver}.OptionalDateTimeForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalIntegerWithoutConstantForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalBooleanWithoutConstantForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalEnumWithoutConstantForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalStringWithoutConstantForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalDecimalWithoutConstantForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalDateTimeWithoutConstantForDebugger()", "1"),
             ("capturedObject.CombineOptionalForDebugger(vector[0])", "4184")
         })
         {
