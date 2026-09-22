@@ -1,5 +1,3 @@
-using Csls.Debugger.Contracts;
-using Csls.Debugger.Control;
 using Hex1b;
 using System.Runtime.CompilerServices;
 
@@ -22,40 +20,10 @@ public static class DebuggerTerminalHost
     {
         ArgumentNullException.ThrowIfNull(options);
         ValidateLaunch(options);
-        using var endpoint = DebuggerTerminalEndpoint.Create();
-        var service = new DebuggerControlService();
-        await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        var server = new DebuggerRpcServer(endpoint.SocketPath, service);
-        await using ConfiguredAsyncDisposable serverCleanup = server.ConfigureAwait(false);
-        server.Start();
-        var client = new DebuggerRpcClient(endpoint.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        if (options.SourcePath is string sourcePath && options.Line is int line)
-        {
-            _ = await client.SetSourceBreakpointsAsync(
-                new DebugSourceBreakpointSetRequest(
-                    sourcePath,
-                    [new DebugSourceBreakpointRequest(line, null)]),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        _ = await client.LaunchAsync(
-            new DebugLaunchRequest
-            {
-                Program = options.Program,
-                WorkingDirectory = options.WorkingDirectory,
-                Arguments = options.Arguments,
-                EnvironmentFilePath = options.EnvironmentFilePath,
-                RuntimeHostPath = options.RuntimeHostPath,
-                SourceFileMap = options.SourceFileMap,
-                RequireExactSource = options.RequireExactSource,
-                ExpressionEvaluationOptions = options.ExpressionEvaluationOptions,
-                StopAtEntry = options.StopAtEntry,
-                TerminateChildProcesses = options.TerminateChildProcesses
-            },
-            cancellationToken).ConfigureAwait(false);
-        return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);
+        DebuggerTerminalOwnedSession session = await DebuggerTerminalOwnedSession
+            .LaunchAsync(options, cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = session.ConfigureAwait(false);
+        return await RunTerminalAsync(session.State, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -70,35 +38,16 @@ public static class DebuggerTerminalHost
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ProcessId);
-        using var endpoint = DebuggerTerminalEndpoint.Create();
-        var service = new DebuggerControlService();
-        await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        var server = new DebuggerRpcServer(endpoint.SocketPath, service);
-        await using ConfiguredAsyncDisposable serverCleanup = server.ConfigureAwait(false);
-        server.Start();
-        var client = new DebuggerRpcClient(endpoint.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        _ = await client.AttachAsync(
-            new DebugAttachRequest(options.ProcessId)
-            {
-                RequireExactSource = options.RequireExactSource,
-                ExpressionEvaluationOptions = options.ExpressionEvaluationOptions,
-                SourceFileMap = options.SourceFileMap
-            },
-            cancellationToken).ConfigureAwait(false);
-        _ = await client.PauseAsync(cancellationToken).ConfigureAwait(false);
-        return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);
+        DebuggerTerminalOwnedSession session = await DebuggerTerminalOwnedSession
+            .AttachAsync(options, cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = session.ConfigureAwait(false);
+        return await RunTerminalAsync(session.State, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<int> RunTerminalAsync(
-        DebuggerRpcClient client,
+        DebuggerTerminalState state,
         CancellationToken cancellationToken)
     {
-        DebuggerTerminalState state = await DebuggerTerminalState
-            .CreateAsync(client, cancellationToken)
-            .ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable stateCleanup = state.ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(
                 state.AttachWorkload,
