@@ -194,6 +194,50 @@ public sealed class DebuggerTerminalTests
                         description: "original stopped target restored").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("WaitForSignal").ConfigureAwait(false);
                     await automator.KeyAsync(
+                        Hex1bKey.F3,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Terminal sessions").ConfigureAwait(false);
+                    await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("▶   csls-test-process-host.dll")
+                        .ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetLine(0).Contains(secondProcessMarker,
+                            StringComparison.Ordinal),
+                        description: "second managed target restored").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F1,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
+                    await automator.TypeAsync("close session", TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => !screen.ContainsText("Launch session"),
+                        description: "close command filter applied").ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetLine(0).Contains("Closed csls-test-process-host.dll;",
+                            StringComparison.Ordinal) &&
+                            screen.GetLine(0).Contains(initialProcessMarker,
+                                StringComparison.Ordinal),
+                        description: "closing second target restores original selection")
+                        .ConfigureAwait(false);
+                    int secondProcessId = int.Parse(secondProcessMarker.Split(' ',
+                        StringSplitOptions.RemoveEmptyEntries)[1], CultureInfo.InvariantCulture);
+                    Assert.IsFalse(Directory.Exists($"/proc/{secondProcessId}"));
+                    await automator.KeyAsync(
+                        Hex1bKey.F3,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Terminal sessions").ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => !screen.ContainsText(secondProcessMarker) &&
+                            screen.ContainsText(initialProcessMarker),
+                        description: "closed target removed from session browser")
+                        .ConfigureAwait(false);
+                    await automator.EscapeAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilNoTextAsync("Terminal sessions")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
                         Hex1bKey.F2,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Modules").ConfigureAwait(false);

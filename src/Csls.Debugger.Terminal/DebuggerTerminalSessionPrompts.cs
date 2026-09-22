@@ -123,6 +123,18 @@ internal static class DebuggerTerminalSessionPrompts
             .Open(windows);
     }
 
+    /// <summary>
+    /// Closes the exact session selected when its command palette opened.
+    /// </summary>
+    internal static Task CloseSelectedAsync(
+        DebuggerTerminalSessions sessions,
+        Guid sessionId,
+        CancellationToken cancellationToken) => RunAsync(async () =>
+        {
+            _ = await sessions.CloseSelectedAsync(sessionId, cancellationToken)
+                .ConfigureAwait(false);
+        }, sessions, cancellationToken);
+
     private static Task LaunchAsync(
         string program,
         string argumentsJson,

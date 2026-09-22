@@ -887,6 +887,9 @@ output, modules, breakpoints, watches, and exceptions, with a separate command
 palette for launch, attach, inspection, and execution. Switching retains each
 target's independent state and routes subsequent actions only to the selected
 owner. Closing the terminal releases every worker and its owned target.
+The command palette also closes the selected session when another session remains,
+reclaims its bounded collection slot, and selects another live owner. Its captured
+session identity guards closing after a selection change.
 
 MCP uses private debugger RPC rather than translating through DAP. Pure expression
 evaluation is the read-only `debug_evaluate` inspection tool, and physical variable

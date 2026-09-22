@@ -52,7 +52,8 @@ Use its Launch session and Attach session commands to add managed targets to the
 terminal. The launch form accepts an absolute program path and a JSON string array
 of arguments, then stops at entry. F3 opens the session browser; selecting a row
 restores that target's source, threads, stack, and variables. Each target has its
-own supervised debugger worker.
+own supervised debugger worker. The Close session command releases the selected
+worker and its target, then selects another terminal-owned session.
 
 | Key | Operation |
 | --- | --- |

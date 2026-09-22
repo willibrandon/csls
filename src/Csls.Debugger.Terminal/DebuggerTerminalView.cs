@@ -167,6 +167,13 @@ internal static class DebuggerTerminalView
                     return;
                 }
 
+                if (command == DebuggerTerminalCommand.CloseSession)
+                {
+                    await DebuggerTerminalSessionPrompts.CloseSelectedAsync(
+                        sessions, sessionId, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 if (command == DebuggerTerminalCommand.AddWatch)
                 {
                     OpenWatchPrompt(windows, sessions, sessionId, cancellationToken);
@@ -215,6 +222,7 @@ internal static class DebuggerTerminalView
         DebuggerTerminalCommand.BrowseSessions => "Sessions                Browse and switch owned targets",
         DebuggerTerminalCommand.LaunchSession => "Launch session          Start another managed target",
         DebuggerTerminalCommand.AttachSession => "Attach session          Attach another managed process",
+        DebuggerTerminalCommand.CloseSession => "Close session           Release the selected target",
         DebuggerTerminalCommand.AddWatch => "Add watch               Evaluate without target code",
         DebuggerTerminalCommand.ClearWatches => "Clear watches           Remove every watch",
         DebuggerTerminalCommand.Continue => "Continue                Resume the target",
@@ -235,6 +243,7 @@ internal static class DebuggerTerminalView
         DebuggerTerminalCommand.BrowseSessions => "Sessions",
         DebuggerTerminalCommand.LaunchSession => "Launch session",
         DebuggerTerminalCommand.AttachSession => "Attach session",
+        DebuggerTerminalCommand.CloseSession => "Close session",
         DebuggerTerminalCommand.AddWatch => "Add watch",
         DebuggerTerminalCommand.ClearWatches => "Clear watches",
         DebuggerTerminalCommand.Continue => "Continue",

@@ -31,7 +31,8 @@ The command palette also launches another managed target or attaches to a runnin
 process. The launch form takes an absolute program path and a JSON string array of
 arguments, then stops at entry. F3 opens the session browser. Selecting a row
 restores that target's source, threads, stack, and variables. Each target runs in
-its own supervised debugger worker.
+its own supervised debugger worker. Close session releases the selected worker
+and its target, then selects another terminal-owned session.
 
 | Key | Operation |
 | --- | --- |

@@ -174,6 +174,55 @@ internal sealed class DebuggerTerminalSessions : IAsyncDisposable
     }
 
     /// <summary>
+    /// Releases the captured selected session and selects another owned target.
+    /// </summary>
+    internal async Task<bool> CloseSelectedAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DebuggerTerminalOwnedSession? closed = null;
+            lock (_stateGate)
+            {
+                ThrowIfDisposed();
+                if (_selectedId != sessionId)
+                {
+                    _message = "The selected session changed; retry the command.";
+                }
+                else if (_sessions.Count == 1)
+                {
+                    _message = "Close the terminal to end its final session.";
+                }
+                else
+                {
+                    int index = _sessions.FindIndex(session => session.Id == sessionId);
+                    closed = _sessions[index];
+                    _sessions.RemoveAt(index);
+                    DebuggerTerminalOwnedSession next = _sessions[Math.Min(index, _sessions.Count - 1)];
+                    _selectedId = next.Id;
+                    _version++;
+                    _message = $"Closed {closed.DisplayName}; selected {next.DisplayName}.";
+                }
+            }
+
+            RequestRefresh();
+            if (closed is null)
+            {
+                return false;
+            }
+
+            await closed.DisposeAsync().ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            _ = _operationGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Launches a new independent terminal-owned target and selects it.
     /// </summary>
     internal Task AddLaunchAsync(

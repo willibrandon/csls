@@ -21,6 +21,11 @@ internal enum DebuggerTerminalCommand
     AttachSession,
 
     /// <summary>
+    /// Releases the selected terminal-owned debugger session.
+    /// </summary>
+    CloseSession,
+
+    /// <summary>
     /// Adds a side-effect-free watch expression.
     /// </summary>
     AddWatch,
