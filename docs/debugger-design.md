@@ -575,9 +575,8 @@ missing or ambiguous identities fail before execution. Arguments may be exact CL
 primitives, null, retained runtime object and array references, or literal and
 side-effect-free computed strings. The engine materializes strings with
 length-preserving CoreCLR evaluations and holds pre-existing references through strong
-runtime handles across those stages; unsupported argument materialization fails before
-execution. Exact metadata parameter identities select primitive overloads;
-an overload set that cannot be selected uniquely fails before execution. The engine
+runtime handles across those stages. Exact metadata parameter identities select
+primitive overloads; an overload set that cannot be selected uniquely fails before execution. The engine
 evaluates named arguments in source order, maps them to CLR parameter positions, and
 materializes omitted primitive, string, null, decimal, DateTime, and zero-initialized
 value-type defaults from the loaded declaration. Generic value types retain their
@@ -595,7 +594,10 @@ Function evaluation retains unboxed value-type arguments by owned `ICorDebugValu
 pointers and heap references by owned strong handles, releasing each according to
 its native ownership contract.
 An existing unboxed value-type receiver follows the same value-pointer ownership
-rule for its instance method call.
+rule for its instance method call. A zero-initialized temporary receiver is allocated
+as its exact loaded value type, retained by a strong handle between evaluation stages,
+and unboxed only while CoreCLR schedules the selected instance method. Explicitly
+unboxed struct values use the same call path as receivers and arguments.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;
@@ -805,8 +807,8 @@ invalidation. Computed-string assignments validate their declaration and destina
 storage before allocation and carry that declaration into the replacement generation.
 The final write revalidates the destination. Runtime scalar formatting never authorizes
 implicit unboxing, and source-language primitive aliases remain separate from canonical
-runtime names. Implicit boxing, nullable safe casts, general struct unboxing, and
-user-defined conversions require additional binding and materialization rules.
+runtime names. Exact nullable safe casts and explicitly requested struct unboxing
+preserve their loaded value-type identity through calls and assignments.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,

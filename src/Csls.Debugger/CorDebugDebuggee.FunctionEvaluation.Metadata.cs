@@ -313,6 +313,85 @@ internal sealed partial class CorDebugDebuggee
             ManagedBoundType[] parameters, int[] parameterSourceIndices,
             ManagedExpressionValue?[] optionalArguments,
             ManagedBoundType[] methodTypeArguments) = matches[0];
+        return CreateBoundFunctionBinding(
+            declaringType,
+            declaringModule,
+            token,
+            parameters,
+            parameterSourceIndices,
+            optionalArguments,
+            methodTypeArguments,
+            thread);
+    }
+
+    private ManagedFunctionBinding ResolveBoundInstanceFunction(
+        ManagedBoundType receiverType,
+        string methodName,
+        DebugExpressionLanguage language,
+        ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
+        nint thread)
+    {
+        ManagedBoundType? current = receiverType;
+        for (int depth = 0;
+            current is not null && depth < MaximumFunctionEvaluationHierarchyDepth;
+            depth++)
+        {
+            CorDebugLoadedModule module = _boundTypes.GetModule(current);
+            (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+                ManagedExpressionValue?[] OptionalArguments,
+                ManagedBoundType[] MethodTypeArguments)? method = ManagedFunctionMethodResolver.ResolveCall(
+                    module,
+                    current.DefinitionToken,
+                    methodName,
+                    language,
+                    arguments,
+                    staticMethod: false,
+                    _boundTypes,
+                    thread,
+                    current.TypeArguments,
+                    constantArguments,
+                    argumentNames);
+            if (method is { } resolved)
+            {
+                return CreateBoundFunctionBinding(
+                    current,
+                    module,
+                    resolved.Token,
+                    resolved.Parameters,
+                    resolved.ParameterSourceIndices,
+                    resolved.OptionalArguments,
+                    resolved.MethodTypeArguments,
+                    thread);
+            }
+
+            current = _boundTypes.GetParents(current, thread).FirstOrDefault(
+                parent => (_boundTypes.GetAttributes(parent) & TypeAttributes.Interface) == 0);
+        }
+
+        if (current is not null)
+        {
+            throw new InvalidOperationException(
+                $"The temporary value-type hierarchy exceeds the supported depth of " +
+                $"{MaximumFunctionEvaluationHierarchyDepth}.");
+        }
+
+        throw new InvalidOperationException(
+            $"No instance method named '{methodName}' with {arguments.Length} argument(s) " +
+            $"is available on temporary value type '{receiverType.DisplayName}'.");
+    }
+
+    private ManagedFunctionBinding CreateBoundFunctionBinding(
+        ManagedBoundType declaringType,
+        CorDebugLoadedModule declaringModule,
+        uint token,
+        ManagedBoundType[] parameters,
+        int[] parameterSourceIndices,
+        ManagedExpressionValue?[] optionalArguments,
+        ManagedBoundType[] methodTypeArguments,
+        nint thread)
+    {
         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
             declaringModule.Pointer,
             token,

@@ -296,6 +296,24 @@ public sealed class DapOptionalArgumentTests : DapTestContext
 
         foreach ((string expression, string expected) in new[]
         {
+            ("((Csls.TestProcessHost.DebuggerOptionalStructFixture)boxedNullableStruct).ReadNumber()", "41"),
+            ("default(Csls.TestProcessHost.DebuggerOptionalStructFixture).ReadNumber()", "0"),
+            ("default(Csls.TestProcessHost.DebuggerOptionalStructFixture).ToString()",
+                "\"Csls.TestProcessHost.DebuggerOptionalStructFixture\""),
+            ($"{receiver}.OptionalStructWithoutConstantForDebugger(" +
+                "(Csls.TestProcessHost.DebuggerOptionalStructFixture)boxedNullableStruct)", "0")
+        })
+        {
+            JsonElement temporaryStructResult = await ReadEvaluationAsync(client, frameId, expression,
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, temporaryStructResult.GetProperty("result").GetString());
+            using JsonDocument temporaryStructInvalidated = await client.ReadMessageAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            AssertEvent(temporaryStructInvalidated.RootElement, "invalidated");
+        }
+
+        foreach ((string expression, string expected) in new[]
+        {
             ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableValue as int?)", "0"),
             ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableEmpty as int?)", "1"),
             ($"{receiver}.OptionalNullableWithoutConstantForDebugger(boxedNullableMismatch as int?)", "1"),

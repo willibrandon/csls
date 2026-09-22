@@ -46,9 +46,14 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Receiver { get; set; }
 
     /// <summary>
-    /// Gets whether the receiver owns a CoreCLR heap handle rather than a value pointer.
+    /// Gets the bound receiver whose temporary storage may require materialization.
     /// </summary>
-    internal required bool ReceiverIsHeapHandle { get; init; }
+    internal ManagedExpressionValue? ReceiverValue { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the receiver owns a CoreCLR heap handle rather than a value pointer.
+    /// </summary>
+    internal required bool ReceiverIsHeapHandle { get; set; }
 
     /// <summary>
     /// Gets or sets whether the active CoreCLR operation constructs a new managed object.
@@ -122,6 +127,11 @@ internal sealed class ManagedFunctionEvaluation
     internal int PendingStructuredArgumentIndex { get; set; } = -1;
 
     /// <summary>
+    /// Gets or sets whether a zero-initialized receiver is awaiting target allocation.
+    /// </summary>
+    internal bool PendingStructuredReceiver { get; set; }
+
+    /// <summary>
     /// Gets or sets whether the final user method call has been scheduled.
     /// </summary>
     internal bool MethodCallScheduled { get; set; }
@@ -135,6 +145,8 @@ internal sealed class ManagedFunctionEvaluation
         {
             string operation = PendingStringArgumentIndex >= 0
                 ? $"allocating string argument {PendingStringArgumentIndex + 1}"
+                : PendingStructuredReceiver
+                    ? "allocating a value-type receiver"
                 : PendingStructuredArgumentIndex >= 0
                     ? $"allocating value-type argument {PendingStructuredArgumentIndex + 1}"
                 : MaterializesString

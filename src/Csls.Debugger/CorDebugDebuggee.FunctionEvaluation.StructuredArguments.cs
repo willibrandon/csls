@@ -37,9 +37,30 @@ internal sealed partial class CorDebugDebuggee
             }
         }
 
+        ScheduleStructuredValueAllocation(evaluation, declaredType);
+        evaluation.PendingStructuredArgumentIndex = index;
+    }
+
+    private void ScheduleStructuredReceiverAllocation(ManagedFunctionEvaluation evaluation)
+    {
+        ManagedBoundType declaredType = evaluation.ReceiverValue?.DeclaredType ??
+            throw new InvalidOperationException("A temporary receiver has no exact declared type.");
+        if (declaredType.ElementType != 0x11 || _boundTypes.IsByRefLike(declaredType))
+        {
+            throw new InvalidOperationException("The temporary receiver cannot be materialized safely.");
+        }
+
+        ScheduleStructuredValueAllocation(evaluation, declaredType);
+        evaluation.PendingStructuredReceiver = true;
+    }
+
+    private unsafe void ScheduleStructuredValueAllocation(
+        ManagedFunctionEvaluation evaluation,
+        ManagedBoundType declaredType)
+    {
         if (declaredType.TypeArguments.Count > MaximumFunctionEvaluationArgumentCount)
         {
-            throw new NotSupportedException("A structured argument exceeds the supported generic arity.");
+            throw new NotSupportedException("A structured value exceeds the supported generic arity.");
         }
 
         nint runtimeType = 0;
@@ -48,12 +69,12 @@ internal sealed partial class CorDebugDebuggee
         nint[] typeArguments = new nint[declaredType.TypeArguments.Count];
         try
         {
-            runtimeType = _boundTypes.ResolveRuntimeType(declaredType, thread);
+            runtimeType = _boundTypes.ResolveRuntimeType(declaredType, evaluation.Thread);
             runtimeClass = GetRuntimeTypeClass(runtimeType);
             for (int argumentIndex = 0; argumentIndex < typeArguments.Length; argumentIndex++)
             {
                 typeArguments[argumentIndex] = _boundTypes.ResolveRuntimeType(
-                    declaredType.TypeArguments[argumentIndex], thread);
+                    declaredType.TypeArguments[argumentIndex], evaluation.Thread);
             }
 
             evaluation2 = ComAbi.QueryInterface(evaluation.Pointer, ICorDebugEval2Abi.InterfaceId);
@@ -66,8 +87,6 @@ internal sealed partial class CorDebugDebuggee
                         typeArguments.Length == 0 ? 0 : (nint)argumentsAddress),
                     "ICorDebugEval2.NewParameterizedObjectNoConstructor");
             }
-
-            evaluation.PendingStructuredArgumentIndex = index;
         }
         finally
         {
@@ -180,6 +199,65 @@ internal sealed partial class CorDebugDebuggee
             if (unboxed != 0)
             {
                 _ = ComAbi.Release(unboxed);
+            }
+
+            if (value != 0)
+            {
+                _ = ComAbi.Release(value);
+            }
+        }
+    }
+
+    private unsafe void ContinueAfterStructuredReceiverAllocation(ManagedFunctionEvaluation active)
+    {
+        if (!active.PendingStructuredReceiver || active.Receiver != 0)
+        {
+            throw new InvalidOperationException("CoreCLR completed an unexpected receiver allocation.");
+        }
+
+        nint completedEvaluation = active.Pointer;
+        nint value = 0;
+        nint handle = 0;
+        nint nextEvaluation = 0;
+        try
+        {
+            nint* address = &value;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugEvalAbi(completedEvaluation).GetResult((nint)address),
+                "ICorDebugEval.GetResult");
+            value = RequirePointer(Volatile.Read(ref *address), "ICorDebugEval.GetResult");
+            handle = CreateFunctionEvaluationHandle(value);
+            nextEvaluation = CreateEvaluation(active.Thread);
+
+            active.Receiver = handle;
+            active.ReceiverIsHeapHandle = true;
+            handle = 0;
+            active.Pointer = nextEvaluation;
+            nextEvaluation = 0;
+            active.PendingStructuredReceiver = false;
+            _ = ComAbi.Release(completedEvaluation);
+            completedEvaluation = 0;
+
+            ScheduleNextFunctionEvaluationStage(active);
+            ContinueFunctionEvaluation(
+                "The debugger could not resume the target after allocating a value-type receiver. " +
+                "The target's evaluation state is uncertain; this debugger session must be disconnected.");
+        }
+        finally
+        {
+            if (completedEvaluation != 0)
+            {
+                _ = ComAbi.Release(completedEvaluation);
+            }
+
+            if (nextEvaluation != 0)
+            {
+                _ = ComAbi.Release(nextEvaluation);
+            }
+
+            if (handle != 0)
+            {
+                ReleaseFunctionEvaluationHandle(handle);
             }
 
             if (value != 0)

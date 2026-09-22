@@ -46,6 +46,12 @@ internal sealed partial class CorDebugDebuggee
             }
         }
 
+        if (evaluation.Receiver == 0 && evaluation.ReceiverValue is { IsZeroValueTypeDefault: true })
+        {
+            ScheduleStructuredReceiverAllocation(evaluation);
+            return;
+        }
+
         for (int index = 0; index < evaluation.Arguments.Length; index++)
         {
             ManagedExpressionValue argument = evaluation.Arguments[index];
@@ -98,13 +104,28 @@ internal sealed partial class CorDebugDebuggee
         }
 
         var temporaryArguments = new List<nint>();
+        nint temporaryReceiver = 0;
         try
         {
             int receiverCount = evaluation.Receiver == 0 || evaluation.SuppressReceiver ? 0 : 1;
             nint[] arguments = new nint[checked(evaluation.Arguments.Length + receiverCount)];
             if (receiverCount != 0)
             {
-                arguments[0] = evaluation.Receiver;
+                if (evaluation.ReceiverIsHeapHandle &&
+                    evaluation.ReceiverValue?.DeclaredType is { ElementType: 0x11 })
+                {
+                    if (!TryDereferenceAndUnboxValue(evaluation.Receiver, out temporaryReceiver))
+                    {
+                        throw new InvalidOperationException(
+                            "The value-type receiver has no materialized storage.");
+                    }
+
+                    arguments[0] = temporaryReceiver;
+                }
+                else
+                {
+                    arguments[0] = evaluation.Receiver;
+                }
             }
 
             for (int index = 0; index < evaluation.Arguments.Length; index++)
@@ -185,6 +206,11 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
+            if (temporaryReceiver != 0)
+            {
+                _ = ComAbi.Release(temporaryReceiver);
+            }
+
             foreach (nint temporaryArgument in temporaryArguments)
             {
                 _ = ComAbi.Release(temporaryArgument);

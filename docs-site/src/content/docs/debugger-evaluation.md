@@ -133,7 +133,8 @@ array references, or literal and side-effect-free computed strings. Strings are
 allocated in the target with their exact UTF-16 length, including embedded NUL values.
 The binder validates type identity and resolves the overload before execution.
 Instance calls on existing struct storage use its loaded value type and retain
-that storage through the call.
+that storage through the call. Explicitly unboxed and zero-initialized temporary
+structs can receive instance calls and flow into matching value-type parameters.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

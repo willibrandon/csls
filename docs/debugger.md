@@ -172,7 +172,8 @@ and loaded optional defaults, including enum values. Inferred generic calls comb
 compatible argument types through the selected language's implicit conversions and
 loaded base, interface, and array-collection declarations, then validate loaded
 reference, value, constructor, inheritance, interface, and unmanaged constraints before
-execution. Direct assignments update stopped target storage.
+execution. Exact boxed and zero-initialized struct values can receive instance calls or
+flow into matching value-type parameters. Direct assignments update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the
 result to a local, field, or array element of the same runtime type to copy its

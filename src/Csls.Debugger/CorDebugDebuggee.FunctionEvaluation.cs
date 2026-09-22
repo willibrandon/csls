@@ -162,7 +162,8 @@ internal sealed partial class CorDebugDebuggee
                 exception);
         }
 
-        nint receiverValue = receiver is null ? 0 : GetRuntimeValue(receiver);
+        bool materializeReceiver = receiver is { IsZeroValueTypeDefault: true };
+        nint receiverValue = receiver is null || materializeReceiver ? 0 : GetRuntimeValue(receiver);
         nint dereferencedReceiver = 0;
         nint objectValue = 0;
         nint function = 0;
@@ -210,6 +211,12 @@ internal sealed partial class CorDebugDebuggee
                 ManagedFunctionBinding binding = constructsObject
                     ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
                         constantArguments, argumentNames, thread)
+                    : materializeReceiver
+                        ? ResolveBoundInstanceFunction(
+                            receiver!.DeclaredType ?? throw new InvalidOperationException(
+                                "The temporary receiver has no exact declared type."),
+                            operation.Text!, plan.Language, argumentTypes, constantArguments,
+                            argumentNames, thread)
                     : receiverValue == 0
                         ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language,
                             argumentTypes, constantArguments, argumentNames, thread)
@@ -307,6 +314,7 @@ internal sealed partial class CorDebugDebuggee
                 ResultFrameId = frame.Id,
                 Thread = thread,
                 Receiver = receiverHandle,
+                ReceiverValue = receiver,
                 ReceiverIsHeapHandle = receiverIsHeapHandle,
                 ConstructsObject = constructsObject,
                 MaterializesString = materializesString,
@@ -463,7 +471,11 @@ internal sealed partial class CorDebugDebuggee
         {
             try
             {
-                if (active.PendingStructuredArgumentIndex >= 0)
+                if (active.PendingStructuredReceiver)
+                {
+                    ContinueAfterStructuredReceiverAllocation(active);
+                }
+                else if (active.PendingStructuredArgumentIndex >= 0)
                 {
                     ContinueAfterStructuredArgumentAllocation(active);
                 }
@@ -478,8 +490,8 @@ internal sealed partial class CorDebugDebuggee
                 UnauthorizedAccessException or BadImageFormatException)
             {
                 stageFailure = new InvalidOperationException(
-                    "Managed function evaluation failed while materializing an " +
-                    $"argument: {exception.Message}",
+                    "Managed function evaluation failed while materializing a value: " +
+                    exception.Message,
                     exception);
             }
         }
