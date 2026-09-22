@@ -18,6 +18,8 @@ namespace Csls.Debugger;
 /// <param name="IsNullableValue">Whether the value carries a non-executing nullable projection.</param>
 /// <param name="RequiresNullableMaterialization">Whether a later call must build exact nullable argument storage.</param>
 /// <param name="RequiresBoxing">Whether a later call must allocate an exact boxed argument copy.</param>
+/// <param name="BoxingType">The exact value type allocated for a boxing conversion.</param>
+/// <param name="BoxesNullableAsNull">Whether nullable boxing produces a null reference.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -31,7 +33,9 @@ internal sealed record ManagedExpressionValue(
     bool IsTypedDefault = false,
     bool IsNullableValue = false,
     bool RequiresNullableMaterialization = false,
-    bool RequiresBoxing = false)
+    bool RequiresBoxing = false,
+    ManagedBoundType? BoxingType = null,
+    bool BoxesNullableAsNull = false)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

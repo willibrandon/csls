@@ -79,6 +79,34 @@ internal static class DebuggerDumpArrayFixture
         value is DebuggerOptionalStructFixture fixture ? fixture.ReadNumber() : -1;
 
     /// <summary>
+    /// Reads a nullable integer after the target applies its boxing conversion.
+    /// </summary>
+    /// <param name="value">The nullable boxing result.</param>
+    /// <returns>The contained integer plus one hundred, or a marker for null or another type.</returns>
+    internal static int ReadBoxedNullableForDebugger(object? value) =>
+        value is int number ? number + 100 : value is null ? -1 : -2;
+
+    /// <summary>
+    /// Runs the compiler's populated nullable boxing conversion for comparison with debugger evaluation.
+    /// </summary>
+    /// <returns>The target-observed nullable boxing result.</returns>
+    internal static int CompilerReadBoxedNullableValueForDebugger()
+    {
+        int? value = 47;
+        return ReadBoxedNullableForDebugger(value);
+    }
+
+    /// <summary>
+    /// Runs the compiler's empty nullable boxing conversion for comparison with debugger evaluation.
+    /// </summary>
+    /// <returns>The target-observed nullable boxing result.</returns>
+    internal static int CompilerReadBoxedNullableEmptyForDebugger()
+    {
+        int? value = null;
+        return ReadBoxedNullableForDebugger(value);
+    }
+
+    /// <summary>
     /// Selects an implemented interface over object for a boxed integer.
     /// </summary>
     /// <param name="value">The boxed comparable value.</param>
@@ -108,6 +136,13 @@ internal static class DebuggerDumpArrayFixture
         SelectBoxedIntegerForDebugger(41);
 
     /// <summary>
+    /// Runs the compiler-selected nullable boxing overload for comparison with debugger binding.
+    /// </summary>
+    /// <returns>The compiler-selected interface overload marker.</returns>
+    internal static int CompilerSelectBoxedNullableIntegerForDebugger() =>
+        SelectBoxedIntegerForDebugger(((int?)41)!);
+
+    /// <summary>
     /// Selects System.ValueType over object for a boxed integer.
     /// </summary>
     /// <param name="value">The boxed value-type instance.</param>
@@ -135,6 +170,13 @@ internal static class DebuggerDumpArrayFixture
     /// <returns>The compiler-selected overload marker.</returns>
     internal static int CompilerSelectBoxedValueTargetForDebugger() =>
         SelectBoxedValueTargetForDebugger(41);
+
+    /// <summary>
+    /// Runs the compiler-selected nullable value-type overload for debugger comparison.
+    /// </summary>
+    /// <returns>The compiler-selected value-type overload marker.</returns>
+    internal static int CompilerSelectBoxedNullableValueTargetForDebugger() =>
+        SelectBoxedValueTargetForDebugger(((int?)41)!);
 
     /// <summary>
     /// Marks the long overload selected after widening an integer argument.
@@ -836,6 +878,7 @@ internal static class DebuggerDumpArrayFixture
         (int, string)[] tuples = [(73, "captured pair")];
         (int, int)[] unmanagedTuples = [(17, 23)];
         int?[] nullable = [37, null];
+        DebuggerOptionalStructFixture?[] nullableStructs = [new DebuggerOptionalStructFixture(), null];
         decimal[] decimals = [12.5m];
         DebuggerOptionalStructFixture[] optionalStructs = [new()];
         Dictionary<int, List<string>> dictionary = new() { [71] = ["captured"] };
@@ -882,6 +925,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(tuples);
         GC.KeepAlive(unmanagedTuples);
         GC.KeepAlive(nullable);
+        GC.KeepAlive(nullableStructs);
         GC.KeepAlive(decimals);
         GC.KeepAlive(optionalStructs);
         GC.KeepAlive(nested);

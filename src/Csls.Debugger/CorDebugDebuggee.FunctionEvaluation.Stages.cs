@@ -96,7 +96,8 @@ internal sealed partial class CorDebugDebuggee
                 !evaluation.RuntimeArgumentIsHeapHandle[index];
             bool materializeBox = argument.RequiresBoxing &&
                 !evaluation.RuntimeArgumentIsHeapHandle[index];
-            bool materializeOtherValue = evaluation.RuntimeArguments[index] == 0 &&
+            bool materializeOtherValue = !argument.BoxesNullableAsNull &&
+                evaluation.RuntimeArguments[index] == 0 &&
                 (argument.IsZeroValueTypeDefault || argument.Scalar is decimal or DateTime);
             if (materializeNullable || materializeBox || materializeOtherValue)
             {

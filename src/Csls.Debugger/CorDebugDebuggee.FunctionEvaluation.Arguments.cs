@@ -13,6 +13,11 @@ internal sealed partial class CorDebugDebuggee
         nint runtimeArgument,
         List<nint> temporaryArguments)
     {
+        if (argument.BoxesNullableAsNull)
+        {
+            return CreateNullFunctionArgument(evaluation, temporaryArguments);
+        }
+
         if (argument.RequiresBoxing)
         {
             return runtimeArgument != 0
@@ -70,6 +75,25 @@ internal sealed partial class CorDebugDebuggee
             _ = ComAbi.Release(value);
             throw;
         }
+    }
+
+    private static unsafe nint CreateNullFunctionArgument(
+        nint evaluation,
+        List<nint> temporaryArguments)
+    {
+        nint value = 0;
+        nint* valueAddress = &value;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugEvalAbi(evaluation).CreateValue(
+                0x12,
+                pElementClass: 0,
+                (nint)valueAddress),
+            "ICorDebugEval.CreateValue");
+        value = RequirePointer(
+            Volatile.Read(ref *valueAddress),
+            "ICorDebugEval.CreateValue");
+        temporaryArguments.Add(value);
+        return value;
     }
 
     private static uint GetFunctionArgumentElementType(string type, object? scalar) =>

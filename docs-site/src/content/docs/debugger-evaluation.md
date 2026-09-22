@@ -135,10 +135,11 @@ The binder validates type identity and resolves the overload before execution.
 Instance calls on existing struct storage use its loaded value type and retain
 that storage through the call. Explicitly unboxed and zero-initialized temporary
 structs can receive instance calls and flow into matching value-type parameters.
-Non-nullable value types can flow through loaded `object`, `System.ValueType`, and
+Value types can flow through loaded `object`, `System.ValueType`, and
 implemented-interface parameters. The engine allocates an exact boxed copy and
 preserves embedded managed references while selecting the same preferred overload
-as the source language.
+as the source language. Populated nullable values box their contained value, and
+empty nullable values become managed null references.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

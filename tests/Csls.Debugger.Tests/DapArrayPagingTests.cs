@@ -233,10 +233,23 @@ public sealed class DapArrayPagingTests : DapTestContext
                 "(Csls.TestProcessHost.DebuggerOptionalStructFixture)boxedNullableStruct)", "41"),
             ($"{receiver}.ReadBoxedStructForDebugger(" +
                 "default(Csls.TestProcessHost.DebuggerOptionalStructFixture))", "0"),
+            ($"{receiver}.ReadBoxedNullableForDebugger(nullable[0])", "137"),
+            ($"{receiver}.ReadBoxedNullableForDebugger(nullable[1])", "-1"),
+            ($"{receiver}.ReadBoxedNullableForDebugger(boxedNullableValue as int?)", "147"),
+            ($"{receiver}.ReadBoxedNullableForDebugger(boxedNullableEmpty as int?)", "-1"),
+            ($"{receiver}.ReadBoxedNullableForDebugger(boxedNullableMismatch as int?)", "-1"),
+            ($"{receiver}.CompilerReadBoxedNullableValueForDebugger()", "147"),
+            ($"{receiver}.CompilerReadBoxedNullableEmptyForDebugger()", "-1"),
+            ($"{receiver}.ReadBoxedStructForDebugger(nullableStructs[0])", "41"),
+            ($"{receiver}.ReadBoxedStructForDebugger(nullableStructs[1])", "-1"),
             ($"{receiver}.SelectBoxedIntegerForDebugger(vector[0])", "37"),
             ($"{receiver}.CompilerSelectBoxedIntegerForDebugger()", "37"),
+            ($"{receiver}.SelectBoxedIntegerForDebugger(nullable[0])", "37"),
+            ($"{receiver}.CompilerSelectBoxedNullableIntegerForDebugger()", "37"),
             ($"{receiver}.SelectBoxedValueTargetForDebugger(vector[0])", "43"),
-            ($"{receiver}.CompilerSelectBoxedValueTargetForDebugger()", "43")
+            ($"{receiver}.CompilerSelectBoxedValueTargetForDebugger()", "43"),
+            ($"{receiver}.SelectBoxedValueTargetForDebugger(nullable[0])", "43"),
+            ($"{receiver}.CompilerSelectBoxedNullableValueTargetForDebugger()", "43")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,

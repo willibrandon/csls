@@ -73,8 +73,10 @@ internal sealed class ManagedReferenceConversion
     /// </summary>
     internal bool IsImplicitBoxing(ManagedBoundType source, ManagedBoundType destination, nint thread) =>
         !source.IsReference && destination.IsReference &&
-        !_types.IsCoreType(source, "System.Nullable`1", thread) &&
-        IsRuntimeAssignable(source, destination, thread);
+        (_types.IsCoreType(source, "System.Nullable`1", thread)
+            ? source.TypeArguments is [ManagedBoundType underlying] &&
+                IsRuntimeAssignable(underlying, destination, thread)
+            : IsRuntimeAssignable(source, destination, thread));
 
     private bool IsExplicitCore(ManagedBoundType source, ManagedBoundType destination, nint thread, int depth, ref int work)
     {

@@ -241,10 +241,19 @@ internal sealed partial class CorDebugDebuggee
                     else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
                         referenceConversions.IsImplicitBoxing(sourceType, parameterType, thread))
                     {
+                        bool boxesNullable = _boundTypes.IsCoreType(
+                            sourceType, "System.Nullable`1", thread);
+                        bool boxesNullableAsNull = boxesNullable &&
+                            IsNullableBoxingEmpty(suppliedArguments[index], sourceType, thread);
                         suppliedArguments[index] = suppliedArguments[index] with
                         {
                             DeclaredType = sourceType,
-                            RequiresBoxing = true
+                            RequiresNullableMaterialization = false,
+                            RequiresBoxing = !boxesNullableAsNull,
+                            BoxingType = boxesNullable
+                                ? sourceType.TypeArguments[0]
+                                : sourceType,
+                            BoxesNullableAsNull = boxesNullableAsNull
                         };
                     }
                     else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&

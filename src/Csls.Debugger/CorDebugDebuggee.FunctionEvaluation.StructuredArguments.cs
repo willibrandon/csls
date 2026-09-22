@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 
 namespace Csls.Debugger;
@@ -11,7 +12,7 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedExpressionValue argument = evaluation.Arguments[index];
         nint thread = evaluation.Thread;
-        ManagedBoundType declaredType = argument.DeclaredType ?? throw new InvalidOperationException(
+        ManagedBoundType declaredType = argument.BoxingType ?? argument.DeclaredType ?? throw new InvalidOperationException(
             "A structured argument has no exact declared type.");
         if (argument.IsZeroValueTypeDefault)
         {
@@ -148,7 +149,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ManagedExpressionValue argument = active.Arguments[index];
-            ManagedBoundType declaredType = argument.DeclaredType ?? throw new InvalidOperationException(
+            ManagedBoundType declaredType = argument.BoxingType ?? argument.DeclaredType ?? throw new InvalidOperationException(
                 "A structured argument has no exact declared type.");
             runtimeType = _boundTypes.ResolveRuntimeType(declaredType, active.Thread);
             if (argument.Scalar is decimal amount)
@@ -165,7 +166,7 @@ internal sealed partial class CorDebugDebuggee
             }
             else if (argument.RequiresBoxing && !argument.IsZeroValueTypeDefault)
             {
-                SetBoxedArgument(unboxed, argument, active.RuntimeArguments[index]);
+                SetBoxedArgument(unboxed, argument, active.RuntimeArguments[index], active.Thread);
             }
 
             handle = CreateFunctionEvaluationHandle(value);
@@ -281,7 +282,8 @@ internal sealed partial class CorDebugDebuggee
     private void SetBoxedArgument(
         nint destination,
         ManagedExpressionValue argument,
-        nint sourceValue)
+        nint sourceValue,
+        nint thread)
     {
         if (argument.HasScalar)
         {
@@ -300,14 +302,142 @@ internal sealed partial class CorDebugDebuggee
 
         try
         {
-            using var assignment = ManagedValueTypeAssignment.Prepare(
-                destination, source, OpenRuntimeModule);
-            assignment.Write();
+            if (ManagedNullableTypeIdentity.IsNullable(sourceValue, OpenRuntimeModule))
+            {
+                SetBoxedNullableArgument(destination, source, argument, thread);
+            }
+            else
+            {
+                using var assignment = ManagedValueTypeAssignment.Prepare(
+                    destination, source, OpenRuntimeModule);
+                assignment.Write();
+            }
         }
         finally
         {
             _ = ComAbi.Release(source);
         }
+    }
+
+    private void SetBoxedNullableArgument(
+        nint destination,
+        nint source,
+        ManagedExpressionValue argument,
+        nint thread)
+    {
+        ManagedBoundType nullableType = argument.DeclaredType ?? throw new InvalidOperationException(
+            "A nullable boxing argument has no exact declared type.");
+        nint runtimeType = 0;
+        bool foundValue = false;
+        try
+        {
+            runtimeType = _boundTypes.ResolveRuntimeType(nullableType, thread);
+            VisitDeclaredRuntimeFields(source, runtimeType, (name, field) =>
+            {
+                if (!string.Equals(name, "value", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (ManagedRuntimeValueIdentity.GetElementType(field) == 0x11)
+                {
+                    using var assignment = ManagedValueTypeAssignment.Prepare(
+                        destination, field, OpenRuntimeModule);
+                    assignment.Write();
+                }
+                else
+                {
+                    ManagedValueDisplay display = CorDebugValueFormatter.Format(field);
+                    ManagedExpressionValue contained = ManagedExpressionValueFactory.FromVariable(
+                        new DebugVariableInfo(
+                            "$nullable", display.Value, display.Type,
+                            VariablesReference: 0, MemoryReference: null, EvaluateName: null),
+                        runtimeValueReference: 0,
+                        display);
+                    SetManagedPrimitiveValue(
+                        destination,
+                        contained.Type,
+                        ManagedExpressionValueFactory.RequireScalar(contained) ??
+                            throw new InvalidOperationException(
+                                "A populated nullable argument has no contained value."));
+                }
+
+                foundValue = true;
+            });
+        }
+        finally
+        {
+            if (runtimeType != 0)
+            {
+                _ = ComAbi.Release(runtimeType);
+            }
+        }
+
+        if (!foundValue)
+        {
+            throw new InvalidOperationException(
+                "System.Nullable<T> does not expose its required value field.");
+        }
+    }
+
+    private bool IsNullableBoxingEmpty(
+        ManagedExpressionValue argument,
+        ManagedBoundType nullableType,
+        nint thread)
+    {
+        if (argument.IsZeroValueTypeDefault)
+        {
+            return true;
+        }
+
+        if (argument.RuntimeValueReference <= 0)
+        {
+            return false;
+        }
+
+        nint runtimeValue = GetRuntimeValue(argument);
+        if (!ManagedNullableTypeIdentity.IsNullable(runtimeValue, OpenRuntimeModule))
+        {
+            return false;
+        }
+
+        nint source = 0;
+        nint runtimeType = 0;
+        bool? hasValue = null;
+        try
+        {
+            if (!TryDereferenceAndUnboxValue(runtimeValue, out source))
+            {
+                return true;
+            }
+
+            runtimeType = _boundTypes.ResolveRuntimeType(nullableType, thread);
+            VisitDeclaredRuntimeFields(source, runtimeType, (name, field) =>
+            {
+                if (string.Equals(name, "hasValue", StringComparison.Ordinal))
+                {
+                    hasValue = string.Equals(
+                        CorDebugValueFormatter.Format(field).Value,
+                        "true",
+                        StringComparison.Ordinal);
+                }
+            });
+        }
+        finally
+        {
+            if (runtimeType != 0)
+            {
+                _ = ComAbi.Release(runtimeType);
+            }
+
+            if (source != 0)
+            {
+                _ = ComAbi.Release(source);
+            }
+        }
+
+        return !(hasValue ?? throw new InvalidOperationException(
+            "System.Nullable<T> does not expose its required presence field."));
     }
 
     private void SetDecimalArgument(nint value, nint runtimeType, decimal amount)
