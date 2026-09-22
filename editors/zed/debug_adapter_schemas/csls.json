@@ -83,7 +83,7 @@
     },
     "console": {
       "type": "string",
-      "enum": ["internalConsole", "integratedTerminal", "externalTerminal"],
+      "enum": ["internalConsole", "integratedTerminal"],
       "default": "internalConsole",
       "description": "Choose DAP output events or a client terminal with interactive target input and output."
     },

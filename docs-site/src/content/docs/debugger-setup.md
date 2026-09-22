@@ -61,8 +61,8 @@ Set `noDebug` to `true` to run the target as an ordinary process.
 ## Choose a target console
 
 `console` defaults to `internalConsole`, which delivers target output as DAP
-events. Set it to `integratedTerminal` for the editor's terminal or
-`externalTerminal` for a separate terminal window:
+events. Set it to `integratedTerminal` for the editor's terminal. In VS Code,
+`externalTerminal` opens a separate terminal window:
 
 ```json
 {
@@ -77,7 +77,8 @@ events. Set it to `integratedTerminal` for the editor's terminal or
 The target receives the selected terminal's input, output, and error handles.
 The adapter reports the target's process ID, stops at configured breakpoints,
 and retains ownership through restart and disconnect. The same setting works
-with `noDebug: true`. Zed accepts these values in its `csls` debug configuration.
+with `noDebug: true`. Zed accepts `internalConsole` and `integratedTerminal`
+in its `csls` debug configuration.
 
 ## Remote and container debugging
 

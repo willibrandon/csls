@@ -115,8 +115,9 @@ In VS Code, use a `coreclr` launch configuration:
 ```
 
 Set `"console": "integratedTerminal"` to run the target with interactive
-input and output in the editor terminal. `externalTerminal` opens a separate
-client terminal; `internalConsole` streams output through DAP and is the default.
+input and output in the editor terminal. VS Code's `externalTerminal` setting
+opens a separate client terminal; `internalConsole` streams output through DAP
+and is the default.
 The selected console also applies to `noDebug` launches and restart.
 
 Set `envFile` to load assignments from a UTF-8 file of at most 1 MiB. Relative
