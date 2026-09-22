@@ -1,4 +1,3 @@
-using Csls.Debugger.Contracts;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Cryptography;

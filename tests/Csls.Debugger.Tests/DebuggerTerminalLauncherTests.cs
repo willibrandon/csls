@@ -1,4 +1,3 @@
-using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;

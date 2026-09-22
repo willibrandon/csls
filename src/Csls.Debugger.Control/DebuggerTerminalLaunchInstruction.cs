@@ -1,4 +1,4 @@
-namespace Csls.Debugger.Contracts;
+namespace Csls.Debugger.Control;
 
 /// <summary>
 /// Carries an exact target invocation from the debugger worker to its terminal launcher.
