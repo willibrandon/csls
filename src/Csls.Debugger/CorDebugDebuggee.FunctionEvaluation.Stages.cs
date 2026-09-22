@@ -106,6 +106,15 @@ internal sealed partial class CorDebugDebuggee
             }
         }
 
+        for (int index = 0; index < evaluation.Arguments.Length; index++)
+        {
+            if (evaluation.Arguments[index].UserDefinedConversion is not null)
+            {
+                ScheduleUserDefinedConversion(evaluation, index);
+                return;
+            }
+        }
+
         var temporaryArguments = new List<nint>();
         nint temporaryReceiver = 0;
         try
@@ -339,6 +348,13 @@ internal sealed partial class CorDebugDebuggee
         }
 
         foreach (nint typeArgument in evaluation.TypeArguments.Where(
+            static typeArgument => typeArgument != 0))
+        {
+            _ = ComAbi.Release(typeArgument);
+        }
+
+        ReleaseFunctionEvaluationPointer(evaluation.PendingUserDefinedConversionFunction);
+        foreach (nint typeArgument in evaluation.PendingUserDefinedConversionTypeArguments.Where(
             static typeArgument => typeArgument != 0))
         {
             _ = ComAbi.Release(typeArgument);

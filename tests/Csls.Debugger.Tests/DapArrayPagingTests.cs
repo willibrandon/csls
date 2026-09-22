@@ -249,7 +249,25 @@ public sealed class DapArrayPagingTests : DapTestContext
             ($"{receiver}.SelectBoxedValueTargetForDebugger(vector[0])", "43"),
             ($"{receiver}.CompilerSelectBoxedValueTargetForDebugger()", "43"),
             ($"{receiver}.SelectBoxedValueTargetForDebugger(nullable[0])", "43"),
-            ($"{receiver}.CompilerSelectBoxedNullableValueTargetForDebugger()", "43")
+            ($"{receiver}.CompilerSelectBoxedNullableValueTargetForDebugger()", "43"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "0"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "SelectForDebugger(implicitConversion)", "141"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerSelectForDebugger(implicitConversion)", "141"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "2"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireIntegerForDebugger(implicitConversion)", "241"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireStringForDebugger(implicitConversion)", "2"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireStringForDebugger(emptyImplicitConversion)", "-1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "5")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
@@ -265,6 +283,18 @@ public sealed class DapArrayPagingTests : DapTestContext
             TestContext.CancellationToken).ConfigureAwait(false);
         string message = Assert.IsInstanceOfType<string>(failure.GetProperty("message").GetString());
         Assert.Contains("No static method", message);
+
+        JsonElement conversionFailure = await ReadEvaluationAsync(client, frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+            "RequireStringForDebugger(throwingImplicitConversion)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("System.InvalidOperationException", Assert.IsInstanceOfType<string>(
+            conversionFailure.GetProperty("message").GetString()));
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
         JsonElement stillStopped = await ReadEvaluationAsync(client, frameId, "vector[0]", success: true,
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("41", stillStopped.GetProperty("result").GetString());

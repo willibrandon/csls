@@ -899,6 +899,9 @@ internal static class DebuggerDumpArrayFixture
         object? boxedNullableEmpty = null;
         object boxedNullableMismatch = "not an integer";
         object boxedNullableStruct = new DebuggerOptionalStructFixture();
+        DebuggerImplicitConversionSource implicitConversion = new(41);
+        DebuggerImplicitConversionSource emptyImplicitConversion = new(0);
+        DebuggerImplicitConversionSource throwingImplicitConversion = new(-1);
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
         cycleObject.Value = cycleObject;
@@ -945,6 +948,9 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(boxedNullableEmpty);
         GC.KeepAlive(boxedNullableMismatch);
         GC.KeepAlive(boxedNullableStruct);
+        GC.KeepAlive(implicitConversion);
+        GC.KeepAlive(emptyImplicitConversion);
+        GC.KeepAlive(throwingImplicitConversion);
         GC.KeepAlive(chain);
         GC.KeepAlive(cycleObject);
         GC.KeepAlive(hiddenFields.GetDerivedValue());

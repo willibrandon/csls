@@ -228,6 +228,7 @@ internal sealed partial class CorDebugDebuggee
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;
                 var referenceConversions = new ManagedReferenceConversion(_boundTypes);
+                var userDefinedConversions = new ManagedUserDefinedConversionResolver(_boundTypes, thread);
                 for (int index = 0; index < suppliedArguments.Length; index++)
                 {
                     ManagedBoundType? sourceType = argumentTypes[index];
@@ -270,6 +271,18 @@ internal sealed partial class CorDebugDebuggee
                     {
                         suppliedArguments[index] = ManagedPrimitiveConversionEvaluator.ConvertInvocationConstant(
                             constant, sourceType, parameterType, plan.Language);
+                    }
+                    else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
+                        !referenceConversions.IsImplicit(sourceType, parameterType, thread))
+                    {
+                        ManagedUserDefinedConversion conversion = userDefinedConversions.Resolve(
+                            sourceType, parameterType) ?? throw new InvalidOperationException(
+                            $"The selected method has no exact implicit conversion from " +
+                            $"'{sourceType.DisplayName}' to '{parameterType.DisplayName}'.");
+                        suppliedArguments[index] = suppliedArguments[index] with
+                        {
+                            UserDefinedConversion = conversion
+                        };
                     }
 
                     if (suppliedArguments[index].Scalar is decimal &&
@@ -497,6 +510,10 @@ internal sealed partial class CorDebugDebuggee
                 else if (active.PendingStructuredArgumentIndex >= 0)
                 {
                     ContinueAfterStructuredArgumentAllocation(active);
+                }
+                else if (active.PendingUserDefinedConversionArgumentIndex >= 0)
+                {
+                    ContinueAfterUserDefinedConversion(active);
                 }
                 else
                 {

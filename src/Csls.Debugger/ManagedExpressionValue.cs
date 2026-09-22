@@ -20,6 +20,8 @@ namespace Csls.Debugger;
 /// <param name="RequiresBoxing">Whether a later call must allocate an exact boxed argument copy.</param>
 /// <param name="BoxingType">The exact value type allocated for a boxing conversion.</param>
 /// <param name="BoxesNullableAsNull">Whether nullable boxing produces a null reference.</param>
+/// <param name="UserDefinedConversion">The exact implicit operator required before a method call.</param>
+/// <param name="IsMaterializedFunctionArgument">Whether target evaluation produced the retained argument value.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -35,7 +37,9 @@ internal sealed record ManagedExpressionValue(
     bool RequiresNullableMaterialization = false,
     bool RequiresBoxing = false,
     ManagedBoundType? BoxingType = null,
-    bool BoxesNullableAsNull = false)
+    bool BoxesNullableAsNull = false,
+    ManagedUserDefinedConversion? UserDefinedConversion = null,
+    bool IsMaterializedFunctionArgument = false)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

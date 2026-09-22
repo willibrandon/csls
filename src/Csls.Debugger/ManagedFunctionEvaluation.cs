@@ -132,6 +132,21 @@ internal sealed class ManagedFunctionEvaluation
     internal bool PendingStructuredReceiver { get; set; }
 
     /// <summary>
+    /// Gets or sets the argument whose implicit conversion operator is executing.
+    /// </summary>
+    internal int PendingUserDefinedConversionArgumentIndex { get; set; } = -1;
+
+    /// <summary>
+    /// Gets or sets the owned conversion-operator function for the active stage.
+    /// </summary>
+    internal nint PendingUserDefinedConversionFunction { get; set; }
+
+    /// <summary>
+    /// Gets or sets owned declaring-type arguments for the active conversion stage.
+    /// </summary>
+    internal nint[] PendingUserDefinedConversionTypeArguments { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets whether the final user method call has been scheduled.
     /// </summary>
     internal bool MethodCallScheduled { get; set; }
@@ -149,6 +164,8 @@ internal sealed class ManagedFunctionEvaluation
                     ? "allocating a value-type receiver"
                 : PendingStructuredArgumentIndex >= 0
                     ? $"allocating value-type argument {PendingStructuredArgumentIndex + 1}"
+                : PendingUserDefinedConversionArgumentIndex >= 0
+                    ? $"converting argument {PendingUserDefinedConversionArgumentIndex + 1}"
                 : MaterializesString
                     ? "allocating a string result"
                     : ConstructsObject

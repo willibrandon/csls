@@ -26,6 +26,14 @@ internal sealed partial class CorDebugDebuggee
                     "A boxed function argument has no retained runtime value.");
         }
 
+        if (argument.IsMaterializedFunctionArgument)
+        {
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    "A converted function argument has no retained runtime value.");
+        }
+
         if (!argument.HasScalar && argument.RuntimeValueReference > 0 ||
             argument.HasScalar && argument.Scalar is string)
         {

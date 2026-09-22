@@ -1,0 +1,14 @@
+namespace Csls.Debugger;
+
+/// <summary>
+/// Describes one exact loaded implicit conversion operator selected before target execution.
+/// </summary>
+/// <param name="DeclaringType">The closed type that declares the conversion operator.</param>
+/// <param name="MethodToken">The aggregate metadata token for the conversion operator.</param>
+/// <param name="ParameterType">The exact loaded operator parameter type.</param>
+/// <param name="ResultType">The exact loaded operator result type.</param>
+internal sealed record ManagedUserDefinedConversion(
+    ManagedBoundType DeclaringType,
+    uint MethodToken,
+    ManagedBoundType ParameterType,
+    ManagedBoundType ResultType);

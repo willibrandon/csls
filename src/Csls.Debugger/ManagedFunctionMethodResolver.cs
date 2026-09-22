@@ -110,6 +110,7 @@ internal static class ManagedFunctionMethodResolver
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
         var conversions = new ManagedReferenceConversion(types);
+        var userDefinedConversions = new ManagedUserDefinedConversionResolver(types, thread);
         var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters,
             int[] ParameterSourceIndices, ManagedExpressionValue?[] OptionalArguments,
             ManagedBoundType[] MethodTypeArguments)>();
@@ -167,7 +168,8 @@ internal static class ManagedFunctionMethodResolver
                 }
             }
 
-            if (IsApplicable(arguments, parameters, constantArguments, language, conversions, types, thread))
+            if (IsApplicable(arguments, parameters, constantArguments, language, conversions,
+                    userDefinedConversions, types, thread))
             {
                 matches.Add((methodHandle, parameters, parameterSourceIndices,
                     optionalArguments, methodTypeArguments));
@@ -206,6 +208,7 @@ internal static class ManagedFunctionMethodResolver
         IReadOnlyList<ManagedExpressionValue?>? constantArguments,
         DebugExpressionLanguage language,
         ManagedReferenceConversion conversions,
+        ManagedUserDefinedConversionResolver userDefinedConversions,
         ManagedBoundTypeSystem types,
         nint thread)
     {
@@ -236,7 +239,8 @@ internal static class ManagedFunctionMethodResolver
                 !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(argument, parameter, language) &&
                 !(constantArguments?[index] is ManagedExpressionValue constant &&
                     ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
-                        constant, argument, parameter, language)))
+                        constant, argument, parameter, language)) &&
+                userDefinedConversions.Resolve(argument, parameter) is null)
             {
                 return false;
             }
@@ -295,8 +299,10 @@ internal static class ManagedFunctionMethodResolver
             }
 
             bool preferredToAlternative = conversions.IsImplicit(preferred, alternative, thread) ||
+                conversions.IsImplicitBoxing(preferred, alternative, thread) ||
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(preferred, alternative, language);
             bool alternativeToPreferred = conversions.IsImplicit(alternative, preferred, thread) ||
+                conversions.IsImplicitBoxing(alternative, preferred, thread) ||
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(alternative, preferred, language);
             bool preferredSignedTarget = ManagedPrimitiveConversionEvaluator.IsPreferredSignedInvocationTarget(
                 preferred, alternative, language);
