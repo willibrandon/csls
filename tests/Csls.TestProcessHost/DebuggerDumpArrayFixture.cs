@@ -904,6 +904,7 @@ internal static class DebuggerDumpArrayFixture
         DebuggerImplicitConversionSource throwingImplicitConversion = new(-1);
         DebuggerImplicitConversionSource? populatedLiftedImplicitConversion = implicitConversion;
         DebuggerImplicitConversionSource? emptyLiftedImplicitConversion = null;
+        double explicitConversionResult = 0;
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
@@ -956,6 +957,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(throwingImplicitConversion);
         GC.KeepAlive(populatedLiftedImplicitConversion);
         GC.KeepAlive(emptyLiftedImplicitConversion);
+        GC.KeepAlive(explicitConversionResult);
         GC.KeepAlive(implicitReferenceConversion);
         GC.KeepAlive(chain);
         GC.KeepAlive(cycleObject);

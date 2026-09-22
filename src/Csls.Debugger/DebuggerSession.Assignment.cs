@@ -136,9 +136,15 @@ public sealed partial class DebuggerSession
             {
                 _ = token;
                 CorDebugDebuggee debuggee = GetAssignmentDebuggee(generation);
+                using ManagedValueRetentionScope values = debuggee.BeginValueRetention();
                 bool isInvocation = value.Root.Kind is
                     DebugExpressionNodeKind.Invocation or
                     DebugExpressionNodeKind.ObjectCreation;
+                if (!isInvocation && value.Root.Kind == DebugExpressionNodeKind.Conversion)
+                {
+                    isInvocation = debuggee.HasUserDefinedExplicitConversion(
+                        frameId, value, generation);
+                }
                 stringAssignment = isInvocation ? null : debuggee.CreateStringMaterializationPlan(
                     frameId, target, value, targetExpression, generation);
                 DebugExpressionPlan? executionPlan = isInvocation ? value : stringAssignment?.Plan;
@@ -152,6 +158,7 @@ public sealed partial class DebuggerSession
                         resultName,
                         generation,
                         _variableMutations);
+                    values.Preserve(result.VariablesReference);
                 }
                 else
                 {
@@ -163,6 +170,7 @@ public sealed partial class DebuggerSession
                             frameId,
                             executionPlan,
                             generation);
+                        values.PreserveAll();
                         _state = DebugSessionState.Running;
                     }
                     catch (Exception exception) when (

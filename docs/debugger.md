@@ -180,7 +180,8 @@ implicit conversion operators participate in overload selection with standard nu
 reference conversions around the operator and boxing into constructed generic operator
 parameters, then execute as supervised target-code stages before the selected call. Lifted
 nullable conversions invoke the operator for populated values and propagate null directly.
-Direct
+Explicit casts select exact loaded explicit or implicit conversion operators, require target-code
+authorization, and can supply generation-safe direct assignment. Direct
 assignments update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the

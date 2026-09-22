@@ -614,6 +614,9 @@ exceptions use the ordinary function-evaluation recovery path and leave the proc
 stopped for inspection. Lifted nullable conversions read the exact contained source field,
 execute the underlying operator once for populated values, materialize exact nullable result
 storage for value-type targets, and propagate null without target execution.
+Explicit conversion expressions resolve exact loaded `op_Explicit` and `op_Implicit` methods,
+execute them through the supervised evaluator only when target code is authorized, and retain
+their declared result type for inspection and generation-safe assignment.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

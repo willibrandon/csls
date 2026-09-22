@@ -139,4 +139,12 @@ internal static class DebuggerImplicitConversionFixture
     /// <returns>The compiler-produced reference result length.</returns>
     internal static int CompilerRequireNullableStringForDebugger(
         DebuggerImplicitConversionSource? source) => RequireStringForDebugger(source);
+
+    /// <summary>
+    /// Runs the compiler's exact explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The authored source value.</param>
+    /// <returns>The compiler-produced floating-point result.</returns>
+    internal static double CompilerExplicitDoubleForDebugger(
+        DebuggerImplicitConversionSource source) => (double)source;
 }

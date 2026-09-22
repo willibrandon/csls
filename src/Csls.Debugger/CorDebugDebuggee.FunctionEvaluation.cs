@@ -83,20 +83,24 @@ internal sealed partial class CorDebugDebuggee
             Kind: DebugExpressionNodeKind.Literal,
             TypeName: "string"
         };
+        bool convertsValue = operation.Kind == DebugExpressionNodeKind.Conversion;
         if (operation.Kind is not DebugExpressionNodeKind.Invocation and
             not DebugExpressionNodeKind.ObjectCreation &&
+            !convertsValue &&
             !materializesString)
         {
             throw new InvalidDataException(
-                "Target-code evaluation requires an invocation, object-creation, or " +
-                "string-materialization root.");
+                "Target-code evaluation requires an invocation, object creation, " +
+                "user-defined conversion, or string-materialization root.");
         }
 
         bool constructsObject = operation.Kind == DebugExpressionNodeKind.ObjectCreation;
-        int argumentOffset = constructsObject ? 0 : 1;
+        int argumentOffset = constructsObject || convertsValue ? 0 : 1;
         int argumentCount = materializesString
             ? 1
-            : operation.Children.Count - argumentOffset;
+            : convertsValue
+                ? 1
+                : operation.Children.Count - argumentOffset;
         if (argumentCount > MaximumFunctionEvaluationArgumentCount)
         {
             throw new NotSupportedException(
@@ -116,7 +120,8 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                if (!constructsObject && !TryResolveStaticReceiver(frame, operation.Children[0], out _))
+                if (!constructsObject && !convertsValue &&
+                    !TryResolveStaticReceiver(frame, operation.Children[0], out _))
                 {
                     receiver = property?.Receiver ?? EvaluateNode(frame, plan, operation.Children[0], generation);
                 }
@@ -208,7 +213,18 @@ internal sealed partial class CorDebugDebuggee
             {
                 ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
                     suppliedArguments, plan.Language, thread);
-                ManagedFunctionBinding binding = constructsObject
+                ManagedFunctionBinding binding = convertsValue
+                    ? ResolveUserDefinedExplicitConversion(
+                        argumentTypes[0] ?? throw new InvalidOperationException(
+                            "A null literal has no user-defined conversion source type."),
+                        BindConversionTarget(
+                            operation.TypeName ?? throw new InvalidDataException(
+                                "A conversion expression has no target type."),
+                            plan.Language,
+                            thread),
+                        plan.Language,
+                        thread)
+                    : constructsObject
                     ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
                         constantArguments, argumentNames, thread)
                     : materializeReceiver
@@ -234,7 +250,14 @@ internal sealed partial class CorDebugDebuggee
                 {
                     ManagedBoundType? sourceType = argumentTypes[index];
                     ManagedBoundType parameterType = binding.ParameterTypes[index];
-                    if (suppliedArguments[index].IsContextualDefault)
+                    if (convertsValue)
+                    {
+                        suppliedArguments[index] = suppliedArguments[index] with
+                        {
+                            DeclaredType = parameterType
+                        };
+                    }
+                    else if (suppliedArguments[index].IsContextualDefault)
                     {
                         suppliedArguments[index] = ManagedFunctionImplicitDefaults.TryCreateContextual(
                             parameterType, _boundTypes, thread) ?? throw new InvalidOperationException(

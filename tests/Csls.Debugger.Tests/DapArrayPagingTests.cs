@@ -166,28 +166,32 @@ public sealed class DapArrayPagingTests : DapTestContext
         await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
         using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
         int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
-        const string dangerousCall =
-            "Csls.TestProcessHost.DebuggerDumpArrayFixture.CrashDuringDebuggerEvaluation()";
-
         foreach (string? context in new string?[] { "hover", "clipboard", "variables", null })
         {
-            int sequence = await client.SendRequestAsync("evaluate", writer =>
+            foreach (string targetCodeExpression in new[]
             {
-                writer.WriteStartObject();
-                writer.WriteString("expression", dangerousCall);
-                writer.WriteNumber("frameId", frameId);
-                if (context is not null)
+                "Csls.TestProcessHost.DebuggerDumpArrayFixture.CrashDuringDebuggerEvaluation()",
+                "(double)implicitConversion"
+            })
+            {
+                int sequence = await client.SendRequestAsync("evaluate", writer =>
                 {
-                    writer.WriteString("context", context);
-                }
+                    writer.WriteStartObject();
+                    writer.WriteString("expression", targetCodeExpression);
+                    writer.WriteNumber("frameId", frameId);
+                    if (context is not null)
+                    {
+                        writer.WriteString("context", context);
+                    }
 
-                writer.WriteEndObject();
-            }, TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(response.RootElement, sequence, "evaluate", success: false);
-            Assert.Contains("not authorized", Assert.IsInstanceOfType<string>(
-                response.RootElement.GetProperty("message").GetString()));
+                    writer.WriteEndObject();
+                }, TestContext.CancellationToken).ConfigureAwait(false);
+                using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertResponse(response.RootElement, sequence, "evaluate", success: false);
+                Assert.Contains("not authorized", Assert.IsInstanceOfType<string>(
+                    response.RootElement.GetProperty("message").GetString()));
+            }
 
             int inspection = await client.SendRequestAsync("evaluate", writer =>
             {
@@ -300,8 +304,11 @@ public sealed class DapArrayPagingTests : DapTestContext
                 "RequireStringForDebugger(emptyLiftedImplicitConversion)", "-1"),
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerRequireNullableStringForDebugger(emptyLiftedImplicitConversion)", "-1"),
+            ("(double)implicitConversion", "41.5"),
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
-                "GetConversionCountForDebugger()", "17")
+                "CompilerExplicitDoubleForDebugger(implicitConversion)", "41.5"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "19")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
@@ -309,6 +316,41 @@ public sealed class DapArrayPagingTests : DapTestContext
             Assert.AreEqual(result, value.GetProperty("result").GetString());
             using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        int assignment = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "explicitConversionResult");
+            writer.WriteString("value", "(double)implicitConversion");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, assignment, "setExpression", success: true);
+            Assert.AreEqual("41.5", response.RootElement.GetProperty("body")
+                .GetProperty("value").GetString());
+        }
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement assigned = await ReadEvaluationAsync(client, frameId,
+            "explicitConversionResult", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("41.5", assigned.GetProperty("result").GetString());
+        JsonElement assignedCount = await ReadEvaluationAsync(client, frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
+            success: true, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("20", assignedCount.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 

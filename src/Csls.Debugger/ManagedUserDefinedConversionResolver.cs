@@ -80,6 +80,99 @@ internal sealed class ManagedUserDefinedConversionResolver
         return resolved;
     }
 
+    /// <summary>
+    /// Resolves one exact explicit or implicit operator for an authored cast.
+    /// </summary>
+    /// <param name="source">The exact loaded cast source type.</param>
+    /// <param name="destination">The exact loaded cast destination type.</param>
+    /// <returns>The unique exact conversion, or null when none exists.</returns>
+    internal ManagedUserDefinedConversion? ResolveExplicit(
+        ManagedBoundType source,
+        ManagedBoundType destination)
+    {
+        if (source.IsSameType(destination) || source.IsArray || destination.IsArray ||
+            (_types.GetAttributes(source) & TypeAttributes.Interface) != 0 ||
+            (_types.GetAttributes(destination) & TypeAttributes.Interface) != 0)
+        {
+            return null;
+        }
+
+        var matches = new List<ManagedUserDefinedConversion>();
+        foreach (ManagedBoundType declaringType in GetParticipatingTypes(
+            StripNullable(source), StripNullable(destination)))
+        {
+            AddExplicitMatches(declaringType, source, destination, matches);
+        }
+
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    private void AddExplicitMatches(
+        ManagedBoundType declaringType,
+        ManagedBoundType source,
+        ManagedBoundType destination,
+        List<ManagedUserDefinedConversion> matches)
+    {
+        CorDebugLoadedModule module = _types.GetModule(declaringType);
+        using PEReader? reader = module.OpenPeReader();
+        if (reader is null)
+        {
+            return;
+        }
+
+        using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), module.MetadataDeltas);
+        EntityHandle entity = MetadataTokens.EntityHandle(checked((int)declaringType.DefinitionToken));
+        if (entity.Kind != HandleKind.TypeDefinition)
+        {
+            throw new BadImageFormatException(
+                $"Runtime type token 0x{declaringType.DefinitionToken:X8} is not a TypeDef token.");
+        }
+
+        foreach (MethodDefinitionHandle handle in metadata.GetMethods((TypeDefinitionHandle)entity))
+        {
+            MethodDefinition method = metadata.GetMethodDefinition(handle);
+            const MethodAttributes required = MethodAttributes.Public |
+                MethodAttributes.Static | MethodAttributes.SpecialName;
+            string name = metadata.GetString(method.Name);
+            if ((method.Attributes & required) != required ||
+                (method.Attributes & MethodAttributes.Abstract) != 0 ||
+                method.GetGenericParameters().Count != 0 ||
+                name is not ("op_Explicit" or "op_Implicit"))
+            {
+                continue;
+            }
+
+            MethodSignature<ManagedMetadataTypeSignature> signature =
+                metadata.DecodeMethodSignature(handle, module.Pointer);
+            if (signature.ParameterTypes is not [ManagedMetadataTypeSignature parameter] ||
+                parameter.UnsupportedKind is not null ||
+                signature.ReturnType.UnsupportedKind is not null)
+            {
+                continue;
+            }
+
+            ManagedBoundType parameterType = _types.Bind(
+                parameter, declaringType.TypeArguments, [], _thread);
+            ManagedBoundType resultType = _types.Bind(
+                signature.ReturnType, declaringType.TypeArguments, [], _thread);
+            uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
+            if (source.IsSameType(parameterType) && destination.IsSameType(resultType) &&
+                !matches.Any(match =>
+                    match.DeclaringType.ModuleId == declaringType.ModuleId &&
+                    match.MethodToken == methodToken))
+            {
+                matches.Add(new ManagedUserDefinedConversion(
+                    declaringType,
+                    methodToken,
+                    parameterType,
+                    resultType,
+                    destination,
+                    _language,
+                    IsLifted: false));
+            }
+        }
+    }
+
     private void AddMatches(
         ManagedBoundType declaringType,
         ManagedBoundType source,

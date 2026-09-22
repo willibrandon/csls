@@ -8,6 +8,52 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    /// <summary>
+    /// Determines whether an explicit conversion root selects target code.
+    /// </summary>
+    /// <param name="frameId">The logical managed frame identifier.</param>
+    /// <param name="plan">The validated explicit conversion expression.</param>
+    /// <param name="generation">The stop generation that owns the frame.</param>
+    /// <returns>True when an exact loaded conversion operator is selected.</returns>
+    internal bool HasUserDefinedExplicitConversion(
+        int frameId,
+        DebugExpressionPlan plan,
+        DebugStopGeneration generation)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
+        if (plan.Root is not
+            {
+                Kind: DebugExpressionNodeKind.Conversion,
+                TypeName: not null,
+                Children: [DebugExpressionNode operandNode]
+            })
+        {
+            return false;
+        }
+
+        ManagedExpressionValue operand = EvaluateNode(frame, plan, operandNode, generation);
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            ManagedBoundType? source = BindFunctionEvaluationArgumentTypes(
+                [operand], plan.Language, thread)[0];
+            if (source is null)
+            {
+                return false;
+            }
+
+            ManagedBoundType target = BindConversionTarget(
+                plan.Root.TypeName, plan.Language, thread);
+            return new ManagedUserDefinedConversionResolver(
+                _boundTypes, thread, plan.Language).ResolveExplicit(source, target) is not null;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(thread);
+        }
+    }
+
     private ManagedExpressionValue PrepareUserDefinedConversionArgument(
         ManagedExpressionValue value,
         ManagedBoundType sourceType,
@@ -422,5 +468,59 @@ internal sealed partial class CorDebugDebuggee
             Display = empty.Display with { Value = "null" },
             IsNullableValue = true
         };
+    }
+
+    private ManagedFunctionBinding ResolveUserDefinedExplicitConversion(
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language,
+        nint thread)
+    {
+        ManagedUserDefinedConversion conversion =
+            new ManagedUserDefinedConversionResolver(
+                _boundTypes, thread, language).ResolveExplicit(source, target) ??
+            throw new InvalidOperationException(
+                $"No exact loaded user-defined conversion exists from " +
+                $"'{source.DisplayName}' to '{target.DisplayName}'.");
+        CorDebugLoadedModule module = _boundTypes.GetModule(conversion.DeclaringType);
+        nint function = 0;
+        nint[] typeArguments = [];
+        try
+        {
+            function = GetModuleFunction(module.Pointer, conversion.MethodToken);
+            typeArguments = ManagedRuntimeTypeArguments.ResolveBound(
+                conversion.DeclaringType.TypeArguments, _boundTypes, thread);
+            var binding = new ManagedFunctionBinding(
+                function,
+                typeArguments,
+                target,
+                [conversion.ParameterType],
+                [0],
+                [null]);
+            function = 0;
+            typeArguments = [];
+            return binding;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(function);
+            foreach (nint typeArgument in typeArguments)
+            {
+                ReleaseFunctionEvaluationPointer(typeArgument);
+            }
+        }
+    }
+
+    private ManagedBoundType BindConversionTarget(
+        string typeName,
+        DebugExpressionLanguage language,
+        nint thread)
+    {
+        string? primitive = ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(
+            typeName, language);
+        return _boundTypes.BindName(
+            primitive ?? typeName,
+            primitive is null ? language : DebugExpressionLanguage.CSharp,
+            thread);
     }
 }

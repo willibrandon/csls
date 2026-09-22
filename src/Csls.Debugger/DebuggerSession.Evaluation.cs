@@ -53,6 +53,11 @@ public sealed partial class DebuggerSession
                 using ManagedValueRetentionScope values = managedDebuggee.BeginValueRetention();
                 bool explicitCall = plan.Root.Kind is DebugExpressionNodeKind.Invocation or
                     DebugExpressionNodeKind.ObjectCreation;
+                if (!explicitCall && plan.Root.Kind == DebugExpressionNodeKind.Conversion)
+                {
+                    explicitCall = managedDebuggee.HasUserDefinedExplicitConversion(
+                        frameId, plan, generation);
+                }
                 if (!explicitCall)
                 {
                     result = managedDebuggee.PrepareEvaluation(frameId, plan, generation, out property);

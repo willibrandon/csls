@@ -41,4 +41,17 @@ internal readonly struct DebuggerImplicitConversionSource
                 ? throw new InvalidOperationException("implicit conversion failed")
                 : source.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// Explicitly converts an authored source to a floating-point value inside the target process.
+    /// </summary>
+    /// <param name="source">The authored source value.</param>
+    /// <returns>The stored number plus one half.</returns>
+    public static explicit operator double(DebuggerImplicitConversionSource source)
+    {
+        DebuggerImplicitConversionFixture.RecordConversion();
+        return source.Number < 0
+            ? throw new InvalidOperationException("explicit conversion failed")
+            : source.Number + 0.5;
+    }
 }
