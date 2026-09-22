@@ -22,8 +22,10 @@ public static class DebuggerTerminalHost
         ValidateLaunch(options);
         DebuggerTerminalOwnedSession session = await DebuggerTerminalOwnedSession
             .LaunchAsync(options, cancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable cleanup = session.ConfigureAwait(false);
-        return await RunTerminalAsync(session.State, cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable initialCleanup = session.ConfigureAwait(false);
+        var sessions = new DebuggerTerminalSessions(session);
+        await using ConfiguredAsyncDisposable cleanup = sessions.ConfigureAwait(false);
+        return await RunTerminalAsync(sessions, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -40,18 +42,20 @@ public static class DebuggerTerminalHost
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ProcessId);
         DebuggerTerminalOwnedSession session = await DebuggerTerminalOwnedSession
             .AttachAsync(options, cancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable cleanup = session.ConfigureAwait(false);
-        return await RunTerminalAsync(session.State, cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable initialCleanup = session.ConfigureAwait(false);
+        var sessions = new DebuggerTerminalSessions(session);
+        await using ConfiguredAsyncDisposable cleanup = sessions.ConfigureAwait(false);
+        return await RunTerminalAsync(sessions, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<int> RunTerminalAsync(
-        DebuggerTerminalState state,
+        DebuggerTerminalSessions sessions,
         CancellationToken cancellationToken)
     {
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(
-                state.AttachWorkload,
-                context => DebuggerTerminalView.Build(context, state))
+                sessions.AttachWorkload,
+                context => DebuggerTerminalView.Build(context, sessions, cancellationToken))
             .WithMouse()
             .Build();
         await using (terminal.ConfigureAwait(false))
@@ -62,7 +66,10 @@ public static class DebuggerTerminalHost
         return 0;
     }
 
-    private static void ValidateLaunch(DebuggerTerminalLaunchOptions options)
+    /// <summary>
+    /// Validates one terminal launch before it creates an owned debugger session.
+    /// </summary>
+    internal static void ValidateLaunch(DebuggerTerminalLaunchOptions options)
     {
         if (!Path.IsPathFullyQualified(options.Program) || !File.Exists(options.Program))
         {

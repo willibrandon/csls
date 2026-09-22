@@ -877,11 +877,16 @@ binary through its debug-adapter manifest, supplies a JSON configuration schema,
 and translates its generic scenarios to the conventional .NET configuration.
 Neither integration downloads or discovers another debugger.
 
-The Hex1b TUI is a client of the private debugger RPC. A single-session view has
-dedicated source, threads, stack, and arguments/locals panes. Its auxiliary pane
-cycles through output, modules, breakpoints, watches, and exceptions, with a
-separate command palette. The control service enforces session ownership, and
-the terminal uses the shared inspection and execution contracts.
+The Hex1b TUI is a client of the private debugger RPC. Each terminal-owned target
+has a dedicated supervised control worker, so each live ICorDebug owner is isolated
+in its own process. The terminal holds a bounded collection of these owners and
+selects one by its terminal-local identity. Its versioned F3 browser rejects stale
+rows after the collection changes. A selected session has dedicated source,
+threads, stack, and arguments/locals panes. Its auxiliary pane cycles through
+output, modules, breakpoints, watches, and exceptions, with a separate command
+palette for launch, attach, inspection, and execution. Switching retains each
+target's independent state and routes subsequent actions only to the selected
+owner. Closing the terminal releases every worker and its owned target.
 
 MCP uses private debugger RPC rather than translating through DAP. Pure expression
 evaluation is the read-only `debug_evaluate` inspection tool, and physical variable

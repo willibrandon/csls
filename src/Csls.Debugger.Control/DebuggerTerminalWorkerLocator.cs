@@ -1,7 +1,7 @@
 namespace Csls.Debugger.Control;
 
 /// <summary>
-/// Finds the installed debugger worker for a terminal reverse request.
+/// Finds the installed debugger worker for terminal-owned sessions and reverse requests.
 /// </summary>
 public static class DebuggerTerminalWorkerLocator
 {

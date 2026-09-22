@@ -27,12 +27,17 @@ modules with symbol policy, authoritative breakpoints, side-effect-free watches,
 the current exception. F1 opens a searchable command palette for watch, execution,
 restart, terminate, and detach operations.
 
-Each terminal instance operates on one explicitly launched or attached target.
+The command palette also launches another managed target or attaches to a running
+process. The launch form takes an absolute program path and a JSON string array of
+arguments, then stops at entry. F3 opens the session browser. Selecting a row
+restores that target's source, threads, stack, and variables. Each target runs in
+its own supervised debugger worker.
 
 | Key | Operation |
 | --- | --- |
 | F1 | Open the debugger command palette |
 | F2 | Cycle output, modules, breakpoints, watches, and exception views |
+| F3 | Browse and switch terminal-owned sessions |
 | F5 | Continue |
 | Shift+F5 | Terminate the target |
 | F6 | Pause |
@@ -42,7 +47,8 @@ Each terminal instance operates on one explicitly launched or attached target.
 | F12 | Step out |
 | Ctrl+C | Close the debugger |
 
-Closing the terminal terminates a launched target process tree.
+Closing the terminal terminates launched target process trees and detaches
+attached targets.
 
 To begin at the application's entry point, use:
 

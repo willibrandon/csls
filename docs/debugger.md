@@ -48,11 +48,17 @@ The terminal opens when the initial breakpoint stops the process. Select a threa
 and stack frame to inspect its source, arguments, and locals. The auxiliary view
 shows target output, modules, breakpoints, watches, or the current exception.
 F1 opens a searchable command palette.
+Use its Launch session and Attach session commands to add managed targets to the
+terminal. The launch form accepts an absolute program path and a JSON string array
+of arguments, then stops at entry. F3 opens the session browser; selecting a row
+restores that target's source, threads, stack, and variables. Each target has its
+own supervised debugger worker.
 
 | Key | Operation |
 | --- | --- |
 | F1 | Open the command palette |
 | F2 | Cycle output, modules, breakpoints, watches, and exception views |
+| F3 | Browse and switch terminal-owned sessions |
 | F5 | Continue |
 | Shift+F5 | Terminate the target |
 | F6 | Pause |
@@ -62,8 +68,8 @@ F1 opens a searchable command palette.
 | F12 | Step out |
 | Ctrl+C | Close the debugger |
 
-Each terminal instance works with one explicitly selected target. Closing a launch
-session terminates its process tree.
+Each terminal instance controls one selected target at a time. Closing the terminal
+terminates its launched targets and detaches its attached targets.
 
 Use `--stop-at-entry` to begin at the application's first executable entry statement:
 

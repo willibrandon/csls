@@ -176,8 +176,8 @@ jobs:
         run: >-
           dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
           --property:RuntimeIdentifiers=
-          --filter "FullyQualifiedName=Csls.Tests.StdioLanguageServerTests.WorkerServesHoverAndShutsDownCleanly|FullyQualifiedName=Csls.Tests.McpLanguageServerTests.McpExposesAttachedLanguageServerSession|FullyQualifiedName=Csls.Tests.CliTransientWorkspaceTests.QueryAndEditWithWorkspaceUseTransientLanguageServer"
-          --minimum-expected-tests 3
+          --filter "FullyQualifiedName=Csls.Tests.StdioLanguageServerTests.WorkerServesHoverAndShutsDownCleanly|FullyQualifiedName=Csls.Tests.McpLanguageServerTests.McpExposesAttachedLanguageServerSession|FullyQualifiedName=Csls.Tests.CliTransientWorkspaceTests.QueryAndEditWithWorkspaceUseTransientLanguageServer|FullyQualifiedName=Csls.Tests.DebuggerTerminalTests.TerminalNavigatesStoppedStateAndKeepsExecutionControlsResponsive"
+          --minimum-expected-tests 4
 
   debugger-e2e:
     name: Debugger E2E

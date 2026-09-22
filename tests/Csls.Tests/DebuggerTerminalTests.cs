@@ -125,6 +125,74 @@ public sealed class DebuggerTerminalTests
                     await automator.WaitUntilTextAsync("localNumber = 0").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync($"●    {breakpointLine}")
                         .ConfigureAwait(false);
+                    string initialHeader;
+                    using (Hex1bTerminalSnapshot initial = automator.CreateSnapshot())
+                    {
+                        initialHeader = initial.GetLine(0);
+                    }
+                    string initialProcessMarker = "pid " + initialHeader.Split(
+                        "pid ", 2, StringSplitOptions.None)[1].Split(' ', 2)[0] + "  ";
+
+                    await automator.KeyAsync(
+                        Hex1bKey.F3,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Terminal sessions").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("● csls-test-process-host.dll")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.Escape,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => !screen.ContainsText("Terminal sessions"),
+                        description: "session browser dismissed").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F1,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
+                    await automator.TypeAsync("launch session", TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => !screen.ContainsText("Attach session"),
+                        description: "launch command filter applied").ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Launch managed target")
+                        .ConfigureAwait(false);
+                    await automator.TypeAsync(
+                        EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetLine(0).Contains("Selected csls-test-process-host.dll.",
+                            StringComparison.Ordinal) &&
+                            !screen.GetLine(0).Contains(initialProcessMarker,
+                                StringComparison.Ordinal),
+                        description: "second managed target selected").ConfigureAwait(false);
+                    string secondProcessMarker;
+                    using (Hex1bTerminalSnapshot second = automator.CreateSnapshot())
+                    {
+                        secondProcessMarker = "pid " + second.GetLine(0).Split(
+                            "pid ", 2, StringSplitOptions.None)[1].Split(' ', 2)[0] + "  ";
+                    }
+
+                    await automator.KeyAsync(
+                        Hex1bKey.F3,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Terminal sessions").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("● csls-test-process-host.dll")
+                        .ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.ContainsText(initialProcessMarker) &&
+                            screen.ContainsText(secondProcessMarker),
+                        description: "both independently owned targets in the session browser")
+                        .ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetLine(0).Contains("Selected csls-test-process-host.dll.",
+                            StringComparison.Ordinal) &&
+                            screen.GetLine(0).Contains(initialProcessMarker,
+                                StringComparison.Ordinal),
+                        description: "original stopped target restored").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("WaitForSignal").ConfigureAwait(false);
                     await automator.KeyAsync(
                         Hex1bKey.F2,
                         TestContext.CancellationToken).ConfigureAwait(false);
@@ -243,6 +311,9 @@ public sealed class DebuggerTerminalTests
         await automator.KeyAsync(Hex1bKey.F1, TestContext.CancellationToken).ConfigureAwait(false);
         await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
         await automator.TypeAsync("add watch", TestContext.CancellationToken).ConfigureAwait(false);
+        await automator.WaitUntilAsync(
+            screen => !screen.ContainsText("Launch session"),
+            description: "watch command filter applied").ConfigureAwait(false);
         await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await automator.WaitUntilTextAsync("Watch expression").ConfigureAwait(false);
         if (expression.Length > 0)

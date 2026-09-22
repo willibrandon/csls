@@ -6,6 +6,21 @@ namespace Csls.Debugger.Terminal;
 internal enum DebuggerTerminalCommand
 {
     /// <summary>
+    /// Opens the versioned browser for terminal-owned sessions.
+    /// </summary>
+    BrowseSessions,
+
+    /// <summary>
+    /// Launches another managed target with independent ownership.
+    /// </summary>
+    LaunchSession,
+
+    /// <summary>
+    /// Attaches another managed target with independent ownership.
+    /// </summary>
+    AttachSession,
+
+    /// <summary>
     /// Adds a side-effect-free watch expression.
     /// </summary>
     AddWatch,
