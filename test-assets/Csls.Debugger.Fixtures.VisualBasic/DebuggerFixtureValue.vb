@@ -93,6 +93,27 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         End Function
 
         ''' <summary>
+        ''' Exposes a scaled negative Visual Basic decimal default.
+        ''' </summary>
+        ''' <param name="amount">The optional decimal value.</param>
+        ''' <returns>One when the target receives its exact decimal representation.</returns>
+        Friend Shared Function OptionalDecimalStatic(Optional amount As Decimal = -12.50D) As Integer
+            Dim bits = Decimal.GetBits(amount)
+            Return If(bits(0) = 1250 AndAlso bits(1) = 0 AndAlso bits(2) = 0 AndAlso
+                bits(3) = &H80020000, 1, 0)
+        End Function
+
+        ''' <summary>
+        ''' Exposes a Visual Basic date default through method metadata.
+        ''' </summary>
+        ''' <param name="when">The optional date value.</param>
+        ''' <returns>One when the target receives its declared date.</returns>
+        Friend Shared Function OptionalDateStatic(Optional [when] As DateTime = #1/1/2020#) As Integer
+            Return If([when].Ticks = 637134336000000000L AndAlso
+                [when].Kind = DateTimeKind.Unspecified, 1, 0)
+        End Function
+
+        ''' <summary>
         ''' Returns the length of a debugger-materialized string.
         ''' </summary>
         ''' <param name="value">The string supplied by managed function evaluation.</param>
