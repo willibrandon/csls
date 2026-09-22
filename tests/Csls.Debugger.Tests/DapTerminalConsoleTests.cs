@@ -644,11 +644,13 @@ public sealed class DapTerminalConsoleTests : DapTestContext
     }
 
     /// <summary>
-    /// Keeps terminal handles and real target ownership across a managed restart.
+    /// Keeps terminal handles and real target ownership across a managed restart in both terminal modes.
     /// </summary>
     [TestMethod]
+    [DataRow("integratedTerminal", "integrated")]
+    [DataRow("externalTerminal", "external")]
     [Timeout(45000, CooperativeCancellation = true)]
-    public async Task ManagedIntegratedTerminalRestartPreservesStdioAndTargetIdentity()
+    public async Task ManagedTerminalRestartPreservesStdioAndTargetIdentity(string console, string terminalKind)
     {
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -673,7 +675,7 @@ public sealed class DapTerminalConsoleTests : DapTestContext
             {
                 writer.WriteStartObject();
                 writer.WriteString("program", program);
-                writer.WriteString("console", "integratedTerminal");
+                writer.WriteString("console", console);
                 writer.WriteBoolean("stopAtEntry", true);
                 writer.WriteStartArray("args");
                 writer.WriteStringValue("--debugger-terminal-stdio-fixture");
@@ -696,7 +698,7 @@ public sealed class DapTerminalConsoleTests : DapTestContext
                 Assert.AreEqual("request", message.GetProperty("type").GetString());
                 Assert.AreEqual("runInTerminal", message.GetProperty("command").GetString());
                 JsonElement arguments = message.GetProperty("arguments");
-                Assert.AreEqual("integrated", arguments.GetProperty("kind").GetString());
+                Assert.AreEqual(terminalKind, arguments.GetProperty("kind").GetString());
                 ProcessStartInfo start = CreateTerminalStart(arguments);
                 launcher.StartInfo = start;
                 launcherStarted = launcher.Start();
@@ -744,7 +746,9 @@ public sealed class DapTerminalConsoleTests : DapTestContext
             {
                 JsonElement message = reverseRequest.RootElement;
                 Assert.AreEqual("runInTerminal", message.GetProperty("command").GetString());
-                replacementLauncher.StartInfo = CreateTerminalStart(message.GetProperty("arguments"));
+                JsonElement arguments = message.GetProperty("arguments");
+                Assert.AreEqual(terminalKind, arguments.GetProperty("kind").GetString());
+                replacementLauncher.StartInfo = CreateTerminalStart(arguments);
                 replacementStarted = replacementLauncher.Start();
                 Assert.IsTrue(replacementStarted, "The replacement terminal did not start.");
                 string response = string.Create(CultureInfo.InvariantCulture,
