@@ -80,6 +80,19 @@ public sealed class VsCodeLanguageServerTests
             prepareWorkspace: VsCodeDumpFixture.PrepareAsync);
 
     /// <summary>
+    /// Launches a real target through the installed extension and a shell-backed DAP pipe.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task VsCodePipeTransportLaunchesManagedTarget() =>
+        RunVsCodeHostAsync(
+            remote: false,
+            localSuite: "dist/pipe-transport-suite.cjs",
+            prepareWorkspace: VsCodePipeTransportFixture.PrepareAsync);
+
+    /// <summary>
     /// Stops automatic test discovery and every process it started when VS Code shuts down.
     /// </summary>
     [TestMethod]

@@ -25,11 +25,14 @@ public sealed class ZedDebuggerTests
     /// <summary>
     /// Starts the csls adapter from Zed and stops on a real source breakpoint.
     /// </summary>
+    /// <param name="pipeTransport">Whether the editor routes DAP through a real pipe program.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [TestCategory("ZedHost")]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     [Timeout(120000, CooperativeCancellation = true)]
-    public async Task ZedStopsAtSourceBreakpointThroughCslsDebugger()
+    public async Task ZedStopsAtSourceBreakpointThroughCslsDebugger(bool pipeTransport)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string fixtureProject = Path.Join(
@@ -69,13 +72,23 @@ public sealed class ZedDebuggerTests
             string signalPath = Path.Join(fixturePath, "target.signal");
             string startedPath = Path.Join(fixturePath, "target.started");
             string continuedPath = Path.Join(fixturePath, "target.continued");
+            string transportMarkerPath = Path.Join(fixturePath, "transport.marker");
+            string pipeLauncherPath = launcherPath;
+            if (pipeTransport)
+            {
+                string linkedDirectory = Path.Join(fixturePath, "adapter'pipe");
+                Directory.CreateSymbolicLink(linkedDirectory, Path.GetDirectoryName(launcherPath)!);
+                pipeLauncherPath = Path.Join(linkedDirectory, Path.GetFileName(launcherPath));
+            }
             await WriteDebugConfigurationAsync(
                 Path.Join(userDataPath, "config", "debug.json"),
                 programPath,
                 repositoryRoot,
                 signalPath,
                 startedPath,
-                continuedPath).ConfigureAwait(false);
+                continuedPath,
+                pipeTransport ? transportMarkerPath : null,
+                pipeLauncherPath).ConfigureAwait(false);
             await WriteSettingsAsync(
                 Path.Join(userDataPath, "config", "settings.json"),
                 launcherPath).ConfigureAwait(false);
@@ -117,6 +130,13 @@ public sealed class ZedDebuggerTests
                     TestContext.CancellationToken).ConfigureAwait(false);
                 X11Input.SendEnter(display.DisplayName);
                 await WaitForFileAsync(startedPath).ConfigureAwait(false);
+                if (pipeTransport)
+                {
+                    Assert.AreEqual("zed-pipe-transport",
+                        await File.ReadAllTextAsync(transportMarkerPath, TestContext.CancellationToken)
+                            .ConfigureAwait(false),
+                        "The source-breakpoint target must inherit the pipe program's marker.");
+                }
                 await Task.Delay(
                     TimeSpan.FromMilliseconds(500),
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -271,33 +291,37 @@ public sealed class ZedDebuggerTests
         string repositoryRoot,
         string signalPath,
         string startedPath,
-        string continuedPath)
+        string continuedPath,
+        string? transportMarkerPath,
+        string launcherPath)
     {
-        string json = JsonSerializer.Serialize(
-            new[]
+        string[] targetArguments = transportMarkerPath is null
+            ? [signalPath, "41", "ready", startedPath, continuedPath]
+            : [signalPath, "41", "ready", startedPath, continuedPath, transportMarkerPath];
+        var configuration = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["adapter"] = "csls",
+            ["args"] = targetArguments,
+            ["cwd"] = Path.GetDirectoryName(programPath)!,
+            ["label"] = ".NET Launch",
+            ["program"] = programPath,
+            ["request"] = "launch",
+            ["sourceFileMap"] = new Dictionary<string, string> { ["/_/"] = repositoryRoot }
+        };
+        if (transportMarkerPath is not null)
+        {
+            configuration["pipeTransport"] = new
             {
-                new
+                pipeProgram = "/bin/sh",
+                pipeArgs = new[] { "-c" },
+                debuggerPath = launcherPath,
+                pipeEnv = new Dictionary<string, string>
                 {
-                    adapter = "csls",
-                    args = new[]
-                    {
-                        signalPath,
-                        "41",
-                        "ready",
-                        startedPath,
-                        continuedPath
-                    },
-                    cwd = Path.GetDirectoryName(programPath),
-                    label = ".NET Launch",
-                    program = programPath,
-                    request = "launch",
-                    sourceFileMap = new Dictionary<string, string>
-                    {
-                        ["/_/"] = repositoryRoot
-                    }
+                    ["CSLS_PIPE_TRANSPORT_MARKER"] = "zed-pipe-transport"
                 }
-            },
-            s_jsonOptions);
+            };
+        }
+        string json = JsonSerializer.Serialize(new[] { configuration }, s_jsonOptions);
         await File.WriteAllTextAsync(path, json, TestContext.CancellationToken)
             .ConfigureAwait(false);
     }

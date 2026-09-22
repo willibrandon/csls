@@ -10,6 +10,7 @@ use tar::Archive;
 use zed_extension_api::{self as zed, Result, settings::LspSettings};
 
 mod debug_adapter;
+mod pipe_transport;
 
 const LANGUAGE_SERVER_ID: &str = "csls";
 
@@ -73,8 +74,14 @@ impl zed::Extension for CslsExtension {
             return Err(format!("unknown debug adapter: {adapter_name}"));
         }
 
-        let path = self.resolve_binary_path(user_provided_debug_adapter_path, worktree, None)?;
-        debug_adapter::binary(path, config)
+        let configuration: zed::serde_json::Value = zed::serde_json::from_str(&config.config)
+            .map_err(|error| format!("invalid csls debug configuration: {error}"))?;
+        let path = if configuration.get("pipeTransport").is_some() {
+            None
+        } else {
+            Some(self.resolve_binary_path(user_provided_debug_adapter_path, worktree, None)?)
+        };
+        debug_adapter::binary(path, config, configuration)
     }
 
     fn dap_request_kind(

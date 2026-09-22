@@ -58,6 +58,45 @@ environment. Set `runtimeHost` to an absolute host executable path to choose the
 
 Set `noDebug` to `true` to run the target as an ordinary process.
 
+## Remote and container debugging
+
+Install csls in the target environment and configure a pipe program in the editor.
+For example, a VS Code launch configuration can carry DAP over SSH:
+
+```json
+{
+  "name": ".NET over SSH",
+  "type": "coreclr",
+  "request": "launch",
+  "program": "/srv/app/App.dll",
+  "cwd": "/srv/app",
+  "pipeTransport": {
+    "pipeProgram": "ssh",
+    "pipeArgs": ["-T", "developer@example-host"],
+    "debuggerPath": "csls"
+  },
+  "sourceFileMap": {
+    "/srv/app": "${workspaceFolder}"
+  }
+}
+```
+
+The Zed `csls` debug adapter accepts the same `pipeTransport` object in
+`.zed/debug.json`. Set `adapter` to `csls` and give the configuration a `label`.
+The pipe program runs locally. `debuggerPath`, `program`, and `cwd` resolve in the
+target environment; `pipeCwd` and `pipeEnv` configure the local pipe process.
+The adapter command is appended to `pipeArgs`, or inserted where a whole
+`${debuggerCommand}` argument appears. `commandShell` selects `posix` quoting by
+default and accepts `powershell` for a PowerShell target shell. For a managed
+`csls.dll`, set `debuggerPath` to the assembly and optionally set
+`debuggerRuntimePath` to its target-side `dotnet` host.
+
+`docker exec` can carry the same protocol with `pipeProgram: "docker"` and
+`pipeArgs: ["exec", "-i", "container-name", "sh", "-c"]`. The transport
+keeps DAP on standard input/output; target output appears through normal debugger
+events. Use absolute target paths in `program` and map source roots with
+`sourceFileMap` when the editor and target filesystems differ.
+
 Set `stopAtEntry` to `true` to stop at the first executable entry-point statement.
 The default is `false`. Continue from that stop to run the application with its
 configured breakpoints. Restart applies the launch configuration's entry-stop setting.

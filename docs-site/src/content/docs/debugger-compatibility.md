@@ -68,8 +68,8 @@ configurations use familiar `program`, `cwd`, `args`, `env`, and `processId` pro
 Keep paths absolute. Move project building, launch-profile expansion, and test selection
 to the editor task that starts debugging.
 
-Replace adapter-specific remote transports with an invocation of `csls debugger dap` in
-the target environment. Replace proprietary debugger path/download settings with the
+Configure `pipeTransport` with `debuggerPath` set to the target-side csls executable
+for SSH and container sessions. Replace proprietary debugger path/download settings with the
 installed csls tool and validate it using `csls debugger doctor`. Configure the options
 documented in the [DAP reference](../debugger-dap-reference/) and
 [symbols](../debugger-symbols/).

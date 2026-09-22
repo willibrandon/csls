@@ -136,7 +136,9 @@ Restart retains logical breakpoints and starts a new stop generation. Refresh
 frames and variables after restarting.
 
 For remote or container debugging, run the adapter in the target environment and
-carry its standard streams through the editor's remote connection. Use
+carry its standard streams through the editor's remote connection. VS Code and
+Zed accept `pipeTransport` to start the adapter through a local `ssh` or
+`docker exec` pipe program. Use
 `sourceFileMap` to map build-time source paths to local source paths.
 
 See [setup and lifecycle](../docs-site/src/content/docs/debugger-setup.md) and the

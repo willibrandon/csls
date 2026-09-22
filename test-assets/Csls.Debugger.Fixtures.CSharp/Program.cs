@@ -55,6 +55,11 @@ internal static class Program
         ValueTuple<int, int>[] pairs = [new(0, 142), new(151, 152)];
         object boxedPair = pairs[1];
         int unboxedPairOracle = ((ValueTuple<int, int>)boxedPair).Item1;
+        if (arguments.Length >= 6)
+        {
+            File.WriteAllText(arguments[5],
+                Environment.GetEnvironmentVariable("CSLS_PIPE_TRANSPORT_MARKER") ?? string.Empty);
+        }
         if (arguments.Length >= 5)
         {
             File.WriteAllText(arguments[3], "started");

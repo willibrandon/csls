@@ -57,6 +57,14 @@ process that owns read-only ClrMD dump inspection.
 mode registers a discoverable local session and exposes an owner-only Unix-domain
 socket or named pipe. It never listens on TCP. Remote development runs the adapter
 inside the target environment and transports DAP through the editor connection.
+The VS Code and Zed extensions construct `pipeTransport` before opening DAP:
+they start one local pipe program with literal arguments, insert a shell-quoted
+`csls debugger dap` command at the requested argument position, and pass the
+resulting standard streams directly to the editor. The adapter receives the
+ordinary launch or attach request and resolves target paths in its own environment.
+The pipe program owns authentication; debugger protocol bytes never use a TCP
+listener. A configured `pipeEnv` applies to the local pipe process, while target
+`env` applies to the launched application.
 
 The evaluator worker is lazy and belongs to exactly one session. Private debugger
 control and evaluator RPC use inherited standard streams with length-prefixed

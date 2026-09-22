@@ -322,6 +322,40 @@
                 "type": "string",
                 "description": "Working directory for the application."
               },
+              "pipeTransport": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pipeProgram", "debuggerPath"],
+                "description": "Run the DAP adapter in the target environment through a local pipe program such as ssh or docker exec.",
+                "properties": {
+                  "pipeProgram": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                  "pipeArgs": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": { "type": "string", "maxLength": 32768 },
+                    "default": [],
+                    "description": "Literal pipe-program arguments. Use ${debuggerCommand} once as a whole argument to position the adapter command; otherwise it is appended."
+                  },
+                  "debuggerPath": {
+                    "type": "string", "minLength": 1, "maxLength": 32768,
+                    "description": "csls executable or managed csls.dll path in the target environment."
+                  },
+                  "debuggerRuntimePath": {
+                    "type": "string", "minLength": 1, "maxLength": 32768,
+                    "description": "dotnet host in the target environment when debuggerPath names a .dll. Defaults to dotnet."
+                  },
+                  "pipeCwd": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                  "pipeEnv": {
+                    "type": "object", "maxProperties": 128,
+                    "additionalProperties": { "type": "string", "maxLength": 32768 },
+                    "description": "Environment variables for the local pipe program."
+                  },
+                  "commandShell": {
+                    "type": "string", "enum": ["posix", "powershell"], "default": "posix",
+                    "description": "Shell syntax used to quote the adapter command in the target environment."
+                  }
+                }
+              },
               "args": {
                 "type": "array",
                 "description": "Arguments passed directly to the managed target as literal values.",
@@ -502,6 +536,40 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Operating-system process identifier for a running .NET process."
+              },
+              "pipeTransport": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pipeProgram", "debuggerPath"],
+                "description": "Run the DAP adapter in the target environment through a local pipe program such as ssh or docker exec.",
+                "properties": {
+                  "pipeProgram": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                  "pipeArgs": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": { "type": "string", "maxLength": 32768 },
+                    "default": [],
+                    "description": "Literal pipe-program arguments. Use ${debuggerCommand} once as a whole argument to position the adapter command; otherwise it is appended."
+                  },
+                  "debuggerPath": {
+                    "type": "string", "minLength": 1, "maxLength": 32768,
+                    "description": "csls executable or managed csls.dll path in the target environment."
+                  },
+                  "debuggerRuntimePath": {
+                    "type": "string", "minLength": 1, "maxLength": 32768,
+                    "description": "dotnet host in the target environment when debuggerPath names a .dll. Defaults to dotnet."
+                  },
+                  "pipeCwd": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                  "pipeEnv": {
+                    "type": "object", "maxProperties": 128,
+                    "additionalProperties": { "type": "string", "maxLength": 32768 },
+                    "description": "Environment variables for the local pipe program."
+                  },
+                  "commandShell": {
+                    "type": "string", "enum": ["posix", "powershell"], "default": "posix",
+                    "description": "Shell syntax used to quote the adapter command in the target environment."
+                  }
+                }
               },
               "dumpPath": {
                 "type": "string",

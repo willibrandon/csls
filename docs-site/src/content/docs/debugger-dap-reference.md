@@ -92,6 +92,7 @@ This page is generated from the shipping DAP dispatcher, target capabilities, an
 | --- | --- | --- | --- | --- |
 | `program` | `string` | Yes |  | Absolute path to the managed application assembly. |
 | `cwd` | `string` | No |  | Working directory for the application. |
+| `pipeTransport` | `object` | No |  | Run the DAP adapter in the target environment through a local pipe program such as ssh or docker exec. |
 | `args` | `array` | No | `[]` | Arguments passed directly to the managed target as literal values. |
 | `noDebug` | `boolean` | No | `false` | Run the target as an ordinary process. |
 | `stopAtEntry` | `boolean` | No | `false` | Stop at the first executable entry-point statement. |
@@ -116,6 +117,7 @@ Select exactly one of `processId` or `dumpPath`.
 | Property | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `processId` | `integer` | No |  | Operating-system process identifier for a running .NET process. |
+| `pipeTransport` | `object` | No |  | Run the DAP adapter in the target environment through a local pipe program such as ssh or docker exec. |
 | `dumpPath` | `string` | No |  | Absolute path to a managed process dump for read-only thread, stack, module, and captured-variable inspection. Select either dumpPath or processId. |
 | `runtimeIndex` | `integer` | No | `0` | Zero-based managed runtime index within the selected dump. |
 | `dacPath` | `string` | No |  | Absolute path to the matching runtime Data Access Component (DAC) for dump inspection. |

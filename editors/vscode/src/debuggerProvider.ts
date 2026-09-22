@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { createPipeTransportExecutable } from "./debuggerPipeTransport.js";
 
 export class DebuggerProvider implements vscode.DebugAdapterDescriptorFactory, vscode.Disposable {
   private readonly arguments_: readonly string[];
@@ -14,7 +15,11 @@ export class DebuggerProvider implements vscode.DebugAdapterDescriptorFactory, v
     this.registration = vscode.debug.registerDebugAdapterDescriptorFactory("coreclr", this);
   }
 
-  createDebugAdapterDescriptor(): vscode.DebugAdapterDescriptor {
+  createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.DebugAdapterDescriptor {
+    const pipeTransport: unknown = session.configuration["pipeTransport"];
+    if (pipeTransport !== undefined) {
+      return createPipeTransportExecutable(pipeTransport);
+    }
     return new vscode.DebugAdapterExecutable(this.command, [...this.arguments_]);
   }
 
