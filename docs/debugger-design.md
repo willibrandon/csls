@@ -599,7 +599,9 @@ rule for its instance method call.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;
-result binding uses the same inferred arguments before evaluation begins.
+result binding uses the same inferred arguments before evaluation begins. Multiple
+bounds for one method type parameter select their unique compatible loaded type through
+the source language's implicit reference and numeric conversions.
 The binder checks the current method's `class`, `struct`, `new()`, base-class,
 interface, and recursively loaded unmanaged-storage constraints against exact loaded
 type identities before target execution.

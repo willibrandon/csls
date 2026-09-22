@@ -494,6 +494,64 @@ internal static class DebuggerDumpArrayFixture
     internal static int PreferNonGenericForDebugger(int value) => 2;
 
     /// <summary>
+    /// Identifies the common type inferred from two independently typed arguments.
+    /// </summary>
+    /// <typeparam name="T">The common inferred argument type.</typeparam>
+    /// <param name="first">The first supplied value.</param>
+    /// <param name="second">The second supplied value.</param>
+    /// <returns>A marker identifying the inferred runtime type.</returns>
+    internal static int CommonGenericForDebugger<T>(T first, T second)
+    {
+        GC.KeepAlive(first);
+        GC.KeepAlive(second);
+        if (typeof(T) == typeof(int))
+        {
+            return 32;
+        }
+
+        if (typeof(T) == typeof(long))
+        {
+            return 64;
+        }
+
+        return typeof(T) == typeof(List<int>) ? 71 : 0;
+    }
+
+    /// <summary>
+    /// Identifies the common type inferred after considering three independent bounds.
+    /// </summary>
+    /// <typeparam name="T">The common inferred argument type.</typeparam>
+    /// <param name="first">The first supplied value.</param>
+    /// <param name="second">The second supplied value.</param>
+    /// <param name="third">The third supplied value.</param>
+    /// <returns>One when the common loaded type is System.Object.</returns>
+    internal static int CommonGenericForDebugger<T>(T first, T second, T third)
+    {
+        GC.KeepAlive(first);
+        GC.KeepAlive(second);
+        GC.KeepAlive(third);
+        return typeof(T) == typeof(object) ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Gets the C# compiler's common numeric inference result.
+    /// </summary>
+    /// <returns>The marker produced for the compiler-inferred Int64 type.</returns>
+    internal static int CompilerCommonNumericForDebugger() => CommonGenericForDebugger(41, 42L);
+
+    /// <summary>
+    /// Gets the C# compiler's common reference inference result.
+    /// </summary>
+    /// <param name="first">A loaded list subtype.</param>
+    /// <param name="second">An unrelated loaded reference type.</param>
+    /// <param name="third">An object-typed reference.</param>
+    /// <returns>The marker produced for the compiler-inferred System.Object type.</returns>
+    internal static int CompilerCommonReferenceForDebugger(
+        DebuggerFixtureList first,
+        StrongBox<int> second,
+        object third) => CommonGenericForDebugger(first, second, third);
+
+    /// <summary>
     /// Receives an inferred type satisfying a reference-type constraint.
     /// </summary>
     /// <typeparam name="T">The inferred reference type.</typeparam>
