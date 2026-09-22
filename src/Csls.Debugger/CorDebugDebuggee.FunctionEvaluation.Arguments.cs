@@ -69,8 +69,9 @@ internal sealed partial class CorDebugDebuggee
                 "ulong" => 0x0bu,
                 "float" => 0x0cu,
                 "double" => 0x0du,
-                "nint" => 0x18u,
-                "nuint" => 0x19u,
+                // CoreCLR converts these supported full-width literals to the native parameter signature.
+                "nint" => 0x0au,
+                "nuint" => 0x0bu,
                 _ => throw new NotSupportedException(
                     $"Managed function evaluation cannot materialize an argument of " +
                     $"type '{type}'.")
@@ -135,11 +136,11 @@ internal sealed partial class CorDebugDebuggee
                     SetGenericValue(generic, &number);
                     break;
                 case "nint":
-                    nint signedNative = checked((nint)(long)scalar);
+                    long signedNative = checked((long)scalar);
                     SetGenericValue(generic, &signedNative);
                     break;
                 case "nuint":
-                    nuint unsignedNative = checked((nuint)(ulong)scalar);
+                    ulong unsignedNative = checked((ulong)scalar);
                     SetGenericValue(generic, &unsignedNative);
                     break;
                 default:

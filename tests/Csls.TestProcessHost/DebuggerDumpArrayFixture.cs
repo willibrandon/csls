@@ -84,6 +84,78 @@ internal static class DebuggerDumpArrayFixture
     internal static uint RequireUnsignedForDebugger(uint value) => value;
 
     /// <summary>
+    /// Marks the signed overload preferred for a byte argument.
+    /// </summary>
+    /// <param name="value">The widened signed argument.</param>
+    /// <returns>The signed overload marker.</returns>
+    internal static int SelectSignedForDebugger(int value) => value + 100;
+
+    /// <summary>
+    /// Marks the unsigned overload competing for a byte argument.
+    /// </summary>
+    /// <param name="value">The widened unsigned argument.</param>
+    /// <returns>The unsigned overload marker.</returns>
+    internal static int SelectSignedForDebugger(uint value) => checked((int)value) + 200;
+
+    /// <summary>
+    /// Gets the compiler-selected signed overload for the same byte argument.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static int CompilerSelectSignedForDebugger()
+    {
+        byte value = 41;
+        return SelectSignedForDebugger(value);
+    }
+
+    /// <summary>
+    /// Marks the native signed overload preferred before widening to Int64.
+    /// </summary>
+    /// <param name="value">The widened native integer argument.</param>
+    /// <returns>The native integer overload marker.</returns>
+    internal static long SelectNativeForDebugger(nint value) => checked((long)value) + 3000;
+
+    /// <summary>
+    /// Marks the Int64 overload competing with native integer widening.
+    /// </summary>
+    /// <param name="value">The widened Int64 argument.</param>
+    /// <returns>The Int64 overload marker.</returns>
+    internal static long SelectNativeForDebugger(long value) => value + 4000;
+
+    /// <summary>
+    /// Gets the compiler-selected native integer overload for a byte argument.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static long CompilerSelectNativeForDebugger()
+    {
+        byte value = 41;
+        return SelectNativeForDebugger(value);
+    }
+
+    /// <summary>
+    /// Marks the native unsigned overload preferred before widening to UInt64.
+    /// </summary>
+    /// <param name="value">The widened native unsigned argument.</param>
+    /// <returns>The native unsigned overload marker.</returns>
+    internal static ulong SelectNativeUnsignedForDebugger(nuint value) => checked((ulong)value) + 5000;
+
+    /// <summary>
+    /// Marks the UInt64 overload competing with native unsigned widening.
+    /// </summary>
+    /// <param name="value">The widened UInt64 argument.</param>
+    /// <returns>The UInt64 overload marker.</returns>
+    internal static ulong SelectNativeUnsignedForDebugger(ulong value) => value + 6000;
+
+    /// <summary>
+    /// Gets the compiler-selected native unsigned overload for a UInt32 argument.
+    /// </summary>
+    /// <returns>The compiler-selected overload marker.</returns>
+    internal static ulong CompilerSelectNativeUnsignedForDebugger()
+    {
+        uint value = 41;
+        return SelectNativeUnsignedForDebugger(value);
+    }
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

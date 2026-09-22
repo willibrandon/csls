@@ -207,8 +207,10 @@ internal static class ManagedFunctionMethodResolver
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(preferred, alternative, language);
             bool alternativeToPreferred = conversions.IsImplicit(alternative, preferred, thread) ||
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(alternative, preferred, language);
+            bool preferredSignedTarget = ManagedPrimitiveConversionEvaluator.IsPreferredSignedInvocationTarget(
+                preferred, alternative, language);
             if (argument?.IsSameType(alternative) == true ||
-                !preferredToAlternative || alternativeToPreferred)
+                !(preferredToAlternative && !alternativeToPreferred || preferredSignedTarget))
             {
                 return false;
             }

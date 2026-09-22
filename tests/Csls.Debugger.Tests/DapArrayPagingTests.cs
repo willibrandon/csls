@@ -207,7 +207,13 @@ public sealed class DapArrayPagingTests : DapTestContext
         {
             ($"{receiver}.SelectWidenedForDebugger(vector[0])", "1041"),
             ($"{receiver}.SelectWidenedForDebugger((float)vector[0])", "2041"),
-            ($"{receiver}.SelectWidenedForDebugger((double)vector[0])", "2041")
+            ($"{receiver}.SelectWidenedForDebugger((double)vector[0])", "2041"),
+            ($"{receiver}.SelectSignedForDebugger((byte)vector[0])", "141"),
+            ($"{receiver}.CompilerSelectSignedForDebugger()", "141"),
+            ($"{receiver}.SelectNativeForDebugger((byte)vector[0])", "3041"),
+            ($"{receiver}.CompilerSelectNativeForDebugger()", "3041"),
+            ($"{receiver}.SelectNativeUnsignedForDebugger((uint)vector[0])", "5041"),
+            ($"{receiver}.CompilerSelectNativeUnsignedForDebugger()", "5041")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,

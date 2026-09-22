@@ -108,9 +108,7 @@ internal static class ManagedPrimitiveConversionEvaluator
         ManagedBoundType target,
         DebugExpressionLanguage language)
     {
-        if (source.ModuleId is null || source.ModuleId != target.ModuleId ||
-            source.ElementType is not (>= 0x03 and <= 0x0d or 0x18 or 0x19) ||
-            target.ElementType is not (>= 0x03 and <= 0x0d or 0x18 or 0x19))
+        if (!AreLoadedNumericTypes(source, target))
         {
             return false;
         }
@@ -119,6 +117,33 @@ internal static class ManagedPrimitiveConversionEvaluator
         string? targetName = TryNormalizeTypeName(target.Name, DebugExpressionLanguage.CSharp);
         return sourceName is not null && targetName is not null &&
             IsImplicitNumericConversion(sourceName, targetName, language);
+    }
+
+    /// <summary>
+    /// Applies C#'s signed-integral better-target rule to two loaded numeric parameters.
+    /// </summary>
+    internal static bool IsPreferredSignedInvocationTarget(
+        ManagedBoundType preferred,
+        ManagedBoundType alternative,
+        DebugExpressionLanguage language)
+    {
+        if (language != DebugExpressionLanguage.CSharp ||
+            !AreLoadedNumericTypes(preferred, alternative))
+        {
+            return false;
+        }
+
+        string? signed = TryNormalizeTypeName(preferred.Name, language);
+        string? unsigned = TryNormalizeTypeName(alternative.Name, language);
+        return signed switch
+        {
+            "sbyte" => unsigned is "byte" or "ushort" or "uint" or "nuint" or "ulong",
+            "short" => unsigned is "ushort" or "uint" or "nuint" or "ulong",
+            "int" => unsigned is "uint" or "nuint" or "ulong",
+            "nint" => unsigned is "nuint" or "ulong",
+            "long" => unsigned is "nuint" or "ulong",
+            _ => false
+        };
     }
 
     /// <summary>
@@ -208,32 +233,41 @@ internal static class ManagedPrimitiveConversionEvaluator
         string target,
         DebugExpressionLanguage language)
     {
-        if (language == DebugExpressionLanguage.FSharp)
+        if (language == DebugExpressionLanguage.FSharp ||
+            language != DebugExpressionLanguage.CSharp &&
+            (source is "nint" or "nuint" || target is "nint" or "nuint"))
         {
             return false;
         }
 
         return source switch
         {
-            "sbyte" => target is "short" or "int" or "long" or "float" or "double" or
+            "sbyte" => target is "short" or "int" or "nint" or "long" or "float" or "double" or
                 "decimal",
-            "byte" => target is "short" or "ushort" or "int" or "uint" or "long" or
-                "ulong" or "float" or "double" or "decimal",
-            "short" => target is "int" or "long" or "float" or "double" or "decimal",
-            "ushort" => target is "int" or "uint" or "long" or "ulong" or "float" or
-                "double" or "decimal",
-            "int" => target is "long" or "float" or "double" or "decimal",
-            "uint" => target is "long" or "ulong" or "float" or "double" or "decimal",
+            "byte" => target is "short" or "ushort" or "int" or "uint" or "nint" or
+                "nuint" or "long" or "ulong" or "float" or "double" or "decimal",
+            "short" => target is "int" or "nint" or "long" or "float" or "double" or "decimal",
+            "ushort" => target is "int" or "uint" or "nint" or "nuint" or "long" or "ulong" or
+                "float" or "double" or "decimal",
+            "int" => target is "nint" or "long" or "float" or "double" or "decimal",
+            "uint" => target is "nuint" or "long" or "ulong" or "float" or "double" or "decimal",
             "long" => target is "float" or "double" or "decimal",
             "ulong" => target is "float" or "double" or "decimal",
-            "char" => target is "ushort" or "int" or "uint" or "long" or "ulong" or
-                "float" or "double" or "decimal",
+            "char" => target is "ushort" or "int" or "uint" or "nint" or "nuint" or "long" or
+                "ulong" or "float" or "double" or "decimal",
             "float" => target == "double",
             "nint" => target is "long" or "float" or "double" or "decimal",
             "nuint" => target is "ulong" or "float" or "double" or "decimal",
             _ => false
         };
     }
+
+    private static bool AreLoadedNumericTypes(
+        ManagedBoundType source,
+        ManagedBoundType target) => source.ModuleId is not null &&
+        source.ModuleId == target.ModuleId &&
+        source.ElementType is >= 0x03 and <= 0x0d or 0x18 or 0x19 &&
+        target.ElementType is >= 0x03 and <= 0x0d or 0x18 or 0x19;
 
     private static bool IsIntegral(string type) => type is
         "sbyte" or "byte" or "short" or "ushort" or "int" or "uint" or "long" or
