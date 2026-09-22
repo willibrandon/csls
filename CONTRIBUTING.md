@@ -18,7 +18,7 @@ files, workspaces, SDKs, and editor integrations. Mocking libraries and hand-wri
 substitutes for production services are prohibited.
 
 Building the debugger test project also builds its portable C#, Visual Basic, and
-F# fixtures in Debug and Release. CI shares these outputs across platform jobs.
+F# fixtures in Debug and Release.
 Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
 
 Debugger dump artifacts contain `debugger-dumps.tar.gz`. Extract this archive into
@@ -30,9 +30,6 @@ The `DebuggerStress` category includes a live four-GiB object graph. Run these
 tests on a 64-bit host with at least eight GiB of memory capacity. The graph
 test checks populated target memory, bounded inspection pages, adapter memory
 growth, and process cleanup.
-CI runs the four-GiB graph test on Linux and Windows in both architectures and
-on macOS Intel. The standard seven-GiB macOS ARM64 runner runs the other stress
-tests.
 
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
@@ -45,9 +42,8 @@ an opening tag, one text line, and a closing tag.
 Repository automation is implemented only as .NET file-based C# apps under
 `scripts/`. Shell, PowerShell, batch, and command scripts are not used.
 
-The GitHub Actions matrix runs the debugger engine and protocol suite on x64 and
-arm64 Windows, Linux, and macOS runners. Language-server, terminal-editor, and
-graphical-editor suites are sharded on Linux, while the release workflow also
+Language-server, terminal-editor, and graphical-editor suites are sharded on
+Linux, while the release workflow also
 validates the Windows x86, Linux musl x64, and Linux musl arm64 tool packages.
 Every Native AOT launcher is checked from its ILC size report by Dotsider, and
 CodeQL findings fail the analysis job. The development container installs every
@@ -78,7 +74,7 @@ dotnet run --file scripts/Provision-NetcoredbgOracle.cs
 `DapAsyncThreadStartupTests` runs against csls by default. Set
 `CSLS_DAP_ORACLE_PATH` to the provisioner's printed executable path to run the
 same source-breakpoint, local-value, and process-termination checks against
-netcoredbg. Linux arm64 CI executes both adapters and retains their crash evidence.
+netcoredbg.
 
 Set `CSLS_TOOLS_ROOT` to keep provisioned tools outside the repository. The
 development container uses a container-local tool root so prefix-dependent
