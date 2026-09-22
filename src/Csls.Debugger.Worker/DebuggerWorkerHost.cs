@@ -21,7 +21,10 @@ internal static partial class DebuggerWorkerHost
         ArgumentNullException.ThrowIfNull(arguments);
         try
         {
-            DebuggerWorkerEnvironment.InitializeCurrentProcess();
+            if (arguments.Count > 0 && arguments[0] != "terminal-launch")
+            {
+                DebuggerWorkerEnvironment.InitializeCurrentProcess();
+            }
             return arguments.Count == 0
                 ? Fail("The launcher supplied no debugger operation.")
                 : arguments[0] switch
@@ -29,6 +32,8 @@ internal static partial class DebuggerWorkerHost
                     "dap" => await RunDapAsync(cancellationToken).ConfigureAwait(false),
                     "doctor" => RunDoctor(),
                     "control" => await RunControlAsync(arguments, cancellationToken)
+                        .ConfigureAwait(false),
+                    "terminal-launch" => await RunTerminalLaunchAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "launch" => await RunLaunchAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),

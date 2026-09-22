@@ -425,6 +425,20 @@ if (args is ["--announce-and-spin-until-file", string spinPath])
     return 0;
 }
 
+if (args is ["--debugger-terminal-stdio-fixture"])
+{
+    if (Environment.GetEnvironmentVariable("CSLS_TERMINAL_LAUNCH_SECRET") is not null ||
+        Environment.GetEnvironmentVariable("CSLS_TERMINAL_LAUNCH_PIPE") is not null)
+    {
+        return 3;
+    }
+
+    await Console.Out.WriteLineAsync("ready").ConfigureAwait(false);
+    string? input = await Console.In.ReadLineAsync().ConfigureAwait(false);
+    await Console.Out.WriteLineAsync($"echo:{input}").ConfigureAwait(false);
+    return input == "hello" ? 0 : 2;
+}
+
 if (args is ["--debugger-dump-wait", _])
 {
     DebuggerBlockingWait.Wait("ready");
