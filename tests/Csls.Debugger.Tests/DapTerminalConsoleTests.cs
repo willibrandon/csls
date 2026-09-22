@@ -304,6 +304,163 @@ public sealed class DapTerminalConsoleTests : DapTestContext
     }
 
     /// <summary>
+    /// Replaces an interactive no-debug child without keeping the old terminal target alive.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NoDebugTerminalRestartReplacesInteractiveChild()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+        using var firstLauncher = new Process();
+        using var secondLauncher = new Process();
+        bool firstStarted = false;
+        bool secondStarted = false;
+        try
+        {
+            int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
+                writeProperties: writer => writer.WriteBoolean("supportsRunInTerminalRequest", true))
+                .ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, initialize, "initialize", success: true);
+            }
+
+            int launch = await client.SendRequestAsync("launch", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("program", ResolveTestProcessHost());
+                writer.WriteString("console", "integratedTerminal");
+                writer.WriteBoolean("noDebug", true);
+                writer.WriteStartArray("args");
+                writer.WriteStringValue("--debugger-terminal-stdio-fixture");
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(initialized.RootElement, "initialized");
+            }
+
+            int configuration = await client.SendRequestAsync(
+                "configurationDone", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using (JsonDocument reverse = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                JsonElement request = reverse.RootElement;
+                firstLauncher.StartInfo = CreateTerminalStart(request.GetProperty("arguments"));
+                firstStarted = firstLauncher.Start();
+                Assert.IsTrue(firstStarted);
+                _ = await client.SendResponseAsync(request.GetProperty("seq").GetInt32(),
+                    "runInTerminal", success: true, message: null, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, configuration, "configurationDone", success: true);
+            }
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, launch, "launch", success: true);
+            }
+            using (JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(process.RootElement, "process");
+                Assert.AreNotEqual(firstLauncher.Id, process.RootElement.GetProperty("body")
+                    .GetProperty("systemProcessId").GetInt32());
+            }
+            Assert.AreEqual("ready", await firstLauncher.StandardOutput
+                .ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false));
+
+            int restart = await client.SendRequestAsync(
+                "restart", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using (JsonDocument oldExited = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(oldExited.RootElement, "exited");
+            }
+            using (JsonDocument reverse = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                JsonElement request = reverse.RootElement;
+                Assert.AreEqual("runInTerminal", request.GetProperty("command").GetString());
+                secondLauncher.StartInfo = CreateTerminalStart(request.GetProperty("arguments"));
+                secondStarted = secondLauncher.Start();
+                Assert.IsTrue(secondStarted);
+                _ = await client.SendResponseAsync(request.GetProperty("seq").GetInt32(),
+                    "runInTerminal", success: true, message: null, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, restart, "restart", success: true);
+            }
+            using (JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(process.RootElement, "process");
+                Assert.AreNotEqual(secondLauncher.Id, process.RootElement.GetProperty("body")
+                    .GetProperty("systemProcessId").GetInt32());
+            }
+            await firstLauncher.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("ready", await secondLauncher.StandardOutput
+                .ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            await secondLauncher.StandardInput.WriteLineAsync("hello").ConfigureAwait(false);
+            await secondLauncher.StandardInput.FlushAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual("echo:hello", await secondLauncher.StandardOutput
+                .ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            using (JsonDocument exited = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(exited.RootElement, "exited");
+                Assert.AreEqual(0, exited.RootElement.GetProperty("body").GetProperty("exitCode").GetInt32());
+            }
+            using (JsonDocument terminated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(terminated.RootElement, "terminated");
+            }
+            await secondLauncher.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, secondLauncher.ExitCode);
+        }
+        finally
+        {
+            if (secondStarted)
+            {
+                if (!secondLauncher.HasExited)
+                {
+                    secondLauncher.Kill(entireProcessTree: true);
+                }
+
+                await secondLauncher.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            if (firstStarted)
+            {
+                if (!firstLauncher.HasExited)
+                {
+                    firstLauncher.Kill(entireProcessTree: true);
+                }
+
+                await firstLauncher.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            TestContext.WriteLine(client.ProtocolTranscript);
+            TestContext.WriteLine(client.Diagnostics.ToString());
+        }
+    }
+
+    /// <summary>
     /// Keeps terminal handles and real target ownership across a managed restart.
     /// </summary>
     [TestMethod]

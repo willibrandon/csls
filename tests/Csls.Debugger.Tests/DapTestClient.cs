@@ -171,6 +171,12 @@ internal sealed partial class DapTestClient : IAsyncDisposable
                 writer.WriteString("message", message);
             }
 
+            if (success && string.Equals(command, "runInTerminal", StringComparison.Ordinal))
+            {
+                writer.WriteStartObject("body");
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 
