@@ -105,7 +105,7 @@ internal static class CSharpExpressionLowerer
             DebugExpressionNodeKind.ObjectCreation,
             typeName,
             creation.ArgumentList?.Arguments
-                .Select(argument => Lower(argument.Expression))
+                .Select(LowerArgument)
                 .ToArray() ?? []);
     }
 
@@ -124,9 +124,16 @@ internal static class CSharpExpressionLowerer
             method.Identifier.ValueText,
             [
                 Lower(member.Expression),
-                .. invocation.ArgumentList.Arguments.Select(argument => Lower(argument.Expression))
+                .. invocation.ArgumentList.Arguments.Select(LowerArgument)
             ]);
     }
+
+    private static DebugExpressionNode LowerArgument(ArgumentSyntax argument) =>
+        argument.NameColon is { } name
+            ? Node(DebugExpressionNodeKind.NamedArgument,
+                name.Name.Identifier.ValueText,
+                Lower(argument.Expression))
+            : Lower(argument.Expression);
 
     private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
     {

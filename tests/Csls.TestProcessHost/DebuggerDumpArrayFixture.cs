@@ -202,6 +202,24 @@ internal static class DebuggerDumpArrayFixture
     }
 
     /// <summary>
+    /// Combines two values to expose the CLR parameter order of a named call.
+    /// </summary>
+    /// <param name="first">The high-order value.</param>
+    /// <param name="second">The low-order value.</param>
+    /// <returns>The order-sensitive result.</returns>
+    internal static int CombineNamedForDebugger(int first, int second) => first * 100 + second;
+
+    /// <summary>
+    /// Exposes the source-language ordering rule for later positional arguments.
+    /// </summary>
+    /// <param name="first">The high-order value.</param>
+    /// <param name="second">The middle value.</param>
+    /// <param name="third">The low-order value.</param>
+    /// <returns>The order-sensitive result.</returns>
+    internal static int CombineThreeForDebugger(int first, int second, int third) =>
+        first * 10000 + second * 100 + third;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

@@ -13,6 +13,7 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
         IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
         nint thread)
     {
         if (!TryGetQualifiedTypeName(receiver, out string typeName))
@@ -25,7 +26,8 @@ internal sealed partial class CorDebugDebuggee
             typeName,
             language,
             "static call");
-        (uint Token, ManagedBoundType[] Parameters)? method = ManagedFunctionMethodResolver.ResolveCall(
+        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? method =
+            ManagedFunctionMethodResolver.ResolveCall(
             resolvedModule,
             typeToken,
             methodName,
@@ -34,7 +36,8 @@ internal sealed partial class CorDebugDebuggee
             staticMethod: true,
             _boundTypes,
             thread,
-            constantArguments: constantArguments);
+            constantArguments: constantArguments,
+            argumentNames: argumentNames);
         if (method is null)
         {
             throw new InvalidOperationException(
@@ -45,7 +48,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
             resolvedModule.Pointer, method.Value.Token, [], thread);
         return new ManagedFunctionBinding(
-            GetModuleFunction(resolvedModule.Pointer, method.Value.Token), [], resultType, method.Value.Parameters);
+            GetModuleFunction(resolvedModule.Pointer, method.Value.Token), [], resultType,
+            method.Value.Parameters, method.Value.ParameterSourceIndices);
     }
 
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(

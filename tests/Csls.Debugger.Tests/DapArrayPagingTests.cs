@@ -303,6 +303,66 @@ public sealed class DapArrayPagingTests : DapTestContext
     }
 
     /// <summary>
+    /// Binds named source arguments to loaded static, instance, and constructor parameters.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NamedArgumentsFollowLoadedParameterNamesAndClrOrder()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string staticReceiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
+        foreach ((string expression, string expected) in new[]
+        {
+            ($"{staticReceiver}.CombineNamedForDebugger(second: vector[1], first: vector[0])", "4142"),
+            ($"{staticReceiver}.CombineNamedForDebugger(first: vector[0], vector[1])", "4142"),
+            ($"{staticReceiver}.CombineThreeForDebugger(first: vector[0], second: vector[1], vector[2])", "414243"),
+            ("capturedObject.CombineNamedForDebugger(second: vector[1], first: vector[0])", "4184")
+        })
+        {
+            JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, value.GetProperty("result").GetString());
+            using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement created = await ReadEvaluationAsync(client, frameId,
+            "new Csls.TestProcessHost.DebuggerFixtureValue(text: path, " +
+            "evaluationSignalPath: path, number: vector[0])", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement[] fields = await ReadPageAsync(client,
+            created.GetProperty("variablesReference").GetInt32(), 0, 0, "named").ConfigureAwait(false);
+        JsonElement number = Assert.ContainsSingle(fields.Where(field =>
+            field.GetProperty("name").GetString() == "Number"));
+        Assert.AreEqual("41", number.GetProperty("value").GetString());
+
+        JsonElement rejected = await ReadEvaluationAsync(client, frameId,
+            $"{staticReceiver}.CombineNamedForDebugger(unknown: vector[1], first: vector[0])",
+            success: false, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("No static method", Assert.IsInstanceOfType<string>(
+            rejected.GetProperty("message").GetString()));
+        JsonElement outOfPosition = await ReadEvaluationAsync(client, frameId,
+            $"{staticReceiver}.CombineThreeForDebugger(second: 42, first: 41, 43)",
+            success: false, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("No static method", Assert.IsInstanceOfType<string>(
+            outOfPosition.GetProperty("message").GetString()));
+        JsonElement stillStopped = await ReadEvaluationAsync(client, frameId, "vector[0]", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("41", stillStopped.GetProperty("result").GetString());
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Publishes exact array sizes for locals and nested elements when the client supports paging.
     /// </summary>
     /// <param name="paging">Whether the client advertises variable paging.</param>

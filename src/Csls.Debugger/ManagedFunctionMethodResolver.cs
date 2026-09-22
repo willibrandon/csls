@@ -32,7 +32,7 @@ internal static class ManagedFunctionMethodResolver
     /// <summary>
     /// Resolves a callable declaration together with its exact bound parameter types.
     /// </summary>
-    internal static (uint Token, ManagedBoundType[] Parameters)? ResolveCall(
+    internal static (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? ResolveCall(
         CorDebugLoadedModule module,
         uint typeToken,
         string methodName,
@@ -42,7 +42,8 @@ internal static class ManagedFunctionMethodResolver
         ManagedBoundTypeSystem types,
         nint thread,
         IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
-        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null)
+        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null,
+        IReadOnlyList<string?>? argumentNames = null)
     {
         using PEReader? reader = module.OpenPeReader();
         if (reader is null)
@@ -52,7 +53,7 @@ internal static class ManagedFunctionMethodResolver
 
         using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), module.MetadataDeltas);
         return ResolveCall(metadata, module.Pointer, typeToken, methodName, language, arguments,
-            staticMethod, types, thread, declaringTypeArguments, constantArguments);
+            staticMethod, types, thread, declaringTypeArguments, constantArguments, argumentNames);
     }
 
     /// <summary>
@@ -77,7 +78,7 @@ internal static class ManagedFunctionMethodResolver
     /// <summary>
     /// Resolves the unique best declaration and preserves its bound parameter types.
     /// </summary>
-    internal static (uint Token, ManagedBoundType[] Parameters)? ResolveCall(
+    internal static (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? ResolveCall(
         ManagedMetadataImage metadata,
         nint module,
         uint typeToken,
@@ -88,7 +89,8 @@ internal static class ManagedFunctionMethodResolver
         ManagedBoundTypeSystem types,
         nint thread,
         IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
-        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null)
+        IReadOnlyList<ManagedExpressionValue?>? constantArguments = null,
+        IReadOnlyList<string?>? argumentNames = null)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -103,7 +105,8 @@ internal static class ManagedFunctionMethodResolver
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
         var conversions = new ManagedReferenceConversion(types);
-        var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters)>();
+        var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters,
+            int[] ParameterSourceIndices)>();
         foreach (MethodDefinitionHandle methodHandle in metadata.GetMethods(typeHandle))
         {
             MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
@@ -123,11 +126,24 @@ internal static class ManagedFunctionMethodResolver
                 continue;
             }
 
-            ManagedBoundType[] parameters = [.. signature.ParameterTypes.Select(parameter =>
+            int[]? parameterSourceIndices = ManagedFunctionArgumentMap.TryCreate(
+                metadata, methodHandle, argumentNames, arguments.Count, language);
+            if (parameterSourceIndices is null)
+            {
+                continue;
+            }
+
+            ManagedBoundType[] declaredParameters = [.. signature.ParameterTypes.Select(parameter =>
                 types.Bind(parameter, declaringTypeArguments ?? [], [], thread))];
+            var parameters = new ManagedBoundType[arguments.Count];
+            for (int index = 0; index < declaredParameters.Length; index++)
+            {
+                parameters[parameterSourceIndices[index]] = declaredParameters[index];
+            }
+
             if (IsApplicable(arguments, parameters, constantArguments, language, conversions, thread))
             {
-                matches.Add((methodHandle, parameters));
+                matches.Add((methodHandle, parameters, parameterSourceIndices));
             }
         }
 
@@ -136,7 +152,7 @@ internal static class ManagedFunctionMethodResolver
             return null;
         }
 
-        (MethodDefinitionHandle Handle, ManagedBoundType[] Parameters)[] bestMatches =
+        (MethodDefinitionHandle Handle, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)[] bestMatches =
             [.. matches.Where(candidate => !matches.Any(other =>
                 other.Handle != candidate.Handle &&
                 IsBetter(other.Parameters, candidate.Parameters, arguments, language, conversions, thread)))];
@@ -148,7 +164,8 @@ internal static class ManagedFunctionMethodResolver
                 $"ambiguous on runtime type '{typeName}'.");
         }
 
-        return (checked((uint)MetadataTokens.GetToken(bestMatches[0].Handle)), bestMatches[0].Parameters);
+        return (checked((uint)MetadataTokens.GetToken(bestMatches[0].Handle)),
+            bestMatches[0].Parameters, bestMatches[0].ParameterSourceIndices);
     }
 
     private static bool IsApplicable(

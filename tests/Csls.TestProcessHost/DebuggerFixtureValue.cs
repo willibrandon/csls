@@ -68,6 +68,14 @@ internal sealed class DebuggerFixtureValue
     public bool IsOriginalText(string value) => ReferenceEquals(Text, value);
 
     /// <summary>
+    /// Combines two arguments through an instance method with named parameters.
+    /// </summary>
+    /// <param name="first">The high-order value.</param>
+    /// <param name="second">The low-order value.</param>
+    /// <returns>The order-sensitive result.</returns>
+    public int CombineNamedForDebugger(int first, int second) => first * 100 + second + Number;
+
+    /// <summary>
     /// Gets the tuple field through its declared element names.
     /// </summary>
     public (int Code, string Label) PairProperty => Pair;

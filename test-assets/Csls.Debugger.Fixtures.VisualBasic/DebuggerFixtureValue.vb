@@ -63,6 +63,26 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         End Function
 
         ''' <summary>
+        ''' Combines named instance arguments with this receiver's stored number.
+        ''' </summary>
+        ''' <param name="first">The high-order value.</param>
+        ''' <param name="second">The low-order value.</param>
+        ''' <returns>The order-sensitive instance result.</returns>
+        Friend Function CombineNamed(first As Integer, second As Integer) As Integer
+            Return first * 100 + second + _number
+        End Function
+
+        ''' <summary>
+        ''' Combines named static arguments in CLR parameter order.
+        ''' </summary>
+        ''' <param name="first">The high-order value.</param>
+        ''' <param name="second">The low-order value.</param>
+        ''' <returns>The order-sensitive static result.</returns>
+        Friend Shared Function CombineNamedStatic(first As Integer, second As Integer) As Integer
+            Return first * 100 + second
+        End Function
+
+        ''' <summary>
         ''' Returns the length of a debugger-materialized string.
         ''' </summary>
         ''' <param name="value">The string supplied by managed function evaluation.</param>

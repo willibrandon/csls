@@ -16,6 +16,7 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
         IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
         nint thread)
     {
         ManagedRuntimeTypeReference runtimeType = ManagedRuntimeTypeNameParser.Parse(
@@ -54,7 +55,8 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedBoundType[] boundTypeArguments = [.. runtimeType.TypeArguments.Select(
             argument => _boundTypes.BindName(argument.DebuggerTypeName, language, thread))];
-        (uint Token, ManagedBoundType[] Parameters)? constructor = ManagedFunctionMethodResolver.ResolveCall(
+        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? constructor =
+            ManagedFunctionMethodResolver.ResolveCall(
             metadata,
             module.Pointer,
             typeToken,
@@ -65,7 +67,8 @@ internal sealed partial class CorDebugDebuggee
             _boundTypes,
             thread,
             declaringTypeArguments: boundTypeArguments,
-            constantArguments: constantArguments);
+            constantArguments: constantArguments,
+            argumentNames: argumentNames);
         if (constructor is null)
         {
             throw new InvalidOperationException(
@@ -90,7 +93,8 @@ internal sealed partial class CorDebugDebuggee
             ManagedBoundType? resultType = _boundTypes.BindMethodResult(
                 module.Pointer, constructor.Value.Token, boundArguments, thread, constructsObject: true);
             function = GetModuleFunction(module.Pointer, constructor.Value.Token);
-            return new ManagedFunctionBinding(function, typeArguments, resultType, constructor.Value.Parameters);
+            return new ManagedFunctionBinding(function, typeArguments, resultType,
+                constructor.Value.Parameters, constructor.Value.ParameterSourceIndices);
         }
         catch
         {

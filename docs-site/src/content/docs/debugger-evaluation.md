@@ -124,6 +124,9 @@ another module. Arguments can be CLR primitives, `null`, current-generation obje
 array references, or literal and side-effect-free computed strings. Strings are
 allocated in the target with their exact UTF-16 length, including embedded NUL values.
 The binder validates type identity and resolves the overload before execution.
+C# and Visual Basic calls bind named arguments to the loaded method or constructor's
+parameter names. Argument values are evaluated in source order and passed in CLR
+parameter order; Visual Basic names are matched case-insensitively.
 
 Function evaluation runs on the selected managed thread with a five-second deadline.
 Evaluations run one at a time. Overlapping DAP requests queue in arrival order.

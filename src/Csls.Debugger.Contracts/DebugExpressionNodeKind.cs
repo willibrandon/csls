@@ -83,5 +83,10 @@ public enum DebugExpressionNodeKind
     /// <summary>
     /// Applies a source-language upcast requiring an implicit reference conversion.
     /// </summary>
-    ReferenceUpcast
+    ReferenceUpcast,
+
+    /// <summary>
+    /// Binds a direct invocation or constructor argument to a named parameter.
+    /// </summary>
+    NamedArgument
 }

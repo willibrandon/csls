@@ -36,10 +36,15 @@ internal static class ManagedExpressionPlanValidator
         }
 
         int nodeCount = 0;
-        ValidateNode(plan.Root, depth: 0, ref nodeCount);
+        ValidateNode(plan.Root, depth: 0, ref nodeCount, parentKind: null, childIndex: -1);
     }
 
-    private static void ValidateNode(DebugExpressionNode node, int depth, ref int nodeCount)
+    private static void ValidateNode(
+        DebugExpressionNode node,
+        int depth,
+        ref int nodeCount,
+        DebugExpressionNodeKind? parentKind,
+        int childIndex)
     {
         ArgumentNullException.ThrowIfNull(node);
         if (depth > MaximumDepth || ++nodeCount > MaximumNodes)
@@ -68,6 +73,7 @@ internal static class ManagedExpressionPlanValidator
             DebugExpressionNodeKind.TryCast or
             DebugExpressionNodeKind.ReferenceCast or
             DebugExpressionNodeKind.ReferenceUpcast or
+            DebugExpressionNodeKind.NamedArgument or
             DebugExpressionNodeKind.Unary => 1,
             DebugExpressionNodeKind.Binary => 2,
             DebugExpressionNodeKind.Conditional => 3,
@@ -110,10 +116,19 @@ internal static class ManagedExpressionPlanValidator
             throw new InvalidDataException("A default literal cannot carry text or an inferred type.");
         }
 
-        ValidateOperator(node);
-        foreach (DebugExpressionNode child in children)
+        if (node.Kind == DebugExpressionNodeKind.NamedArgument &&
+            (parentKind is not (DebugExpressionNodeKind.Invocation or DebugExpressionNodeKind.ObjectCreation) ||
+             parentKind == DebugExpressionNodeKind.Invocation && childIndex == 0 ||
+             string.IsNullOrWhiteSpace(node.Text) || node.Text.Length > 1024 || node.TypeName is not null))
         {
-            ValidateNode(child, depth + 1, ref nodeCount);
+            throw new InvalidDataException(
+                "A named argument requires a bounded parameter name and a direct call argument position.");
+        }
+
+        ValidateOperator(node);
+        for (int index = 0; index < children.Count; index++)
+        {
+            ValidateNode(children[index], depth + 1, ref nodeCount, node.Kind, index);
         }
     }
 

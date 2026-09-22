@@ -107,6 +107,7 @@ internal sealed partial class CorDebugDebuggee
         ManagedExpressionValue? receiver = null;
         var suppliedArguments = new ManagedExpressionValue[argumentCount];
         var constantArguments = new ManagedExpressionValue?[argumentCount];
+        string?[] argumentNames = new string?[argumentCount];
         try
         {
             if (materializesString)
@@ -123,6 +124,12 @@ internal sealed partial class CorDebugDebuggee
                 for (int index = 0; index < suppliedArguments.Length; index++)
                 {
                     DebugExpressionNode argumentNode = operation.Children[index + argumentOffset];
+                    if (argumentNode.Kind == DebugExpressionNodeKind.NamedArgument)
+                    {
+                        argumentNames[index] = argumentNode.Text;
+                        argumentNode = argumentNode.Children[0];
+                    }
+
                     suppliedArguments[index] = EvaluateNode(
                         frame,
                         plan,
@@ -188,10 +195,13 @@ internal sealed partial class CorDebugDebuggee
                 ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
                     suppliedArguments, plan.Language, thread);
                 ManagedFunctionBinding binding = constructsObject
-                    ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes, constantArguments, thread)
+                    ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
+                        constantArguments, argumentNames, thread)
                     : receiverValue == 0
-                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, argumentTypes, constantArguments, thread)
-                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, argumentTypes, constantArguments, thread,
+                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language,
+                            argumentTypes, constantArguments, argumentNames, thread)
+                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language,
+                            argumentTypes, constantArguments, argumentNames, thread,
                             property?.DeclaringType ?? receiver?.ExplicitReceiverType, property?.Getter.MethodToken);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
@@ -216,6 +226,20 @@ internal sealed partial class CorDebugDebuggee
                             constant, sourceType, parameterType, plan.Language);
                     }
                 }
+
+                if (binding.ParameterSourceIndices.Length != suppliedArguments.Length)
+                {
+                    throw new InvalidDataException(
+                        "The resolved method argument map does not match the supplied call.");
+                }
+
+                var parameterOrderedArguments = new ManagedExpressionValue[suppliedArguments.Length];
+                for (int index = 0; index < parameterOrderedArguments.Length; index++)
+                {
+                    parameterOrderedArguments[index] = suppliedArguments[binding.ParameterSourceIndices[index]];
+                }
+
+                suppliedArguments = parameterOrderedArguments;
             }
 
             setupPhase = "creating the CoreCLR evaluation";

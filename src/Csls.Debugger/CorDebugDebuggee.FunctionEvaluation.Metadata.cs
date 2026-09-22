@@ -39,7 +39,12 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                types[index] = _boundTypes.BindName(argument.Type, language, thread);
+                DebugExpressionLanguage typeLanguage = argument.HasScalar &&
+                    ManagedRuntimeTypeAliases.TryNormalize(
+                        argument.Type, DebugExpressionLanguage.CSharp, out _, out _)
+                    ? DebugExpressionLanguage.CSharp
+                    : language;
+                types[index] = _boundTypes.BindName(argument.Type, typeLanguage, thread);
             }
         }
 
@@ -52,6 +57,7 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionLanguage language,
         ManagedBoundType?[] arguments,
         IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
         nint thread,
         ManagedBoundType? selectedReceiverType,
         uint? exactMethodToken = null)
@@ -96,9 +102,9 @@ internal sealed partial class CorDebugDebuggee
                         ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
                     ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
                     selectedTypeReached |= selectedReceiverType?.IsSameType(declaringType) == true;
-                    (uint Token, ManagedBoundType[] Parameters)? method = selectedTypeReached
+                    (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices)? method = selectedTypeReached
                         ? exactMethodToken is uint getterToken
-                            ? (getterToken, [])
+                            ? (getterToken, [], [])
                             : ManagedFunctionMethodResolver.ResolveCall(
                                 loadedModule,
                                 typeToken,
@@ -109,7 +115,8 @@ internal sealed partial class CorDebugDebuggee
                                 _boundTypes,
                                 thread,
                                 declaringType.TypeArguments,
-                                constantArguments)
+                                constantArguments,
+                                argumentNames)
                         : null;
                     if (method is { } resolvedMethod)
                     {
@@ -120,7 +127,7 @@ internal sealed partial class CorDebugDebuggee
                         {
                             return new ManagedFunctionBinding(
                                 GetModuleFunction(module, resolvedMethod.Token), typeArguments, resultType,
-                                resolvedMethod.Parameters);
+                                resolvedMethod.Parameters, resolvedMethod.ParameterSourceIndices);
                         }
                         catch
                         {

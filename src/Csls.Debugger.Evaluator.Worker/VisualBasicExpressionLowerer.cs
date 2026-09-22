@@ -132,9 +132,13 @@ internal static class VisualBasicExpressionLowerer
 
     private static DebugExpressionNode LowerArgument(ArgumentSyntax argument) => argument switch
     {
+        SimpleArgumentSyntax { NameColonEquals: { } name } simple =>
+            Node(DebugExpressionNodeKind.NamedArgument,
+                name.Name.Identifier.ValueText,
+                Lower(simple.Expression)),
         SimpleArgumentSyntax simple => Lower(simple.Expression),
         _ => throw new NotSupportedException(
-            "Named and omitted Visual Basic arguments are not supported.")
+            "Omitted Visual Basic arguments are not supported.")
     };
 
     private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
