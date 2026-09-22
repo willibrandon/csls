@@ -63,6 +63,27 @@ internal static class DebuggerDumpArrayFixture
     }
 
     /// <summary>
+    /// Marks the long overload selected after widening an integer argument.
+    /// </summary>
+    /// <param name="value">The widened argument.</param>
+    /// <returns>The long overload marker and its received value.</returns>
+    internal static long SelectWidenedForDebugger(long value) => value + 1000;
+
+    /// <summary>
+    /// Marks the double overload selected by an exact floating-point argument.
+    /// </summary>
+    /// <param name="value">The floating-point argument.</param>
+    /// <returns>The double overload marker and its received value.</returns>
+    internal static double SelectWidenedForDebugger(double value) => value + 2000;
+
+    /// <summary>
+    /// Requires an unsigned argument to reject signed-to-unsigned call conversions.
+    /// </summary>
+    /// <param name="value">The unsigned argument.</param>
+    /// <returns>The received value.</returns>
+    internal static uint RequireUnsignedForDebugger(uint value) => value;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

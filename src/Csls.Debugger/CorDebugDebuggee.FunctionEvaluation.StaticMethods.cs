@@ -24,7 +24,7 @@ internal sealed partial class CorDebugDebuggee
             typeName,
             language,
             "static call");
-        uint? methodToken = ManagedFunctionMethodResolver.Resolve(
+        (uint Token, ManagedBoundType[] Parameters)? method = ManagedFunctionMethodResolver.ResolveCall(
             resolvedModule,
             typeToken,
             methodName,
@@ -33,7 +33,7 @@ internal sealed partial class CorDebugDebuggee
             staticMethod: true,
             _boundTypes,
             thread);
-        if (methodToken is null)
+        if (method is null)
         {
             throw new InvalidOperationException(
                 $"No static method named '{methodName}' with {arguments.Length} argument(s) " +
@@ -41,8 +41,9 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
-            resolvedModule.Pointer, methodToken.Value, [], thread);
-        return new ManagedFunctionBinding(GetModuleFunction(resolvedModule.Pointer, methodToken.Value), [], resultType);
+            resolvedModule.Pointer, method.Value.Token, [], thread);
+        return new ManagedFunctionBinding(
+            GetModuleFunction(resolvedModule.Pointer, method.Value.Token), [], resultType, method.Value.Parameters);
     }
 
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(

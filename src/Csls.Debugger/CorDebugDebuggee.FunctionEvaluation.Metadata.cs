@@ -95,25 +95,30 @@ internal sealed partial class CorDebugDebuggee
                         ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
                     ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
                     selectedTypeReached |= selectedReceiverType?.IsSameType(declaringType) == true;
-                    uint? methodToken = selectedTypeReached ? exactMethodToken ?? ManagedFunctionMethodResolver.Resolve(
-                        loadedModule,
-                        typeToken,
-                        methodName,
-                        language,
-                        arguments,
-                        staticMethod: false,
-                        _boundTypes,
-                        thread,
-                        declaringType.TypeArguments) : null;
-                    if (methodToken is uint resolvedMethodToken)
+                    (uint Token, ManagedBoundType[] Parameters)? method = selectedTypeReached
+                        ? exactMethodToken is uint getterToken
+                            ? (getterToken, [])
+                            : ManagedFunctionMethodResolver.ResolveCall(
+                                loadedModule,
+                                typeToken,
+                                methodName,
+                                language,
+                                arguments,
+                                staticMethod: false,
+                                _boundTypes,
+                                thread,
+                                declaringType.TypeArguments)
+                        : null;
+                    if (method is { } resolvedMethod)
                     {
                         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
-                            module, resolvedMethodToken, declaringType.TypeArguments, thread);
+                            module, resolvedMethod.Token, declaringType.TypeArguments, thread);
                         nint[] typeArguments = ManagedRuntimeTypeArguments.Retain(currentType);
                         try
                         {
                             return new ManagedFunctionBinding(
-                                GetModuleFunction(module, resolvedMethodToken), typeArguments, resultType);
+                                GetModuleFunction(module, resolvedMethod.Token), typeArguments, resultType,
+                                resolvedMethod.Parameters);
                         }
                         catch
                         {

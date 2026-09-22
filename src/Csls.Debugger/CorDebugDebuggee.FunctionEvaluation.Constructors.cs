@@ -53,7 +53,7 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedBoundType[] boundTypeArguments = [.. runtimeType.TypeArguments.Select(
             argument => _boundTypes.BindName(argument.DebuggerTypeName, language, thread))];
-        uint? constructorToken = ManagedFunctionMethodResolver.Resolve(
+        (uint Token, ManagedBoundType[] Parameters)? constructor = ManagedFunctionMethodResolver.ResolveCall(
             metadata,
             module.Pointer,
             typeToken,
@@ -64,7 +64,7 @@ internal sealed partial class CorDebugDebuggee
             _boundTypes,
             thread,
             declaringTypeArguments: boundTypeArguments);
-        if (constructorToken is null)
+        if (constructor is null)
         {
             throw new InvalidOperationException(
                 $"No instance constructor with {arguments.Length} argument(s) is available " +
@@ -86,9 +86,9 @@ internal sealed partial class CorDebugDebuggee
 
             ManagedBoundType[] boundArguments = [.. typeArguments.Select(argument => _boundTypes.CaptureType(argument, thread))];
             ManagedBoundType? resultType = _boundTypes.BindMethodResult(
-                module.Pointer, constructorToken.Value, boundArguments, thread, constructsObject: true);
-            function = GetModuleFunction(module.Pointer, constructorToken.Value);
-            return new ManagedFunctionBinding(function, typeArguments, resultType);
+                module.Pointer, constructor.Value.Token, boundArguments, thread, constructsObject: true);
+            function = GetModuleFunction(module.Pointer, constructor.Value.Token);
+            return new ManagedFunctionBinding(function, typeArguments, resultType, constructor.Value.Parameters);
         }
         catch
         {

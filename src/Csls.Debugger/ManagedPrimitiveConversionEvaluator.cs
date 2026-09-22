@@ -100,6 +100,53 @@ internal static class ManagedPrimitiveConversionEvaluator
         }
     }
 
+    /// <summary>
+    /// Tests whether a loaded primitive argument can widen to a callable parameter.
+    /// </summary>
+    internal static bool IsImplicitInvocationConversion(
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (source.ModuleId is null || source.ModuleId != target.ModuleId ||
+            source.ElementType is not (>= 0x03 and <= 0x0d or 0x18 or 0x19) ||
+            target.ElementType is not (>= 0x03 and <= 0x0d or 0x18 or 0x19))
+        {
+            return false;
+        }
+
+        string? sourceName = TryNormalizeTypeName(source.Name, DebugExpressionLanguage.CSharp);
+        string? targetName = TryNormalizeTypeName(target.Name, DebugExpressionLanguage.CSharp);
+        return sourceName is not null && targetName is not null &&
+            IsImplicitNumericConversion(sourceName, targetName, language);
+    }
+
+    /// <summary>
+    /// Materializes a numeric argument in the selected callable parameter's CLR type.
+    /// </summary>
+    internal static ManagedExpressionValue ConvertForInvocation(
+        ManagedExpressionValue value,
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language)
+    {
+        if (!IsImplicitInvocationConversion(source, target, language))
+        {
+            throw new InvalidOperationException(
+                $"Argument type '{source.DisplayName}' cannot widen to '{target.DisplayName}'.");
+        }
+
+        object? scalar = ManagedExpressionValueFactory.RequireScalar(value);
+        if (scalar is null)
+        {
+            throw new InvalidOperationException("A null value cannot be a numeric invocation argument.");
+        }
+
+        string targetName = TryNormalizeTypeName(target.Name, DebugExpressionLanguage.CSharp)
+            ?? throw new InvalidOperationException($"Unsupported numeric parameter '{target.DisplayName}'.");
+        return ConvertNumeric(scalar, targetName, checkedConversion: true);
+    }
+
     private static ManagedExpressionValue ConvertNumeric(
         object value,
         string target,

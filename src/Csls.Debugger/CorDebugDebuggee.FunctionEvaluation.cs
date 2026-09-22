@@ -189,6 +189,18 @@ internal sealed partial class CorDebugDebuggee
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;
+                for (int index = 0; index < suppliedArguments.Length; index++)
+                {
+                    ManagedBoundType? sourceType = argumentTypes[index];
+                    ManagedBoundType parameterType = binding.ParameterTypes[index];
+                    if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
+                        ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                            sourceType, parameterType, plan.Language))
+                    {
+                        suppliedArguments[index] = ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+                            suppliedArguments[index], sourceType, parameterType, plan.Language);
+                    }
+                }
             }
 
             setupPhase = "creating the CoreCLR evaluation";
