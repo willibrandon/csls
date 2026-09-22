@@ -9,6 +9,10 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DebuggerValueRetentionTests
 {
+    private const long ProcessMemoryGrowthBudget = 128L * 1024 * 1024;
+    private const int ProcessHandleGrowthBudget = 4;
+    private const int ProcessThreadGrowthBudget = 2;
+
     /// <summary>
     /// Gets the cancellation and diagnostics owned by the current test.
     /// </summary>
@@ -58,5 +62,39 @@ public sealed class DebuggerValueRetentionTests
         Assert.HasCount(64, firstReferences.Distinct().ToArray());
         Assert.IsTrue(firstReferences.All(reference => reference > 0));
         Assert.AreSequenceEqual(firstReferences, lastReferences);
+
+        JsonElement baselineResources = result.GetProperty("baselineResources");
+        JsonElement highWaterResources = result.GetProperty("highWaterResources");
+        JsonElement terminatedResources = result.GetProperty("terminatedResources");
+        Assert.IsLessThanOrEqualTo(
+            baselineResources.GetProperty("handles").GetInt32() + ProcessHandleGrowthBudget,
+            highWaterResources.GetProperty("handles").GetInt32(),
+            "Repeated pages must keep the debugger process's file descriptors and handles bounded.");
+        Assert.IsLessThanOrEqualTo(
+            baselineResources.GetProperty("threads").GetInt32() + ProcessThreadGrowthBudget,
+            highWaterResources.GetProperty("threads").GetInt32(),
+            "Repeated pages must not create an unbounded debugger thread population.");
+        Assert.IsLessThanOrEqualTo(
+            baselineResources.GetProperty("workingSetBytes").GetInt64() + ProcessMemoryGrowthBudget,
+            highWaterResources.GetProperty("workingSetBytes").GetInt64(),
+            "Repeated pages must keep debugger resident-memory growth bounded.");
+        Assert.IsLessThanOrEqualTo(
+            baselineResources.GetProperty("privateMemoryBytes").GetInt64() + ProcessMemoryGrowthBudget,
+            highWaterResources.GetProperty("privateMemoryBytes").GetInt64(),
+            "Repeated pages must keep debugger private-memory growth bounded.");
+        Assert.IsLessThanOrEqualTo(
+            baselineResources.GetProperty("managedHeapBytes").GetInt64() + ProcessMemoryGrowthBudget,
+            highWaterResources.GetProperty("managedHeapBytes").GetInt64(),
+            "Repeated pages must keep debugger managed-heap growth bounded.");
+        Assert.IsLessThanOrEqualTo(
+            highWaterResources.GetProperty("handles").GetInt32(),
+            terminatedResources.GetProperty("handles").GetInt32(),
+            "Target termination must not retain additional operating-system handles.");
+        Assert.IsLessThanOrEqualTo(
+            highWaterResources.GetProperty("threads").GetInt32(),
+            terminatedResources.GetProperty("threads").GetInt32(),
+            "Target termination must not retain additional debugger threads.");
+        Assert.IsTrue(result.GetProperty("targetExited").GetBoolean(),
+            "The debugger target must exit before the isolated probe reports completion.");
     }
 }

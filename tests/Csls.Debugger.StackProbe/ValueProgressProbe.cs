@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -57,11 +58,23 @@ internal static class ValueProgressProbe
         };
         if (mode == "repeat")
         {
+            (int Handles, int Threads, long WorkingSetBytes, long PrivateMemoryBytes,
+                long ManagedHeapBytes) baselineResources = CaptureProcessResources();
+            (int Handles, int Threads, long WorkingSetBytes, long PrivateMemoryBytes,
+                long ManagedHeapBytes) highWaterResources = baselineResources;
             for (int attempt = 0; attempt < 64; attempt++)
             {
                 var observation = new ValueProgressRecorder(requestCancellation, 0, "observe");
                 IReadOnlyList<DebugVariableInfo> page = await ReadPageAsync(
                     service, reference, 0, 64, cancellationToken, observation).ConfigureAwait(false);
+                (int Handles, int Threads, long WorkingSetBytes, long PrivateMemoryBytes,
+                    long ManagedHeapBytes) resources = CaptureProcessResources();
+                highWaterResources = (
+                    Math.Max(highWaterResources.Handles, resources.Handles),
+                    Math.Max(highWaterResources.Threads, resources.Threads),
+                    Math.Max(highWaterResources.WorkingSetBytes, resources.WorkingSetBytes),
+                    Math.Max(highWaterResources.PrivateMemoryBytes, resources.PrivateMemoryBytes),
+                    Math.Max(highWaterResources.ManagedHeapBytes, resources.ManagedHeapBytes));
                 if (attempt is not (0 or 63))
                 {
                     continue;
@@ -72,11 +85,20 @@ internal static class ValueProgressProbe
                     page, StackProbeJsonContext.Default.IReadOnlyListDebugVariableInfo);
                 result[$"{prefix}Progress"] = JsonSerializer.SerializeToNode(
                     observation.Updates.Single(), StackProbeJsonContext.Default.DebugValueReadProgress);
+                result[$"{prefix}Resources"] = CreateResourceReport(resources);
             }
 
+            result["baselineResources"] = CreateResourceReport(baselineResources);
+            result["highWaterResources"] = CreateResourceReport(highWaterResources);
+            using var target = Process.GetProcessById(stopped.ProcessId ??
+                throw new InvalidOperationException("The stopped target has no process identifier."));
+            DebugSessionSnapshot terminated = await service.TerminateAsync(cancellationToken).ConfigureAwait(false);
+            await target.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             result["terminated"] = JsonSerializer.SerializeToNode(
-                await service.TerminateAsync(cancellationToken).ConfigureAwait(false),
+                terminated,
                 StackProbeJsonContext.Default.DebugSessionSnapshot);
+            result["targetExited"] = target.HasExited;
+            result["terminatedResources"] = CreateResourceReport(CaptureProcessResources());
             await Console.Out.WriteLineAsync(result.ToJsonString()).ConfigureAwait(false);
             return;
         }
@@ -131,6 +153,30 @@ internal static class ValueProgressProbe
         service.GetVariablesAsync(new DebugVariablesRequest(reference, start, count, AllowTargetCodeExecution: false,
             DebugVariableFilter.Indexed)
         { Progress = progress }, cancellationToken);
+
+    private static (int Handles, int Threads, long WorkingSetBytes, long PrivateMemoryBytes,
+        long ManagedHeapBytes) CaptureProcessResources()
+    {
+        using var process = Process.GetCurrentProcess();
+        process.Refresh();
+        return (
+            process.HandleCount,
+            process.Threads.Count,
+            process.WorkingSet64,
+            process.PrivateMemorySize64,
+            GC.GetTotalMemory(forceFullCollection: false));
+    }
+
+    private static JsonObject CreateResourceReport(
+        (int Handles, int Threads, long WorkingSetBytes, long PrivateMemoryBytes,
+            long ManagedHeapBytes) resources) => new()
+            {
+                ["handles"] = resources.Handles,
+                ["threads"] = resources.Threads,
+                ["workingSetBytes"] = resources.WorkingSetBytes,
+                ["privateMemoryBytes"] = resources.PrivateMemoryBytes,
+                ["managedHeapBytes"] = resources.ManagedHeapBytes
+            };
 
     private static async Task<DebugSessionSnapshot> WaitForStopAsync(DebuggerControlService service, CancellationToken cancellationToken)
     {
