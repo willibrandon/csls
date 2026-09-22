@@ -33,7 +33,7 @@ internal static class ManagedFunctionMethodResolver
     /// Resolves a callable declaration together with its exact bound parameter types.
     /// </summary>
     internal static (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
-        ManagedExpressionValue?[] OptionalArguments)? ResolveCall(
+        ManagedExpressionValue?[] OptionalArguments, ManagedBoundType[] MethodTypeArguments)? ResolveCall(
         CorDebugLoadedModule module,
         uint typeToken,
         string methodName,
@@ -80,7 +80,7 @@ internal static class ManagedFunctionMethodResolver
     /// Resolves the unique best declaration and preserves its bound parameter types.
     /// </summary>
     internal static (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
-        ManagedExpressionValue?[] OptionalArguments)? ResolveCall(
+        ManagedExpressionValue?[] OptionalArguments, ManagedBoundType[] MethodTypeArguments)? ResolveCall(
         ManagedMetadataImage metadata,
         nint module,
         uint typeToken,
@@ -108,7 +108,8 @@ internal static class ManagedFunctionMethodResolver
             : StringComparison.Ordinal;
         var conversions = new ManagedReferenceConversion(types);
         var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters,
-            int[] ParameterSourceIndices, ManagedExpressionValue?[] OptionalArguments)>();
+            int[] ParameterSourceIndices, ManagedExpressionValue?[] OptionalArguments,
+            ManagedBoundType[] MethodTypeArguments)>();
         foreach (MethodDefinitionHandle methodHandle in metadata.GetMethods(typeHandle))
         {
             MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
@@ -122,7 +123,7 @@ internal static class ManagedFunctionMethodResolver
 
             MethodSignature<ManagedMetadataTypeSignature> signature =
                 metadata.DecodeMethodSignature(methodHandle, module);
-            if (signature.Header.IsGeneric || signature.ParameterTypes.Length < arguments.Count ||
+            if (signature.ParameterTypes.Length < arguments.Count ||
                 signature.ParameterTypes.Length > 64 ||
                 signature.ParameterTypes.Any(static parameter => parameter.UnsupportedKind is not null))
             {
@@ -137,8 +138,15 @@ internal static class ManagedFunctionMethodResolver
                 continue;
             }
 
+            ManagedBoundType[]? methodTypeArguments = ManagedFunctionGenericMethodInference.TryInfer(
+                metadata, methodHandle, signature, parameterSourceIndices, arguments);
+            if (methodTypeArguments is null)
+            {
+                continue;
+            }
+
             ManagedBoundType[] declaredParameters = [.. signature.ParameterTypes.Select(parameter =>
-                types.Bind(parameter, declaringTypeArguments ?? [], [], thread))];
+                types.Bind(parameter, declaringTypeArguments ?? [], methodTypeArguments, thread))];
             ManagedExpressionValue?[]? optionalArguments = ManagedFunctionOptionalArguments.TryCreate(
                 metadata, methodHandle, declaredParameters, parameterSourceIndices, types, module, thread);
             if (optionalArguments is null)
@@ -157,7 +165,8 @@ internal static class ManagedFunctionMethodResolver
 
             if (IsApplicable(arguments, parameters, constantArguments, language, conversions, types, thread))
             {
-                matches.Add((methodHandle, parameters, parameterSourceIndices, optionalArguments));
+                matches.Add((methodHandle, parameters, parameterSourceIndices,
+                    optionalArguments, methodTypeArguments));
             }
         }
 
@@ -167,14 +176,13 @@ internal static class ManagedFunctionMethodResolver
         }
 
         (MethodDefinitionHandle Handle, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
-            ManagedExpressionValue?[] OptionalArguments)[] bestMatches =
+            ManagedExpressionValue?[] OptionalArguments, ManagedBoundType[] MethodTypeArguments)[] bestMatches =
             [.. matches.Where(candidate => !matches.Any(other =>
                 other.Handle != candidate.Handle &&
                 (IsBetter(other.Parameters, candidate.Parameters, arguments, language, conversions, thread) ||
-                 other.Parameters.Zip(candidate.Parameters).All(static pair =>
-                     pair.First.IsSameType(pair.Second)) &&
-                 !other.OptionalArguments.Any(static value => value is not null) &&
-                 candidate.OptionalArguments.Any(static value => value is not null))))];
+                 HasEqualParameterPreference(other.Parameters, candidate.Parameters,
+                     other.OptionalArguments, candidate.OptionalArguments,
+                     other.MethodTypeArguments, candidate.MethodTypeArguments))))];
         if (bestMatches.Length != 1)
         {
             string typeName = metadata.GetString(type.Name);
@@ -185,7 +193,7 @@ internal static class ManagedFunctionMethodResolver
 
         return (checked((uint)MetadataTokens.GetToken(bestMatches[0].Handle)),
             bestMatches[0].Parameters, bestMatches[0].ParameterSourceIndices,
-            bestMatches[0].OptionalArguments);
+            bestMatches[0].OptionalArguments, bestMatches[0].MethodTypeArguments);
     }
 
     private static bool IsApplicable(
@@ -230,6 +238,30 @@ internal static class ManagedFunctionMethodResolver
         }
 
         return true;
+    }
+
+    private static bool HasEqualParameterPreference(
+        ManagedBoundType[] candidateParameters,
+        ManagedBoundType[] otherParameters,
+        ManagedExpressionValue?[] candidateOptionalArguments,
+        ManagedExpressionValue?[] otherOptionalArguments,
+        ManagedBoundType[] candidateMethodArguments,
+        ManagedBoundType[] otherMethodArguments)
+    {
+        if (!candidateParameters.Zip(otherParameters).All(static pair =>
+                pair.First.IsSameType(pair.Second)))
+        {
+            return false;
+        }
+
+        bool candidateUsesOptional = candidateOptionalArguments.Any(static value => value is not null);
+        bool otherUsesOptional = otherOptionalArguments.Any(static value => value is not null);
+        if (candidateUsesOptional != otherUsesOptional)
+        {
+            return !candidateUsesOptional;
+        }
+
+        return candidateMethodArguments.Length == 0 && otherMethodArguments.Length != 0;
     }
 
     private static bool IsBetter(

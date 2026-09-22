@@ -1,10 +1,10 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Owns a resolved call and its exact declaring arguments and result declaration.
+/// Owns a resolved call, its declaring and method type arguments, and its result declaration.
 /// </summary>
 /// <param name="Function">The owned ICorDebugFunction pointer.</param>
-/// <param name="TypeArguments">The owned ICorDebugType pointers for the declaring type.</param>
+/// <param name="TypeArguments">The owned declaring-type arguments followed by inferred method arguments.</param>
 /// <param name="DeclaredResultType">The bound result declaration, or null for a void method.</param>
 /// <param name="ParameterTypes">The selected parameter types aligned with source-order arguments.</param>
 /// <param name="ParameterSourceIndices">The source argument index occupying each CLR parameter position.</param>

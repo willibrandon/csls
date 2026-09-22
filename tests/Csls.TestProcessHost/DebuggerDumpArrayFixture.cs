@@ -446,6 +446,54 @@ internal static class DebuggerDumpArrayFixture
         OptionalStructWithoutConstantForDebugger();
 
     /// <summary>
+    /// Returns an inferred generic argument through a target-compiled method.
+    /// </summary>
+    /// <typeparam name="T">The inferred argument and result type.</typeparam>
+    /// <param name="value">The value preserved across the generic call.</param>
+    /// <returns>The original value.</returns>
+    internal static T IdentityGenericForDebugger<T>(T value) => value;
+
+    /// <summary>
+    /// Reads an element after inferring the method type from an array shape.
+    /// </summary>
+    /// <typeparam name="T">The inferred array element type.</typeparam>
+    /// <param name="values">The target's array storage.</param>
+    /// <returns>The first element.</returns>
+    internal static T FirstGenericArrayForDebugger<T>(T[] values) => values[0];
+
+    /// <summary>
+    /// Reads an element after inferring the method type from a constructed collection.
+    /// </summary>
+    /// <typeparam name="T">The inferred collection element type.</typeparam>
+    /// <param name="values">The target's collection.</param>
+    /// <returns>The first element.</returns>
+    internal static T FirstGenericListForDebugger<T>(List<T> values) => values[0];
+
+    /// <summary>
+    /// Reads a struct passed through an inferred generic value parameter.
+    /// </summary>
+    /// <typeparam name="T">The inferred value type.</typeparam>
+    /// <param name="value">The unboxed target value.</param>
+    /// <returns>The struct's number, or minus one for a different type.</returns>
+    internal static int StructNumberGenericForDebugger<T>(T value) =>
+        value is DebuggerOptionalStructFixture fixture ? fixture.ReadNumber() : -1;
+
+    /// <summary>
+    /// Supplies a generic overload competing with an exact non-generic method.
+    /// </summary>
+    /// <typeparam name="T">The inferred argument type.</typeparam>
+    /// <param name="value">The supplied value.</param>
+    /// <returns>The generic overload marker.</returns>
+    internal static int PreferNonGenericForDebugger<T>(T value) => 1;
+
+    /// <summary>
+    /// Supplies the exact non-generic overload selected by the C# compiler.
+    /// </summary>
+    /// <param name="value">The supplied integer.</param>
+    /// <returns>The non-generic overload marker.</returns>
+    internal static int PreferNonGenericForDebugger(int value) => 2;
+
+    /// <summary>
     /// Observes a contextual default passed to an object parameter.
     /// </summary>
     /// <param name="value">The target-typed object value.</param>

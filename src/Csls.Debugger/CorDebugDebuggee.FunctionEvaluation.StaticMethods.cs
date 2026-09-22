@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using Csls.Debugger.Interop;
 
 namespace Csls.Debugger;
 
@@ -27,7 +28,8 @@ internal sealed partial class CorDebugDebuggee
             language,
             "static call");
         (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
-            ManagedExpressionValue?[] OptionalArguments)? method =
+            ManagedExpressionValue?[] OptionalArguments,
+            ManagedBoundType[] MethodTypeArguments)? method =
             ManagedFunctionMethodResolver.ResolveCall(
             resolvedModule,
             typeToken,
@@ -47,11 +49,26 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
-            resolvedModule.Pointer, method.Value.Token, [], thread);
-        return new ManagedFunctionBinding(
-            GetModuleFunction(resolvedModule.Pointer, method.Value.Token), [], resultType,
-            method.Value.Parameters, method.Value.ParameterSourceIndices,
-            method.Value.OptionalArguments);
+            resolvedModule.Pointer, method.Value.Token, [], thread,
+            methodArguments: method.Value.MethodTypeArguments);
+        nint[] typeArguments = ManagedRuntimeTypeArguments.ResolveBound(
+            method.Value.MethodTypeArguments, _boundTypes, thread);
+        try
+        {
+            return new ManagedFunctionBinding(
+                GetModuleFunction(resolvedModule.Pointer, method.Value.Token), typeArguments, resultType,
+                method.Value.Parameters, method.Value.ParameterSourceIndices,
+                method.Value.OptionalArguments);
+        }
+        catch
+        {
+            foreach (nint argument in typeArguments)
+            {
+                _ = ComAbi.Release(argument);
+            }
+
+            throw;
+        }
     }
 
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(

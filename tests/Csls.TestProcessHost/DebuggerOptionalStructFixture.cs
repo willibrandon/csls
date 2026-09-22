@@ -29,4 +29,20 @@ internal struct DebuggerOptionalStructFixture
     /// </summary>
     /// <returns>The current stored number.</returns>
     internal int ReadNumber() => _number;
+
+    /// <summary>
+    /// Echoes an inferred method argument from an unboxed value-type receiver.
+    /// </summary>
+    /// <typeparam name="T">The inferred argument and result type.</typeparam>
+    /// <param name="value">The value supplied through debugger evaluation.</param>
+    /// <returns>The original value.</returns>
+    internal T EchoGeneric<T>(T value)
+    {
+        if (_number < 0)
+        {
+            throw new InvalidOperationException("The debugger fixture has invalid storage.");
+        }
+
+        return value;
+    }
 }

@@ -16,7 +16,7 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Function { get; set; }
 
     /// <summary>
-    /// Gets or sets owned ICorDebugType arguments for the active constructor or getter.
+    /// Gets or sets owned declaring and method ICorDebugType arguments for the active call.
     /// </summary>
     internal required nint[] TypeArguments { get; set; }
 

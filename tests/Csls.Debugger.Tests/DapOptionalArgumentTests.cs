@@ -234,6 +234,35 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 
+        foreach ((string expression, string expected) in new[]
+        {
+            ("IdentityGenericForDebugger(41)", "41"),
+            ("IdentityGenericForDebugger(\"hello\")", "\"hello\""),
+            ("FirstGenericArrayForDebugger(vector)", "41"),
+            ("FirstGenericListForDebugger(constructed[0])", "81"),
+            ("StructNumberGenericForDebugger(optionalStructs[0])", "41"),
+            ("PreferNonGenericForDebugger(41)", "2")
+        })
+        {
+            JsonElement genericResult = await ReadEvaluationAsync(client, frameId,
+                $"Csls.TestProcessHost.DebuggerDumpArrayFixture.{expression}",
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, genericResult.GetProperty("result").GetString());
+            using JsonDocument genericInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(genericInvalidated.RootElement, "invalidated");
+        }
+
+        JsonElement instanceGeneric = await ReadEvaluationAsync(client, frameId,
+            "optionalStructs[0].EchoGeneric(37)", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("37", instanceGeneric.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
         int rejected = await client.SendRequestAsync("setExpression", writer =>
         {
             writer.WriteStartObject();

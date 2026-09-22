@@ -54,6 +54,35 @@ internal static class ManagedRuntimeTypeArguments
         }
     }
 
+    /// <summary>
+    /// Resolves inferred loaded method arguments into owned runtime type pointers.
+    /// </summary>
+    internal static nint[] ResolveBound(
+        IReadOnlyList<ManagedBoundType> arguments,
+        ManagedBoundTypeSystem types,
+        nint thread)
+    {
+        nint[] pointers = new nint[arguments.Count];
+        try
+        {
+            for (int index = 0; index < pointers.Length; index++)
+            {
+                pointers[index] = types.ResolveRuntimeType(arguments[index], thread);
+            }
+
+            return pointers;
+        }
+        catch
+        {
+            foreach (nint pointer in pointers)
+            {
+                Release(pointer);
+            }
+
+            throw;
+        }
+    }
+
     private static unsafe nint[] Read(nint enumerator)
     {
         List<nint> arguments = [];

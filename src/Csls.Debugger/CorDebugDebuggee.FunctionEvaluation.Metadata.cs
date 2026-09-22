@@ -103,9 +103,10 @@ internal sealed partial class CorDebugDebuggee
                     ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
                     selectedTypeReached |= selectedReceiverType?.IsSameType(declaringType) == true;
                     (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
-                        ManagedExpressionValue?[] OptionalArguments)? method = selectedTypeReached
+                        ManagedExpressionValue?[] OptionalArguments,
+                        ManagedBoundType[] MethodTypeArguments)? method = selectedTypeReached
                         ? exactMethodToken is uint getterToken
-                            ? (getterToken, [], [], [])
+                            ? (getterToken, [], [], [], [])
                             : ManagedFunctionMethodResolver.ResolveCall(
                                 loadedModule,
                                 typeToken,
@@ -122,10 +123,15 @@ internal sealed partial class CorDebugDebuggee
                     if (method is { } resolvedMethod)
                     {
                         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
-                            module, resolvedMethod.Token, declaringType.TypeArguments, thread);
-                        nint[] typeArguments = ManagedRuntimeTypeArguments.Retain(currentType);
+                            module, resolvedMethod.Token, declaringType.TypeArguments, thread,
+                            methodArguments: resolvedMethod.MethodTypeArguments);
+                        nint[] declaringArguments = ManagedRuntimeTypeArguments.Retain(currentType);
+                        nint[] methodArguments = [];
                         try
                         {
+                            methodArguments = ManagedRuntimeTypeArguments.ResolveBound(
+                                resolvedMethod.MethodTypeArguments, _boundTypes, thread);
+                            nint[] typeArguments = [.. declaringArguments, .. methodArguments];
                             return new ManagedFunctionBinding(
                                 GetModuleFunction(module, resolvedMethod.Token), typeArguments, resultType,
                                 resolvedMethod.Parameters, resolvedMethod.ParameterSourceIndices,
@@ -133,7 +139,7 @@ internal sealed partial class CorDebugDebuggee
                         }
                         catch
                         {
-                            foreach (nint argument in typeArguments)
+                            foreach (nint argument in declaringArguments.Concat(methodArguments))
                             {
                                 _ = ComAbi.Release(argument);
                             }

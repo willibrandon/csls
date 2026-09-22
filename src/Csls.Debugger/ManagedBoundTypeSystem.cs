@@ -230,7 +230,8 @@ internal sealed class ManagedBoundTypeSystem
     /// </summary>
     internal ManagedBoundType? BindMethodResult(
         nint modulePointer, uint methodToken, IReadOnlyList<ManagedBoundType> typeArguments,
-        nint thread, bool constructsObject = false)
+        nint thread, bool constructsObject = false,
+        IReadOnlyList<ManagedBoundType>? methodArguments = null)
     {
         CorDebugLoadedModule module = _modules.FindModule(modulePointer)
             ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
@@ -253,7 +254,7 @@ internal sealed class ManagedBoundTypeSystem
 
         ManagedMetadataTypeSignature signature = metadata.DecodeMethodSignature(method, module.Pointer).ReturnType;
         return signature.PrimitiveType == PrimitiveTypeCode.Void ? null
-            : Bind(signature, typeArguments, [], thread);
+            : Bind(signature, typeArguments, methodArguments ?? [], thread);
     }
 
     /// <summary>
