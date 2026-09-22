@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -10,6 +11,150 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class DapArrayPagingTests : DapTestContext
 {
+    /// <summary>
+    /// Completes the pending evaluation and terminal sequence after abrupt target death.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task AbruptTargetDeathDuringEvaluationCompletesPendingRequest()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        int targetId = Assert.IsInstanceOfType<int>(client.TargetProcessId);
+        using var target = Process.GetProcessById(targetId);
+        _ = target.SafeHandle;
+
+        int sequence = await client.SendRequestAsync("evaluate", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("expression", "Csls.TestProcessHost.DebuggerDumpArrayFixture.CrashDuringDebuggerEvaluation()");
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("context", "watch");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        bool responseReceived = false;
+        bool exitedReceived = false;
+        bool terminatedReceived = false;
+        bool evaluationEntered = false;
+        while (!responseReceived || !terminatedReceived)
+        {
+            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() == "response")
+            {
+                Assert.IsFalse(responseReceived);
+                AssertResponse(root, sequence, "evaluate", success: false);
+                string failure = Assert.IsInstanceOfType<string>(root.GetProperty("message").GetString());
+                Assert.Contains("target exited", failure, StringComparison.OrdinalIgnoreCase);
+                responseReceived = true;
+                continue;
+            }
+
+            switch (root.GetProperty("event").GetString())
+            {
+                case "output":
+                    evaluationEntered |= root.GetProperty("body").GetProperty("output")
+                        .GetString()?.Contains("csls-evaluation-crash-entered", StringComparison.Ordinal) == true;
+                    break;
+                case "exited":
+                    Assert.IsFalse(exitedReceived);
+                    Assert.AreNotEqual(0, root.GetProperty("body").GetProperty("exitCode").GetInt32());
+                    exitedReceived = true;
+                    break;
+                case "terminated":
+                    Assert.IsFalse(terminatedReceived);
+                    Assert.IsTrue(exitedReceived);
+                    terminatedReceived = true;
+                    break;
+                default:
+                    Assert.Fail($"Unexpected event after abrupt target death: {root.GetRawText()}");
+                    break;
+            }
+        }
+
+        Assert.IsTrue(evaluationEntered);
+        await target.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+        Assert.IsEmpty(client.Diagnostics.ToString());
+    }
+
+    /// <summary>
+    /// Completes a pending evaluation and releases its owned target when target code requests shutdown.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task EnvironmentExitDuringEvaluationCompletesAndCleansUpTarget()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        int targetId = Assert.IsInstanceOfType<int>(client.TargetProcessId);
+        using var target = Process.GetProcessById(targetId);
+        _ = target.SafeHandle;
+
+        int sequence = await client.SendRequestAsync("evaluate", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("expression", "Csls.TestProcessHost.DebuggerDumpArrayFixture.ExitDuringDebuggerEvaluation()");
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("context", "watch");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        bool responseReceived = false;
+        bool exitedReceived = false;
+        bool terminatedReceived = false;
+        bool evaluationEntered = false;
+        while (!responseReceived)
+        {
+            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() == "response")
+            {
+                Assert.IsFalse(responseReceived);
+                AssertResponse(root, sequence, "evaluate", success: false);
+                string failure = Assert.IsInstanceOfType<string>(root.GetProperty("message").GetString());
+                Assert.Contains("evaluation", failure, StringComparison.OrdinalIgnoreCase);
+                responseReceived = true;
+                continue;
+            }
+
+            switch (root.GetProperty("event").GetString())
+            {
+                case "output":
+                    evaluationEntered |= root.GetProperty("body").GetProperty("output")
+                        .GetString()?.Contains("csls-evaluation-exit-entered", StringComparison.Ordinal) == true;
+                    break;
+                case "exited":
+                    Assert.IsFalse(exitedReceived);
+                    Assert.AreEqual(37, root.GetProperty("body").GetProperty("exitCode").GetInt32());
+                    exitedReceived = true;
+                    break;
+                case "terminated":
+                    Assert.IsFalse(terminatedReceived);
+                    Assert.IsTrue(exitedReceived);
+                    terminatedReceived = true;
+                    break;
+                default:
+                    Assert.Fail($"Unexpected event while the target exited: {root.GetRawText()}");
+                    break;
+            }
+        }
+
+        Assert.IsTrue(evaluationEntered);
+        if (terminatedReceived)
+        {
+            Assert.IsTrue(exitedReceived);
+        }
+        await DisconnectAsync(client).ConfigureAwait(false);
+        await target.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsEmpty(client.Diagnostics.ToString());
+    }
+
     /// <summary>
     /// Selects the nearest loaded reference overload and rejects an unrelated parameter type.
     /// </summary>
