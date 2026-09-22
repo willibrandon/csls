@@ -3,20 +3,20 @@ using Csls.Debugger.Interop;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Materializes loaded framework value-type defaults for managed calls.
+/// Materializes loaded framework value-type arguments for managed calls.
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private void ScheduleStructuredDefaultAllocation(ManagedFunctionEvaluation evaluation, int index)
+    private void ScheduleStructuredArgumentAllocation(ManagedFunctionEvaluation evaluation, int index)
     {
         ManagedExpressionValue argument = evaluation.Arguments[index];
         nint thread = evaluation.Thread;
         ManagedBoundType declaredType = argument.DeclaredType ?? throw new InvalidOperationException(
-            "A structured optional argument has no exact declared type.");
+            "A structured argument has no exact declared type.");
         string expectedType = argument.Scalar is decimal ? "System.Decimal" : "System.DateTime";
         if (!_boundTypes.IsCoreType(declaredType, expectedType, thread))
         {
-            throw new InvalidOperationException("A structured optional argument has an invalid runtime type.");
+            throw new InvalidOperationException("A structured argument has an invalid runtime type.");
         }
 
         nint runtimeType = 0;
@@ -52,7 +52,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe void ContinueAfterStructuredDefaultAllocation(ManagedFunctionEvaluation active)
+    private unsafe void ContinueAfterStructuredArgumentAllocation(ManagedFunctionEvaluation active)
     {
         int index = active.PendingStructuredArgumentIndex;
         if (index < 0 || index >= active.RuntimeArguments.Length)
@@ -75,20 +75,20 @@ internal sealed partial class CorDebugDebuggee
             value = RequirePointer(Volatile.Read(ref *address), "ICorDebugEval.GetResult");
             if (!TryDereferenceAndUnboxValue(value, out unboxed))
             {
-                throw new InvalidOperationException("CoreCLR did not allocate the optional value type.");
+                throw new InvalidOperationException("CoreCLR did not allocate the structured value type.");
             }
 
             ManagedExpressionValue argument = active.Arguments[index];
             ManagedBoundType declaredType = argument.DeclaredType ?? throw new InvalidOperationException(
-                "A structured optional argument has no exact declared type.");
+                "A structured argument has no exact declared type.");
             runtimeType = _boundTypes.ResolveRuntimeType(declaredType, active.Thread);
             if (argument.Scalar is decimal amount)
             {
-                SetDecimalDefault(unboxed, runtimeType, amount);
+                SetDecimalArgument(unboxed, runtimeType, amount);
             }
             else if (argument.Scalar is DateTime date)
             {
-                SetDateTimeDefault(unboxed, runtimeType, date);
+                SetDateTimeArgument(unboxed, runtimeType, date);
             }
 
             handle = CreateFunctionEvaluationHandle(value);
@@ -103,7 +103,7 @@ internal sealed partial class CorDebugDebuggee
 
             ScheduleNextFunctionEvaluationStage(active);
             ContinueFunctionEvaluation(
-                "The debugger could not resume the target after allocating an optional value type. " +
+                "The debugger could not resume the target after allocating a structured value type. " +
                 "The target's evaluation state is uncertain; this debugger session must be disconnected.");
         }
         finally
@@ -140,7 +140,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private void SetDecimalDefault(nint value, nint runtimeType, decimal amount)
+    private void SetDecimalArgument(nint value, nint runtimeType, decimal amount)
     {
         int[] bits = decimal.GetBits(amount);
         uint low = unchecked((uint)bits[0]);
@@ -180,7 +180,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private void SetDateTimeDefault(nint value, nint runtimeType, DateTime date)
+    private void SetDateTimeArgument(nint value, nint runtimeType, DateTime date)
     {
         bool found = false;
         VisitDeclaredRuntimeFields(value, runtimeType, (name, field) =>
@@ -206,7 +206,7 @@ internal sealed partial class CorDebugDebuggee
             "ICorDebugValue.GetSize");
         if (Volatile.Read(ref *sizeAddress) != expectedSize)
         {
-            throw new InvalidOperationException("A structured optional argument has an unexpected field size.");
+            throw new InvalidOperationException("A structured argument has an unexpected field size.");
         }
 
         nint generic = ComAbi.QueryInterface(field, ICorDebugGenericValueAbi.InterfaceId);

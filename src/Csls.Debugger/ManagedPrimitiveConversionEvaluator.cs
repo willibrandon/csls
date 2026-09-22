@@ -326,8 +326,11 @@ internal static class ManagedPrimitiveConversionEvaluator
         ManagedBoundType source,
         ManagedBoundType target) => source.ModuleId is not null &&
         source.ModuleId == target.ModuleId &&
-        source.ElementType is >= 0x03 and <= 0x0d or 0x18 or 0x19 &&
-        target.ElementType is >= 0x03 and <= 0x0d or 0x18 or 0x19;
+        IsLoadedNumericType(source) && IsLoadedNumericType(target);
+
+    private static bool IsLoadedNumericType(ManagedBoundType type) =>
+        type.ElementType is >= 0x03 and <= 0x0d or 0x18 or 0x19 ||
+        type is { ElementType: 0x11, Name: "System.Decimal" };
 
     private static bool IsIntegral(string type) => type is
         "sbyte" or "byte" or "short" or "ushort" or "int" or "uint" or "long" or

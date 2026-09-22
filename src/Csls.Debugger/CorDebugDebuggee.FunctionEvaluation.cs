@@ -225,6 +225,15 @@ internal sealed partial class CorDebugDebuggee
                         suppliedArguments[index] = ManagedPrimitiveConversionEvaluator.ConvertInvocationConstant(
                             constant, sourceType, parameterType, plan.Language);
                     }
+
+                    if (suppliedArguments[index].Scalar is decimal &&
+                        _boundTypes.IsCoreType(parameterType, "System.Decimal", thread))
+                    {
+                        suppliedArguments[index] = suppliedArguments[index] with
+                        {
+                            DeclaredType = parameterType
+                        };
+                    }
                 }
 
                 if (binding.ParameterSourceIndices.Length != binding.OptionalArguments.Length ||
@@ -431,7 +440,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 if (active.PendingStructuredArgumentIndex >= 0)
                 {
-                    ContinueAfterStructuredDefaultAllocation(active);
+                    ContinueAfterStructuredArgumentAllocation(active);
                 }
                 else
                 {

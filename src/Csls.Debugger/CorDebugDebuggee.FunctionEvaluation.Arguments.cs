@@ -27,7 +27,7 @@ internal sealed partial class CorDebugDebuggee
         {
             if (runtimeArgument == 0 || !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
             {
-                throw new InvalidOperationException("A structured optional argument has no retained runtime value.");
+                throw new InvalidOperationException("A structured argument has no retained runtime value.");
             }
 
             temporaryArguments.Add(unboxed);

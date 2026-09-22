@@ -302,6 +302,14 @@ internal static class DebuggerDumpArrayFixture
     }
 
     /// <summary>
+    /// Observes a runtime integer widened to an exact decimal argument.
+    /// </summary>
+    /// <param name="amount">The converted decimal value.</param>
+    /// <returns>One when the target receives the integer with scale zero.</returns>
+    internal static int DecimalFromIntegerForDebugger(decimal amount) =>
+        decimal.GetBits(amount) is [41, 0, 0, 0] ? 1 : 0;
+
+    /// <summary>
     /// Exposes a nonzero DateTime default through compiler-recognized metadata.
     /// </summary>
     /// <param name="date">The optional date value.</param>

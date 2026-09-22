@@ -88,7 +88,7 @@ internal sealed partial class CorDebugDebuggee
             if (evaluation.RuntimeArguments[index] == 0 &&
                 evaluation.Arguments[index].Scalar is decimal or DateTime)
             {
-                ScheduleStructuredDefaultAllocation(evaluation, index);
+                ScheduleStructuredArgumentAllocation(evaluation, index);
                 return;
             }
         }
