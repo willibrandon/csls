@@ -494,6 +494,63 @@ internal static class DebuggerDumpArrayFixture
     internal static int PreferNonGenericForDebugger(int value) => 2;
 
     /// <summary>
+    /// Receives an inferred type satisfying a reference-type constraint.
+    /// </summary>
+    /// <typeparam name="T">The inferred reference type.</typeparam>
+    /// <param name="value">The supplied reference.</param>
+    /// <returns>The reference-type constraint marker.</returns>
+    internal static int ClassConstraintForDebugger<T>(T value) where T : class => value is null ? 0 : 11;
+
+    /// <summary>
+    /// Receives an inferred type satisfying a nonnullable value-type constraint.
+    /// </summary>
+    /// <typeparam name="T">The inferred value type.</typeparam>
+    /// <param name="value">The supplied value.</param>
+    /// <returns>The value-type constraint marker.</returns>
+    internal static int StructConstraintForDebugger<T>(T value) where T : struct =>
+        value.GetHashCode() == 41 ? 22 : 0;
+
+    /// <summary>
+    /// Receives an inferred type implementing a loaded generic interface.
+    /// </summary>
+    /// <typeparam name="T">The inferred collection type.</typeparam>
+    /// <param name="value">The supplied collection.</param>
+    /// <returns>The collection's element count.</returns>
+    internal static int InterfaceConstraintForDebugger<T>(T value) where T : IReadOnlyList<int> => value.Count;
+
+    /// <summary>
+    /// Receives an inferred derived type satisfying a loaded base-class constraint.
+    /// </summary>
+    /// <typeparam name="T">The inferred list subtype.</typeparam>
+    /// <param name="value">The supplied derived list.</param>
+    /// <returns>The first list value.</returns>
+    internal static int BaseConstraintForDebugger<T>(T value) where T : List<int> => value[0];
+
+    /// <summary>
+    /// Receives an inferred type with a public parameterless constructor.
+    /// </summary>
+    /// <typeparam name="T">The inferred constructible type.</typeparam>
+    /// <param name="value">The supplied object.</param>
+    /// <returns>The constructor-constraint marker.</returns>
+    internal static int ConstructorConstraintForDebugger<T>(T value) where T : new()
+    {
+        GC.KeepAlive(value);
+        return 44;
+    }
+
+    /// <summary>
+    /// Supplies an unmanaged constraint for a value with reference-containing storage.
+    /// </summary>
+    /// <typeparam name="T">The compiler-checked unmanaged type.</typeparam>
+    /// <param name="value">The supplied value.</param>
+    /// <returns>The unmanaged constraint marker.</returns>
+    internal static int UnmanagedConstraintForDebugger<T>(T value) where T : unmanaged
+    {
+        GC.KeepAlive(value);
+        return 55;
+    }
+
+    /// <summary>
     /// Observes a contextual default passed to an object parameter.
     /// </summary>
     /// <param name="value">The target-typed object value.</param>

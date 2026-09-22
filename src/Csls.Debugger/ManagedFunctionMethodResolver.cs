@@ -139,7 +139,8 @@ internal static class ManagedFunctionMethodResolver
             }
 
             ManagedBoundType[]? methodTypeArguments = ManagedFunctionGenericMethodInference.TryInfer(
-                metadata, methodHandle, signature, parameterSourceIndices, arguments);
+                metadata, methodHandle, signature, parameterSourceIndices, arguments,
+                declaringTypeArguments ?? [], types, module, thread);
             if (methodTypeArguments is null)
             {
                 continue;

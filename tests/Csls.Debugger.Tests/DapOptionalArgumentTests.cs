@@ -241,7 +241,12 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             ("FirstGenericArrayForDebugger(vector)", "41"),
             ("FirstGenericListForDebugger(constructed[0])", "81"),
             ("StructNumberGenericForDebugger(optionalStructs[0])", "41"),
-            ("PreferNonGenericForDebugger(41)", "2")
+            ("PreferNonGenericForDebugger(41)", "2"),
+            ("ClassConstraintForDebugger(\"hello\")", "11"),
+            ("StructConstraintForDebugger(41)", "22"),
+            ("InterfaceConstraintForDebugger(constructed[0])", "2"),
+            ("BaseConstraintForDebugger(inheritedObject)", "81"),
+            ("ConstructorConstraintForDebugger(singletonObject)", "44")
         })
         {
             JsonElement genericResult = await ReadEvaluationAsync(client, frameId,
@@ -251,6 +256,25 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             using JsonDocument genericInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             AssertEvent(genericInvalidated.RootElement, "invalidated");
+        }
+
+        foreach (string rejectedCall in new[]
+        {
+            "ClassConstraintForDebugger(41)",
+            "StructConstraintForDebugger(\"hello\")",
+            "StructConstraintForDebugger(nullable[0])",
+            "InterfaceConstraintForDebugger(\"hello\")",
+            "BaseConstraintForDebugger(\"hello\")",
+            "ConstructorConstraintForDebugger(\"hello\")",
+            "UnmanagedConstraintForDebugger(optionalStructs[0])"
+        })
+        {
+            JsonElement rejectedGeneric = await ReadEvaluationAsync(client, frameId,
+                $"Csls.TestProcessHost.DebuggerDumpArrayFixture.{rejectedCall}",
+                success: false, TestContext.CancellationToken).ConfigureAwait(false);
+            string? message = rejectedGeneric.GetProperty("message").GetString();
+            Assert.Contains(rejectedCall[..rejectedCall.IndexOf('(', StringComparison.Ordinal)],
+                Assert.IsInstanceOfType<string>(message));
         }
 
         JsonElement instanceGeneric = await ReadEvaluationAsync(client, frameId,

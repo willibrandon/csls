@@ -52,6 +52,46 @@ internal sealed class ManagedBoundTypeSystem
     }
 
     /// <summary>
+    /// Checks the loaded declaration for a public instance constructor with no parameters.
+    /// </summary>
+    internal bool HasPublicParameterlessConstructor(ManagedBoundType type)
+    {
+        if (!type.IsReference)
+        {
+            return true;
+        }
+
+        if (type.IsArray ||
+            (GetAttributes(type) & (TypeAttributes.Abstract | TypeAttributes.Interface)) != 0)
+        {
+            return false;
+        }
+
+        CorDebugLoadedModule module = GetModule(type);
+        using PEReader pe = OpenModule(module);
+        using var metadata = new ManagedMetadataImage(pe.GetMetadataReader(), module.MetadataDeltas);
+        var typeHandle = (TypeDefinitionHandle)MetadataTokens.EntityHandle(checked((int)type.DefinitionToken));
+        foreach (MethodDefinitionHandle handle in metadata.GetMethods(typeHandle))
+        {
+            MethodDefinition method = metadata.GetMethodDefinition(handle);
+            if (metadata.GetString(method.Name) != ".ctor" ||
+                (method.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public ||
+                (method.Attributes & MethodAttributes.Static) != 0 ||
+                (method.Attributes & MethodAttributes.RTSpecialName) == 0)
+            {
+                continue;
+            }
+
+            if (metadata.DecodeMethodSignature(handle, module.Pointer).ParameterTypes.Length == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Identifies one intrinsic declaration by its exact loaded core-library module and metadata name.
     /// </summary>
     internal bool IsCoreType(ManagedBoundType type, string name, nint thread) =>

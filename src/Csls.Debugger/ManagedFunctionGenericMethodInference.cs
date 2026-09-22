@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Reflection.Metadata;
 
 namespace Csls.Debugger;
@@ -9,14 +8,18 @@ namespace Csls.Debugger;
 internal static class ManagedFunctionGenericMethodInference
 {
     /// <summary>
-    /// Returns inferred arguments for an unconstrained generic declaration, or null when inference is incomplete.
+    /// Returns inferred arguments that satisfy the loaded declaration, or null when inference is incomplete.
     /// </summary>
     internal static ManagedBoundType[]? TryInfer(
         ManagedMetadataImage metadata,
         MethodDefinitionHandle methodHandle,
         MethodSignature<ManagedMetadataTypeSignature> signature,
         IReadOnlyList<int> parameterSourceIndices,
-        IReadOnlyList<ManagedBoundType?> arguments)
+        IReadOnlyList<ManagedBoundType?> arguments,
+        IReadOnlyList<ManagedBoundType> declaringArguments,
+        ManagedBoundTypeSystem types,
+        nint module,
+        nint thread)
     {
         if (!signature.Header.IsGeneric)
         {
@@ -32,9 +35,7 @@ internal static class ManagedFunctionGenericMethodInference
         (MetadataReader reader, EntityHandle local) = metadata.Resolve(methodHandle);
         GenericParameterHandleCollection parameters = reader.GetMethodDefinition((MethodDefinitionHandle)local)
             .GetGenericParameters();
-        if (parameters.Count != arity || parameters.Any(handle =>
-            (reader.GetGenericParameter(handle).Attributes & GenericParameterAttributes.SpecialConstraintMask) != 0 ||
-            reader.GetGenericParameter(handle).GetConstraints().Count != 0))
+        if (parameters.Count != arity)
         {
             return null;
         }
@@ -54,8 +55,15 @@ internal static class ManagedFunctionGenericMethodInference
             }
         }
 
-        return inferred.Any(static argument => argument is null)
-            ? null : [.. inferred.Select(static argument => argument!)];
+        if (inferred.Any(static argument => argument is null))
+        {
+            return null;
+        }
+
+        ManagedBoundType[] result = [.. inferred.Select(static argument => argument!)];
+        return ManagedFunctionGenericConstraintValidator.AreSatisfied(
+            metadata, methodHandle, module, declaringArguments, result, types, thread)
+            ? result : null;
     }
 
     private static bool TryInferParameter(

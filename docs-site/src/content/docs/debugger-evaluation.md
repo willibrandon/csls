@@ -126,9 +126,11 @@ allocated in the target with their exact UTF-16 length, including embedded NUL v
 The binder validates type identity and resolves the overload before execution.
 Instance calls on existing struct storage use its loaded value type and retain
 that storage through the call.
-Calls to unconstrained generic methods infer exact loaded type arguments from
+Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.
+The binder checks loaded `class`, `struct`, `new()`, base-class, and interface
+constraints before running the selected method.
 C# and Visual Basic calls bind named arguments to the loaded method or constructor's
 parameter names. Argument values are evaluated in source order and passed in CLR
 parameter order; Visual Basic names are matched case-insensitively.
