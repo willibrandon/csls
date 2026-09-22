@@ -137,6 +137,8 @@ static async Task BuildDocumentationInputsAsync(
                 solutionPath,
                 "--configuration",
                 "Debug",
+                "--property:PublishAot=false",
+                "--property:RuntimeIdentifiers=",
                 "--nologo",
                 $"-bl:{Path.Join(repositoryRoot, "artifacts", "diagnostics", "documentation-inputs", "{}.binlog")}"
             ],
