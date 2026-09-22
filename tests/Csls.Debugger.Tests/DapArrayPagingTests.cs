@@ -262,8 +262,10 @@ public sealed class DapArrayPagingTests : DapTestContext
         foreach ((string expression, string expected) in new[]
         {
             ($"{receiver}.SelectWidenedForDebugger(vector[0])", "1041"),
+            ($"{receiver}.CompilerSelectWidenedForDebugger()", "1041"),
             ($"{receiver}.SelectWidenedForDebugger((float)vector[0])", "2041"),
             ($"{receiver}.SelectWidenedForDebugger((double)vector[0])", "2041"),
+            ($"{receiver}.SelectWidenedForDebugger((decimal)vector[0])", "3041"),
             ($"{receiver}.SelectSignedForDebugger((byte)vector[0])", "141"),
             ($"{receiver}.CompilerSelectSignedForDebugger()", "141"),
             ($"{receiver}.SelectNativeForDebugger((byte)vector[0])", "3041"),

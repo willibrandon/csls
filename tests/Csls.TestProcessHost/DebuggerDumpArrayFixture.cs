@@ -77,6 +77,20 @@ internal static class DebuggerDumpArrayFixture
     internal static double SelectWidenedForDebugger(double value) => value + 2000;
 
     /// <summary>
+    /// Marks the decimal overload selected by an exact decimal argument.
+    /// </summary>
+    /// <param name="value">The decimal argument.</param>
+    /// <returns>The decimal overload marker when its scale is zero.</returns>
+    internal static int SelectWidenedForDebugger(decimal value) =>
+        decimal.GetBits(value) is [41, 0, 0, 0] ? 3041 : 0;
+
+    /// <summary>
+    /// Gets the compiler-selected overload for an integer argument.
+    /// </summary>
+    /// <returns>The compiled overload marker.</returns>
+    internal static long CompilerSelectWidenedForDebugger() => SelectWidenedForDebugger(41);
+
+    /// <summary>
     /// Requires an unsigned argument to reject signed-to-unsigned call conversions.
     /// </summary>
     /// <param name="value">The unsigned argument.</param>
