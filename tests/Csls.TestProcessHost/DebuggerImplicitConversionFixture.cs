@@ -147,4 +147,29 @@ internal static class DebuggerImplicitConversionFixture
     /// <returns>The compiler-produced floating-point result.</returns>
     internal static double CompilerExplicitDoubleForDebugger(
         DebuggerImplicitConversionSource source) => (double)source;
+
+    /// <summary>
+    /// Runs the compiler's numeric widening before an explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The primitive source value.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static long CompilerExplicitWidenedSourceForDebugger(byte source) =>
+        ((DebuggerExplicitConversionDestination)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's boxing conversion before a constructed explicit operator.
+    /// </summary>
+    /// <param name="source">The primitive source value.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static int CompilerExplicitBoxedSourceForDebugger(int source) =>
+        ((DebuggerExplicitConversionGenericDestination<IComparable>)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's reference conversions around an inherited conversion operator.
+    /// </summary>
+    /// <param name="source">The derived reference source.</param>
+    /// <returns>The number carried through the reference result.</returns>
+    internal static int CompilerExplicitReferenceResultForDebugger(
+        DebuggerImplicitConversionReferenceDerived source) =>
+        ((DebuggerImplicitConversionReferenceResultBase)source).Number;
 }

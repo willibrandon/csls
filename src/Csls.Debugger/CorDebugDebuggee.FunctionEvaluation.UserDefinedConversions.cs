@@ -14,7 +14,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="frameId">The logical managed frame identifier.</param>
     /// <param name="plan">The validated explicit conversion expression.</param>
     /// <param name="generation">The stop generation that owns the frame.</param>
-    /// <returns>True when an exact loaded conversion operator is selected.</returns>
+    /// <returns>True when a loaded conversion operator is selected.</returns>
     internal bool HasUserDefinedExplicitConversion(
         int frameId,
         DebugExpressionPlan plan,
@@ -71,20 +71,37 @@ internal sealed partial class CorDebugDebuggee
             return value with { UserDefinedConversion = conversion };
         }
 
-        ManagedExpressionValue prepared;
+        ManagedExpressionValue prepared = PrepareUserDefinedConversionInput(
+            value,
+            sourceType,
+            conversion,
+            referenceConversions,
+            thread);
+
+        return prepared with { UserDefinedConversion = conversion };
+    }
+
+    private ManagedExpressionValue PrepareUserDefinedConversionInput(
+        ManagedExpressionValue value,
+        ManagedBoundType sourceType,
+        ManagedUserDefinedConversion conversion,
+        ManagedReferenceConversion referenceConversions,
+        nint thread)
+    {
         if (sourceType.IsSameType(conversion.ParameterType) ||
             referenceConversions.IsImplicit(sourceType, conversion.ParameterType, thread))
         {
-            prepared = value with { DeclaredType = conversion.ParameterType };
+            return value with { DeclaredType = conversion.ParameterType };
         }
-        else if (referenceConversions.IsImplicitBoxing(
+
+        if (referenceConversions.IsImplicitBoxing(
             sourceType, conversion.ParameterType, thread))
         {
             bool boxesNullable = _boundTypes.IsCoreType(
                 sourceType, "System.Nullable`1", thread);
             bool boxesNullableAsNull = boxesNullable &&
                 IsNullableBoxingEmpty(value, sourceType, thread);
-            prepared = value with
+            return value with
             {
                 DeclaredType = sourceType,
                 RequiresNullableMaterialization = false,
@@ -95,23 +112,20 @@ internal sealed partial class CorDebugDebuggee
                 BoxesNullableAsNull = boxesNullableAsNull
             };
         }
-        else if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+
+        if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
             sourceType, conversion.ParameterType, conversion.Language))
         {
-            prepared = ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+            return ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
                 value, sourceType, conversion.ParameterType, conversion.Language) with
             {
                 DeclaredType = conversion.ParameterType
             };
         }
-        else
-        {
-            throw new InvalidOperationException(
-                $"The implicit conversion operator cannot receive " +
-                $"'{sourceType.DisplayName}' as '{conversion.ParameterType.DisplayName}'.");
-        }
 
-        return prepared with { UserDefinedConversion = conversion };
+        throw new InvalidOperationException(
+            $"The conversion operator cannot receive " +
+            $"'{sourceType.DisplayName}' as '{conversion.ParameterType.DisplayName}'.");
     }
 
     private unsafe void ScheduleUserDefinedConversion(
@@ -474,13 +488,14 @@ internal sealed partial class CorDebugDebuggee
         ManagedBoundType source,
         ManagedBoundType target,
         DebugExpressionLanguage language,
-        nint thread)
+        nint thread,
+        out ManagedUserDefinedConversion conversion)
     {
-        ManagedUserDefinedConversion conversion =
+        conversion =
             new ManagedUserDefinedConversionResolver(
                 _boundTypes, thread, language).ResolveExplicit(source, target) ??
             throw new InvalidOperationException(
-                $"No exact loaded user-defined conversion exists from " +
+                $"No loaded user-defined conversion exists from " +
                 $"'{source.DisplayName}' to '{target.DisplayName}'.");
         CorDebugLoadedModule module = _boundTypes.GetModule(conversion.DeclaringType);
         nint function = 0;

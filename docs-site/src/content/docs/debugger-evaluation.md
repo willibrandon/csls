@@ -147,9 +147,10 @@ selected operator under the same deadline,
 cancellation, thread isolation, and exception recovery as the final call, then passes its
 primitive, reference, null, or value-type result to that call. Lifted nullable conversions
 execute the operator once for populated values and propagate null directly for empty values.
-Explicit casts resolve exact loaded explicit or implicit conversion operators under the same
-target-code authorization policy. Their results can be inspected directly or assigned through
-`setExpression`.
+Explicit casts resolve loaded explicit or implicit conversion operators, apply implicit numeric and
+reference conversions plus boxing to operator inputs, and preserve implicit reference conversions from
+operator results. They run under the same target-code authorization policy, and their results can
+be inspected directly or assigned through `setExpression`.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

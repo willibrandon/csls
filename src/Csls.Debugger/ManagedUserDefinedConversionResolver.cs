@@ -7,7 +7,7 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves exact implicit conversion operators from the current loaded metadata generation.
+/// Resolves user-defined conversion operators from the current loaded metadata generation.
 /// </summary>
 internal sealed class ManagedUserDefinedConversionResolver
 {
@@ -81,11 +81,11 @@ internal sealed class ManagedUserDefinedConversionResolver
     }
 
     /// <summary>
-    /// Resolves one exact explicit or implicit operator for an authored cast.
+    /// Resolves one explicit or implicit operator for an authored cast with standard input and reference-result conversions.
     /// </summary>
     /// <param name="source">The exact loaded cast source type.</param>
     /// <param name="destination">The exact loaded cast destination type.</param>
-    /// <returns>The unique exact conversion, or null when none exists.</returns>
+    /// <returns>The unique best conversion, or null when none exists.</returns>
     internal ManagedUserDefinedConversion? ResolveExplicit(
         ManagedBoundType source,
         ManagedBoundType destination)
@@ -104,7 +104,7 @@ internal sealed class ManagedUserDefinedConversionResolver
             AddExplicitMatches(declaringType, source, destination, matches);
         }
 
-        return matches.Count == 1 ? matches[0] : null;
+        return SelectBest(matches, source, destination);
     }
 
     private void AddExplicitMatches(
@@ -156,7 +156,10 @@ internal sealed class ManagedUserDefinedConversionResolver
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
             uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
-            if (source.IsSameType(parameterType) && destination.IsSameType(resultType) &&
+            bool hasInputConversion = HasStandardImplicitConversion(source, parameterType);
+            bool hasResultConversion = destination.IsSameType(resultType) ||
+                _referenceConversions.IsImplicit(resultType, destination, _thread);
+            if (hasInputConversion && hasResultConversion &&
                 !matches.Any(match =>
                     match.DeclaringType.ModuleId == declaringType.ModuleId &&
                     match.MethodToken == methodToken))

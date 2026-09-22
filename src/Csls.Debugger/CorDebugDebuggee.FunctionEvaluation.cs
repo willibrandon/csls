@@ -213,6 +213,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
                     suppliedArguments, plan.Language, thread);
+                ManagedUserDefinedConversion? explicitConversion = null;
                 ManagedFunctionBinding binding = convertsValue
                     ? ResolveUserDefinedExplicitConversion(
                         argumentTypes[0] ?? throw new InvalidOperationException(
@@ -223,7 +224,8 @@ internal sealed partial class CorDebugDebuggee
                             plan.Language,
                             thread),
                         plan.Language,
-                        thread)
+                        thread,
+                        out explicitConversion)
                     : constructsObject
                     ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
                         constantArguments, argumentNames, thread)
@@ -252,10 +254,14 @@ internal sealed partial class CorDebugDebuggee
                     ManagedBoundType parameterType = binding.ParameterTypes[index];
                     if (convertsValue)
                     {
-                        suppliedArguments[index] = suppliedArguments[index] with
-                        {
-                            DeclaredType = parameterType
-                        };
+                        suppliedArguments[index] = PrepareUserDefinedConversionInput(
+                            suppliedArguments[index],
+                            sourceType ?? throw new InvalidOperationException(
+                                "A null literal has no user-defined conversion source type."),
+                            explicitConversion ?? throw new InvalidOperationException(
+                                "An explicit conversion has no selected loaded operator."),
+                            referenceConversions,
+                            thread);
                     }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {
