@@ -8,6 +8,39 @@ namespace Csls.TestProcessHost;
 internal static class DebuggerDumpArrayFixture
 {
     /// <summary>
+    /// Selects the array's generic collection interface over System.Object.
+    /// </summary>
+    /// <param name="value">The array supplied through debugger evaluation.</param>
+    /// <returns>The interface overload marker.</returns>
+    internal static int SelectArrayReferenceForDebugger(IReadOnlyList<int> value)
+    {
+        GC.KeepAlive(value);
+        return 17;
+    }
+
+    /// <summary>
+    /// Selects the object overload for an explicitly object-typed argument.
+    /// </summary>
+    /// <param name="value">The reference supplied through debugger evaluation.</param>
+    /// <returns>The object overload marker.</returns>
+    internal static int SelectArrayReferenceForDebugger(object value)
+    {
+        GC.KeepAlive(value);
+        return 23;
+    }
+
+    /// <summary>
+    /// Exposes a parameter incompatible with the fixture's array argument.
+    /// </summary>
+    /// <param name="value">A disposable reference.</param>
+    /// <returns>The unrelated overload marker.</returns>
+    internal static int RequireDisposableForDebugger(IDisposable value)
+    {
+        GC.KeepAlive(value);
+        return 31;
+    }
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>

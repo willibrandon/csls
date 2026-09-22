@@ -178,11 +178,13 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
+                ManagedBoundType?[] argumentTypes = BindFunctionEvaluationArgumentTypes(
+                    suppliedArguments, plan.Language, thread);
                 ManagedFunctionBinding binding = constructsObject
-                    ? ResolveConstructor(operation.Text!, plan.Language, suppliedArguments, thread)
+                    ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes, thread)
                     : receiverValue == 0
-                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, suppliedArguments, thread)
-                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, suppliedArguments, thread,
+                        ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, argumentTypes, thread)
+                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, argumentTypes, thread,
                             property?.DeclaringType ?? receiver?.ExplicitReceiverType, property?.Getter.MethodToken);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;

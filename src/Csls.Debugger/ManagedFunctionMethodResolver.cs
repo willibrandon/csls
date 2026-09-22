@@ -1,28 +1,29 @@
 using Csls.Debugger.Contracts;
-using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
-using System.Text;
 
 namespace Csls.Debugger;
 
 /// <summary>
-/// Selects concrete callable declarations from the current aggregate module metadata.
+/// Selects concrete callable declarations using exact loaded argument identities.
 /// </summary>
 internal static class ManagedFunctionMethodResolver
 {
     /// <summary>
-    /// Opens and owns the current module metadata while selecting one callable declaration.
+    /// Opens the current module metadata while selecting one callable declaration.
     /// </summary>
     internal static uint? Resolve(
         CorDebugLoadedModule module,
         uint typeToken,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments,
-        bool staticMethod)
+        IReadOnlyList<ManagedBoundType?> arguments,
+        bool staticMethod,
+        ManagedBoundTypeSystem types,
+        nint thread,
+        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null)
     {
         using PEReader? reader = module.OpenPeReader();
         if (reader is null)
@@ -31,20 +32,24 @@ internal static class ManagedFunctionMethodResolver
         }
 
         using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), module.MetadataDeltas);
-        return Resolve(metadata, typeToken, methodName, language, arguments, staticMethod);
+        return Resolve(metadata, module.Pointer, typeToken, methodName, language, arguments,
+            staticMethod, types, thread, declaringTypeArguments);
     }
 
     /// <summary>
-    /// Resolves a uniquely matching static, instance, or constructor declaration before target execution.
+    /// Resolves the unique best applicable declaration before target execution.
     /// </summary>
     internal static uint? Resolve(
         ManagedMetadataImage metadata,
+        nint module,
         uint typeToken,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments,
+        IReadOnlyList<ManagedBoundType?> arguments,
         bool staticMethod,
-        IReadOnlyList<string>? declaringTypeArguments = null)
+        ManagedBoundTypeSystem types,
+        nint thread,
+        IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -58,7 +63,8 @@ internal static class ManagedFunctionMethodResolver
         StringComparison comparison = language == DebugExpressionLanguage.VisualBasic
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        List<(MethodDefinitionHandle Handle, int Score)> matches = [];
+        var conversions = new ManagedReferenceConversion(types);
+        var matches = new List<(MethodDefinitionHandle Handle, ManagedBoundType[] Parameters)>();
         foreach (MethodDefinitionHandle methodHandle in metadata.GetMethods(typeHandle))
         {
             MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
@@ -70,23 +76,19 @@ internal static class ManagedFunctionMethodResolver
                 continue;
             }
 
-            BlobReader blob = metadata.GetBlobReader(method.Signature);
-            var decoder = new SignatureDecoder<string, object?>(new FunctionEvaluationSignatureTypeProvider(metadata),
-                metadata.Baseline, genericContext: null);
-            MethodSignature<string> signature = decoder.DecodeMethodSignature(ref blob);
-            if (signature.Header.IsGeneric ||
-                signature.ParameterTypes.Length != arguments.Length)
+            MethodSignature<ManagedMetadataTypeSignature> signature =
+                metadata.DecodeMethodSignature(methodHandle, module);
+            if (signature.Header.IsGeneric || signature.ParameterTypes.Length != arguments.Count ||
+                signature.ParameterTypes.Any(static parameter => parameter.UnsupportedKind is not null))
             {
                 continue;
             }
 
-            int score = ScoreParameters(
-                signature.ParameterTypes,
-                arguments,
-                declaringTypeArguments);
-            if (score >= 0)
+            ManagedBoundType[] parameters = [.. signature.ParameterTypes.Select(parameter =>
+                types.Bind(parameter, declaringTypeArguments ?? [], [], thread))];
+            if (IsApplicable(arguments, parameters, conversions, thread))
             {
-                matches.Add((methodHandle, score));
+                matches.Add((methodHandle, parameters));
             }
         }
 
@@ -95,133 +97,82 @@ internal static class ManagedFunctionMethodResolver
             return null;
         }
 
-        int bestScore = matches.Max(static candidate => candidate.Score);
-        MethodDefinitionHandle[] bestMatches =
-            [.. matches
-                .Where(candidate => candidate.Score == bestScore)
-                .Select(static candidate => candidate.Handle)];
-        if (bestMatches.Length > 1)
+        (MethodDefinitionHandle Handle, ManagedBoundType[] Parameters)[] bestMatches =
+            [.. matches.Where(candidate => !matches.Any(other =>
+                other.Handle != candidate.Handle &&
+                IsBetter(other.Parameters, candidate.Parameters, arguments, conversions, thread)))];
+        if (bestMatches.Length != 1)
         {
             string typeName = metadata.GetString(type.Name);
             throw new InvalidOperationException(
-                $"Method call '{methodName}' with {arguments.Length} argument(s) is " +
+                $"Method call '{methodName}' with {arguments.Count} argument(s) is " +
                 $"ambiguous on runtime type '{typeName}'.");
         }
 
-        return checked((uint)MetadataTokens.GetToken(bestMatches[0]));
+        return checked((uint)MetadataTokens.GetToken(bestMatches[0].Handle));
     }
 
-    private static int ScoreParameters(
-        ImmutableArray<string> parameterTypes,
-        ManagedExpressionValue[] arguments,
-        IReadOnlyList<string>? declaringTypeArguments)
+    private static bool IsApplicable(
+        IReadOnlyList<ManagedBoundType?> arguments,
+        ManagedBoundType[] parameters,
+        ManagedReferenceConversion conversions,
+        nint thread)
     {
-        int score = 0;
-        for (int index = 0; index < arguments.Length; index++)
+        for (int index = 0; index < arguments.Count; index++)
         {
-            string? parameterType = SubstituteDeclaringTypeArguments(
-                parameterTypes[index],
-                declaringTypeArguments);
-            if (parameterType is null)
+            ManagedBoundType? argument = arguments[index];
+            ManagedBoundType parameter = parameters[index];
+            if (argument is null)
             {
-                return -1;
+                if (!parameter.IsReference)
+                {
+                    return false;
+                }
             }
-
-            int parameterScore = ScoreParameter(parameterType, arguments[index]);
-            if (parameterScore < 0)
+            else if (!argument.IsSameType(parameter) &&
+                !conversions.IsImplicit(argument, parameter, thread))
             {
-                return -1;
+                return false;
             }
-
-            score = checked(score + parameterScore);
         }
 
-        return score;
+        return true;
     }
 
-    private static string? SubstituteDeclaringTypeArguments(
-        string parameterType,
-        IReadOnlyList<string>? declaringTypeArguments)
+    private static bool IsBetter(
+        ManagedBoundType[] candidate,
+        ManagedBoundType[] other,
+        IReadOnlyList<ManagedBoundType?> arguments,
+        ManagedReferenceConversion conversions,
+        nint thread)
     {
-        const string marker = "type-parameter:";
-        int markerIndex = parameterType.IndexOf(marker, StringComparison.Ordinal);
-        if (markerIndex < 0)
+        bool strictlyBetter = false;
+        for (int index = 0; index < candidate.Length; index++)
         {
-            return parameterType;
-        }
-
-        if (declaringTypeArguments is null)
-        {
-            return null;
-        }
-
-        var result = new StringBuilder(parameterType.Length);
-        int consumed = 0;
-        while (markerIndex >= 0)
-        {
-            _ = result.Append(parameterType, consumed, markerIndex - consumed);
-            int numberStart = markerIndex + marker.Length;
-            int numberEnd = numberStart;
-            while (numberEnd < parameterType.Length &&
-                char.IsAsciiDigit(parameterType[numberEnd]))
+            ManagedBoundType preferred = candidate[index];
+            ManagedBoundType alternative = other[index];
+            if (preferred.IsSameType(alternative))
             {
-                numberEnd++;
+                continue;
             }
 
-            if (numberEnd == numberStart || !int.TryParse(
-                parameterType.AsSpan(numberStart, numberEnd - numberStart),
-                System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out int argumentIndex) ||
-                argumentIndex >= declaringTypeArguments.Count)
+            ManagedBoundType? argument = arguments[index];
+            if (argument?.IsSameType(preferred) == true)
             {
-                return null;
+                strictlyBetter = true;
+                continue;
             }
 
-            _ = result.Append(declaringTypeArguments[argumentIndex]);
-            consumed = numberEnd;
-            markerIndex = parameterType.IndexOf(marker, consumed, StringComparison.Ordinal);
+            if (argument?.IsSameType(alternative) == true ||
+                !conversions.IsImplicit(preferred, alternative, thread) ||
+                conversions.IsImplicit(alternative, preferred, thread))
+            {
+                return false;
+            }
+
+            strictlyBetter = true;
         }
 
-        _ = result.Append(parameterType, consumed, parameterType.Length - consumed);
-        return result.ToString();
+        return strictlyBetter;
     }
-
-    private static int ScoreParameter(string parameterType, ManagedExpressionValue argument)
-    {
-        if (parameterType.StartsWith("by-reference:", StringComparison.Ordinal) ||
-            parameterType.StartsWith("pointer:", StringComparison.Ordinal) ||
-            parameterType.StartsWith("method-parameter:", StringComparison.Ordinal) ||
-            parameterType.StartsWith("type-parameter:", StringComparison.Ordinal) ||
-            string.Equals(parameterType, "function-pointer", StringComparison.Ordinal))
-        {
-            return -1;
-        }
-
-        bool referenceType = parameterType.StartsWith(
-            "reference:",
-            StringComparison.Ordinal) ||
-            string.Equals(parameterType, "string", StringComparison.Ordinal) ||
-            string.Equals(parameterType, "object", StringComparison.Ordinal);
-        string normalizedType = parameterType.StartsWith(
-            "reference:",
-            StringComparison.Ordinal)
-                ? parameterType["reference:".Length..]
-                : parameterType.StartsWith("value:", StringComparison.Ordinal)
-                    ? parameterType["value:".Length..]
-                    : parameterType;
-        if (argument.HasScalar && argument.Scalar is null)
-        {
-            return referenceType ? 1 : -1;
-        }
-
-        if (string.Equals(normalizedType, argument.Type, StringComparison.Ordinal))
-        {
-            return 4;
-        }
-
-        return argument.RuntimeValueReference > 0 && referenceType &&
-            (!argument.HasScalar || argument.Scalar is string) ? 1 : -1;
-    }
-
 }

@@ -11,7 +11,7 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionNode receiver,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments,
+        ManagedBoundType?[] arguments,
         nint thread)
     {
         if (!TryGetQualifiedTypeName(receiver, out string typeName))
@@ -30,7 +30,9 @@ internal sealed partial class CorDebugDebuggee
             methodName,
             language,
             arguments,
-            staticMethod: true);
+            staticMethod: true,
+            _boundTypes,
+            thread);
         if (methodToken is null)
         {
             throw new InvalidOperationException(

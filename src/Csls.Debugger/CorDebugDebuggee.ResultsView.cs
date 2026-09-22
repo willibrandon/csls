@@ -166,7 +166,7 @@ internal sealed partial class CorDebugDebuggee
             retainedEnumerable = RetainResultsViewStructReceiver(handle.Pointer);
             if (retainedEnumerable != 0)
             {
-                function = ResolveResultsViewBoxingFunction(retainedEnumerable);
+                function = ResolveResultsViewBoxingFunction(retainedEnumerable, thread);
                 constructor = binding.DetachConstructor();
                 constructorTypeArguments = binding.DetachTypeArguments();
             }

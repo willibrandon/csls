@@ -10,11 +10,47 @@ internal sealed partial class CorDebugDebuggee
 {
     private const int MaximumFunctionEvaluationHierarchyDepth = 256;
 
+    private ManagedBoundType?[] BindFunctionEvaluationArgumentTypes(
+        ManagedExpressionValue[] arguments,
+        DebugExpressionLanguage language,
+        nint thread)
+    {
+        var types = new ManagedBoundType?[arguments.Length];
+        for (int index = 0; index < arguments.Length; index++)
+        {
+            ManagedExpressionValue argument = arguments[index];
+            if (argument.IsContextualDefault)
+            {
+                throw new InvalidOperationException(
+                    "A default literal requires an explicitly selected parameter type.");
+            }
+
+            if (argument.DeclaredType is ManagedBoundType declared)
+            {
+                types[index] = declared;
+            }
+            else if (argument is { HasScalar: true, Scalar: null, RuntimeValueReference: 0 })
+            {
+                types[index] = null;
+            }
+            else if (argument.RuntimeValueReference > 0)
+            {
+                types[index] = _boundTypes.CaptureValue(GetRuntimeValue(argument), thread);
+            }
+            else
+            {
+                types[index] = _boundTypes.BindName(argument.Type, language, thread);
+            }
+        }
+
+        return types;
+    }
+
     private unsafe ManagedFunctionBinding ResolveInstanceFunction(
         nint receiver,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments,
+        ManagedBoundType?[] arguments,
         nint thread,
         ManagedBoundType? selectedReceiverType,
         uint? exactMethodToken = null)
@@ -57,18 +93,20 @@ internal sealed partial class CorDebugDebuggee
                     uint typeToken = GetClassToken(runtimeClass);
                     CorDebugLoadedModule loadedModule = _sourceBreakpoints.FindModule(module)
                         ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
-                    selectedTypeReached = selectedTypeReached || selectedReceiverType is null ||
-                        selectedReceiverType.IsSameType(_boundTypes.CaptureType(currentType, thread));
+                    ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
+                    selectedTypeReached |= selectedReceiverType?.IsSameType(declaringType) == true;
                     uint? methodToken = selectedTypeReached ? exactMethodToken ?? ManagedFunctionMethodResolver.Resolve(
                         loadedModule,
                         typeToken,
                         methodName,
                         language,
                         arguments,
-                        staticMethod: false) : null;
+                        staticMethod: false,
+                        _boundTypes,
+                        thread,
+                        declaringType.TypeArguments) : null;
                     if (methodToken is uint resolvedMethodToken)
                     {
-                        ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);
                         ManagedBoundType? resultType = _boundTypes.BindMethodResult(
                             module, resolvedMethodToken, declaringType.TypeArguments, thread);
                         nint[] typeArguments = ManagedRuntimeTypeArguments.Retain(currentType);

@@ -11,6 +11,43 @@ namespace Csls.Debugger.Tests;
 public sealed class DapArrayPagingTests : DapTestContext
 {
     /// <summary>
+    /// Selects the nearest loaded reference overload and rejects an unrelated parameter type.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ArrayReferenceOverloadsUseExactLoadedTypes()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string receiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
+        foreach ((string expression, string result) in new[]
+        {
+            ($"{receiver}.SelectArrayReferenceForDebugger(vector)", "17"),
+            ($"{receiver}.SelectArrayReferenceForDebugger((object)vector)", "23"),
+            ($"{receiver}.SelectArrayReferenceForDebugger(null)", "17")
+        })
+        {
+            JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(result, value.GetProperty("result").GetString());
+            using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement failure = await ReadEvaluationAsync(client, frameId,
+            $"{receiver}.RequireDisposableForDebugger(vector)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        string message = Assert.IsInstanceOfType<string>(failure.GetProperty("message").GetString());
+        Assert.Contains("No static method", message);
+        JsonElement stillStopped = await ReadEvaluationAsync(client, frameId, "vector[0]", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("41", stillStopped.GetProperty("result").GetString());
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Publishes exact array sizes for locals and nested elements when the client supports paging.
     /// </summary>
     /// <param name="paging">Whether the client advertises variable paging.</param>

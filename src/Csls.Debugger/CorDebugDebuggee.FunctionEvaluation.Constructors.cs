@@ -14,7 +14,7 @@ internal sealed partial class CorDebugDebuggee
     private ManagedFunctionBinding ResolveConstructor(
         string typeName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments,
+        ManagedBoundType?[] arguments,
         nint thread)
     {
         ManagedRuntimeTypeReference runtimeType = ManagedRuntimeTypeNameParser.Parse(
@@ -51,15 +51,19 @@ internal sealed partial class CorDebugDebuggee
                 $"Runtime type '{typeName}' is abstract and cannot be constructed.");
         }
 
+        ManagedBoundType[] boundTypeArguments = [.. runtimeType.TypeArguments.Select(
+            argument => _boundTypes.BindName(argument.DebuggerTypeName, language, thread))];
         uint? constructorToken = ManagedFunctionMethodResolver.Resolve(
             metadata,
+            module.Pointer,
             typeToken,
             ".ctor",
             language,
             arguments,
             staticMethod: false,
-            declaringTypeArguments: runtimeType.TypeArguments.Select(
-                static argument => argument.DebuggerTypeName).ToArray());
+            _boundTypes,
+            thread,
+            declaringTypeArguments: boundTypeArguments);
         if (constructorToken is null)
         {
             throw new InvalidOperationException(

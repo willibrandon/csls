@@ -101,7 +101,7 @@ internal sealed partial class CorDebugDebuggee
         return Volatile.Read(ref *elementTypeAddress) == 0x11 ? Retain(value) : 0;
     }
 
-    private unsafe nint ResolveResultsViewBoxingFunction(nint value)
+    private unsafe nint ResolveResultsViewBoxingFunction(nint value, nint thread)
     {
         nint value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);
         nint currentType = 0;
@@ -122,7 +122,7 @@ internal sealed partial class CorDebugDebuggee
                     runtimeClass = GetRuntimeTypeClass(currentType);
                     module = GetClassModule(runtimeClass);
                     uint token = GetClassToken(runtimeClass);
-                    if (TryResolveResultsViewBoxingMethod(module, token) is uint method)
+                    if (TryResolveResultsViewBoxingMethod(module, token, thread) is uint method)
                     {
                         return GetModuleFunction(module, method);
                     }
@@ -151,7 +151,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private uint? TryResolveResultsViewBoxingMethod(nint module, uint token)
+    private uint? TryResolveResultsViewBoxingMethod(nint module, uint token, nint thread)
     {
         using PEReader reader = OpenRuntimeModule(module);
         CorDebugLoadedModule loaded = _sourceBreakpoints.FindModule(module)
@@ -161,8 +161,8 @@ internal sealed partial class CorDebugDebuggee
             MetadataTokens.TypeDefinitionHandle(checked((int)(token & 0x00FFFFFF))));
         return definition.BaseType.IsNil && metadata.GetString(definition.Namespace) == "System" &&
             metadata.GetString(definition.Name) == "Object"
-                ? ManagedFunctionMethodResolver.Resolve(metadata, token, "MemberwiseClone",
-                    DebugExpressionLanguage.CSharp, [], staticMethod: false) ??
+                ? ManagedFunctionMethodResolver.Resolve(metadata, module, token, "MemberwiseClone",
+                    DebugExpressionLanguage.CSharp, [], staticMethod: false, _boundTypes, thread) ??
                     throw new InvalidOperationException("The runtime has no object-copy method.")
                 : null;
     }
