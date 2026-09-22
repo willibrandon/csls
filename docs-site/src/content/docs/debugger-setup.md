@@ -58,6 +58,27 @@ environment. Set `runtimeHost` to an absolute host executable path to choose the
 
 Set `noDebug` to `true` to run the target as an ordinary process.
 
+## Choose a target console
+
+`console` defaults to `internalConsole`, which delivers target output as DAP
+events. Set it to `integratedTerminal` for the editor's terminal or
+`externalTerminal` for a separate terminal window:
+
+```json
+{
+  "name": ".NET Interactive Launch",
+  "type": "coreclr",
+  "request": "launch",
+  "program": "/absolute/path/to/bin/Debug/net10.0/App.dll",
+  "console": "integratedTerminal"
+}
+```
+
+The target receives the selected terminal's input, output, and error handles.
+The adapter reports the target's process ID, stops at configured breakpoints,
+and retains ownership through restart and disconnect. The same setting works
+with `noDebug: true`. Zed accepts these values in its `csls` debug configuration.
+
 ## Remote and container debugging
 
 Install csls in the target environment and configure a pipe program in the editor.

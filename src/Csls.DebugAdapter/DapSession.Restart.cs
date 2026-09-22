@@ -79,8 +79,28 @@ internal sealed partial class DapSession
                         "The active launch configuration is unavailable.");
                 if (launchConfiguration.NoDebug)
                 {
-                    await _engineSession.RestartWithoutDebuggingAsync(
+                    if (launchConfiguration.Console == DapConsoleKind.Internal)
+                    {
+                        await _engineSession.RestartWithoutDebuggingAsync(
+                            launchConfiguration.Options,
+                            cancellationToken).ConfigureAwait(false);
+                        await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await _engineSession.RestartWithoutDebuggingInTerminalAsync(
+                            launchConfiguration.Options,
+                            token => StartTerminalTargetAsync(launchConfiguration, token),
+                            token => TerminalLaunchServer.ReadExitCodeAsync(token),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                else if (launchConfiguration.Console != DapConsoleKind.Internal)
+                {
+                    await _engineSession.RestartManagedInTerminalAsync(
                         launchConfiguration.Options,
+                        token => StartTerminalTargetAsync(launchConfiguration, token),
+                        token => TerminalLaunchServer.ReadExitCodeAsync(token),
                         cancellationToken).ConfigureAwait(false);
                 }
                 else
@@ -88,13 +108,43 @@ internal sealed partial class DapSession
                     await _engineSession.RestartManagedAsync(
                         launchConfiguration.Options,
                         cancellationToken).ConfigureAwait(false);
+                    await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
                 }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _restartRequest = null;
+            _restartTargetArguments = null;
+            _isRestarting = false;
+            bool targetIsLive = _engineSession.State is
+                DebugSessionState.Running or DebugSessionState.Stopped;
+            _state = _engineSession.State == DebugSessionState.Stopped
+                ? DapSessionState.Stopped
+                : targetIsLive
+                    ? DapSessionState.Running
+                    : DapSessionState.Terminated;
+            if (!targetIsLive)
+            {
+                await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
+                if (!_lifetime.IsCancellationRequested)
+                {
+                    await _writer.WriteEventAsync(
+                        "terminated", writeBody: null, _lifetime.Token).ConfigureAwait(false);
+                }
+            }
+
+            throw;
+        }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or
-                Win32Exception)
+                Win32Exception or TimeoutException)
         {
+            if (_terminalLaunchServer is not null && _engineSession.State is not
+                (DebugSessionState.Running or DebugSessionState.Stopped))
+            {
+                await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
+            }
             _restartRequest = null;
             _restartTargetArguments = null;
             _isRestarting = false;

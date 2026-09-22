@@ -95,6 +95,7 @@ This page is generated from the shipping DAP dispatcher, target capabilities, an
 | `pipeTransport` | `object` | No |  | Run the DAP adapter in the target environment through a local pipe program such as ssh or docker exec. |
 | `args` | `array` | No | `[]` | Arguments passed directly to the managed target as literal values. |
 | `noDebug` | `boolean` | No | `false` | Run the target as an ordinary process. |
+| `console` | `string` | No | `"internalConsole"` | Choose DAP output events or a client terminal with interactive target input and output. |
 | `stopAtEntry` | `boolean` | No | `false` | Stop at the first executable entry-point statement. |
 | `terminateChildProcesses` | `boolean` | No | `false` | Terminate processes started by the target when the debug session ends. |
 | `requireExactSource` | `boolean` | No | `true` | Require local source to match its debug symbols. Set false to bind against unverified local source. |

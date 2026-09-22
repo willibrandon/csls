@@ -3,7 +3,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Combines inherited settings, environment-file assignments, and explicit launch overrides.
 /// </summary>
-internal static class DebuggeeLaunchEnvironment
+public static class DebuggeeLaunchEnvironment
 {
     /// <summary>
     /// Builds one complete target environment immediately before process creation.
@@ -11,9 +11,10 @@ internal static class DebuggeeLaunchEnvironment
     /// <param name="options">The concrete launch options.</param>
     /// <param name="cancellationToken">Cancels environment-file reads.</param>
     /// <returns>The complete target environment.</returns>
-    internal static async Task<Dictionary<string, string>> CreateAsync(
+    public static async Task<Dictionary<string, string>> CreateAsync(
         DebuggeeLaunchOptions options, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
         Dictionary<string, string> environment = DebuggerWorkerEnvironment.CreateTargetEnvironment();
         if (options.EnvironmentFilePath is string file)

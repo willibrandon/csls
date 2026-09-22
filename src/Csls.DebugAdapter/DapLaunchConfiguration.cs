@@ -13,6 +13,11 @@ internal sealed class DapLaunchConfiguration
     internal required bool NoDebug { get; init; }
 
     /// <summary>
+    /// Gets the selected target console.
+    /// </summary>
+    internal required DapConsoleKind Console { get; init; }
+
+    /// <summary>
     /// Gets the concrete target invocation.
     /// </summary>
     internal required DebuggeeLaunchOptions Options { get; init; }

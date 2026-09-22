@@ -38,6 +38,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _clientColumnsStartAtOne = true;
     private bool _clientSupportsVariablePaging;
     private bool _clientSupportsInvalidatedEvent;
+    private bool _clientSupportsRunInTerminal;
     private bool _targetExited;
     private int? _stoppedThreadId;
     private string? _deferredStoppedReason;
@@ -255,6 +256,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await DisposeDumpSessionAsync().ConfigureAwait(false);
         await _engineSession.DisposeAsync().ConfigureAwait(false);
+        await DisposeTerminalLaunchServerAsync().ConfigureAwait(false);
         _cancelableRequestCancellation?.Dispose();
         _cancelableRequestCancellation = null;
         _lifetime.Dispose();
@@ -354,7 +356,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             _lifetime.Token);
 
     private static bool IsCancelableRequest(string command) =>
-        command is "configurationDone" or "evaluate" or "setVariable" or "setExpression" or "variables" or
+        command is "configurationDone" or "restart" or "evaluate" or "setVariable" or "setExpression" or "variables" or
             "stackTrace" or "scopes" or "threads" or "modules" or "loadedSources" or "source" or
             "breakpointLocations" or "stepInTargets" or "gotoTargets" or "completions" or
             "readMemory" or "disassemble" or "exceptionInfo";

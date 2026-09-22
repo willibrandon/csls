@@ -53,6 +53,7 @@ internal static class DapLaunchOptionsParser
         var result = new DapLaunchConfiguration
         {
             NoDebug = noDebug,
+            Console = ParseConsole(arguments),
             Options = new DebuggeeLaunchOptions
             {
                 Program = program,
@@ -96,6 +97,28 @@ internal static class DapLaunchOptionsParser
             result.Options.SourceLinkOptions,
             result.Options.SymbolOptions);
         return result;
+    }
+
+    private static DapConsoleKind ParseConsole(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("console", out JsonElement value))
+        {
+            return DapConsoleKind.Internal;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new ArgumentException("The launch console value must be a string.");
+        }
+
+        return value.GetString() switch
+        {
+            "internalConsole" => DapConsoleKind.Internal,
+            "integratedTerminal" => DapConsoleKind.Integrated,
+            "externalTerminal" => DapConsoleKind.External,
+            _ => throw new ArgumentException(
+                "The launch console must be internalConsole, integratedTerminal, or externalTerminal.")
+        };
     }
 
     private static List<string> ParseArguments(JsonElement arguments)

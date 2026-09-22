@@ -78,8 +78,21 @@ internal sealed partial class DapSession
             }
             else if (launch is not null && launch.NoDebug)
             {
-                await _engineSession
-                    .LaunchWithoutDebuggingAsync(launch.Options, cancellationToken)
+                if (launch.Console == DapConsoleKind.Internal)
+                {
+                    await _engineSession
+                        .LaunchWithoutDebuggingAsync(launch.Options, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await LaunchWithoutDebuggingInTerminalAsync(launch, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            else if (launch is not null && launch.Console != DapConsoleKind.Internal)
+            {
+                await LaunchManagedInTerminalAsync(launch, cancellationToken)
                     .ConfigureAwait(false);
             }
             else
@@ -102,7 +115,7 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or InvalidDataException or
-                UnauthorizedAccessException or Win32Exception)
+                UnauthorizedAccessException or Win32Exception or TimeoutException)
         {
             _state = DapSessionState.Initialized;
             await _writer.WriteResponseAsync(

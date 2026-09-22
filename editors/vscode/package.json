@@ -369,6 +369,12 @@
                 "default": false,
                 "description": "Run the target as an ordinary process."
               },
+              "console": {
+                "type": "string",
+                "enum": ["internalConsole", "integratedTerminal", "externalTerminal"],
+                "default": "internalConsole",
+                "description": "Choose DAP output events or a client terminal with interactive target input and output."
+              },
               "stopAtEntry": {
                 "type": "boolean",
                 "default": false,

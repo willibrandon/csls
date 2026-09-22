@@ -32,6 +32,38 @@ public sealed partial class DebuggerSession
     }
 
     /// <summary>
+    /// Restarts a debugger-owned terminal target after retiring its previous child.
+    /// </summary>
+    /// <param name="options">The validated replacement target launch.</param>
+    /// <param name="startTerminalTarget">Starts and authenticates the replacement paused child.</param>
+    /// <param name="terminalExitCode">Reads the replacement child's direct-parent exit report.</param>
+    /// <param name="cancellationToken">Cancels target shutdown or activation.</param>
+    /// <returns>A task that completes after the replacement target starts.</returns>
+    public async Task RestartManagedInTerminalAsync(
+        DebuggeeLaunchOptions options,
+        Func<CancellationToken, Task<int>> startTerminalTarget,
+        Func<CancellationToken, Task<int>> terminalExitCode,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(startTerminalTarget);
+        ArgumentNullException.ThrowIfNull(terminalExitCode);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ResetTargetForRestartAsync(cancellationToken).ConfigureAwait(false);
+            int processId = await startTerminalTarget(cancellationToken).ConfigureAwait(false);
+            await LaunchManagedInTerminalCoreAsync(
+                options, processId, terminalExitCode, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Restarts a debugger-owned target without managed runtime activation.
     /// </summary>
     /// <param name="options">The validated replacement target launch.</param>
@@ -49,6 +81,40 @@ public sealed partial class DebuggerSession
             await ResetTargetForRestartAsync(cancellationToken).ConfigureAwait(false);
             await _actor.InvokeAsync(
                 token => LaunchWithoutDebuggingCoreAsync(options, token),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Restarts a no-debug terminal target after retiring its previous child.
+    /// </summary>
+    /// <param name="options">The validated replacement target launch.</param>
+    /// <param name="startTerminalTarget">Starts and authenticates the replacement child.</param>
+    /// <param name="terminalExitCode">Reads the replacement child's direct-parent exit report.</param>
+    /// <param name="cancellationToken">Cancels target shutdown or activation.</param>
+    /// <returns>A task that completes after the replacement target starts.</returns>
+    public async Task RestartWithoutDebuggingInTerminalAsync(
+        DebuggeeLaunchOptions options,
+        Func<CancellationToken, Task<int>> startTerminalTarget,
+        Func<CancellationToken, Task<int>> terminalExitCode,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(startTerminalTarget);
+        ArgumentNullException.ThrowIfNull(terminalExitCode);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ResetTargetForRestartAsync(cancellationToken).ConfigureAwait(false);
+            int processId = await startTerminalTarget(cancellationToken).ConfigureAwait(false);
+            await _actor.InvokeAsync(
+                token => LaunchWithoutDebuggingInTerminalCoreAsync(
+                    options, processId, terminalExitCode, token),
                 cancellationToken).ConfigureAwait(false);
         }
         finally

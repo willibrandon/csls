@@ -34,6 +34,9 @@ internal sealed partial class CorDebugDebuggee :
     private readonly TextReader _standardError;
     private readonly Process _process;
     private readonly UnixChildExitMonitor? _unixExitMonitor;
+    private readonly Func<CancellationToken, Task<int>>? _terminalExitCode;
+    private readonly Lock _terminalExitGate = new();
+    private Task<int>? _terminalExitTask;
     private readonly bool _ownsProcess;
     private readonly bool _terminateChildProcesses;
     private readonly ManagedStoppedFrameRegistry _frames = new();
@@ -79,7 +82,8 @@ internal sealed partial class CorDebugDebuggee :
         bool ownsProcess,
         bool terminateChildProcesses,
         bool ownsRuntimeLease,
-        CorDebugActivationResult activation)
+        CorDebugActivationResult activation,
+        Func<CancellationToken, Task<int>>? terminalExitCode = null)
     {
         CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
             ?? throw new InvalidOperationException("No managed callback is owned.");
@@ -124,6 +128,7 @@ internal sealed partial class CorDebugDebuggee :
             _ = process.SafeHandle;
         }
         _unixExitMonitor = unixExitMonitor;
+        _terminalExitCode = terminalExitCode;
         _ownsProcess = ownsProcess;
         _terminateChildProcesses = terminateChildProcesses;
         _ownsRuntimeLease = ownsRuntimeLease ? 1 : 0;

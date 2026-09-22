@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.DiaSymReader" />
     <PackageReference Include="Microsoft.DiaSymReader.Native" />
     <PackageReference Include="Microsoft.Diagnostics.DbgShim" />
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
     <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
     <ProjectReference Include="../Csls.Debugger.Evaluation/Csls.Debugger.Evaluation.csproj" />
   </ItemGroup>

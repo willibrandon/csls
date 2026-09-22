@@ -408,10 +408,11 @@ The `runInTerminal` response identifies the terminal shell when a client supplie
 establishes target ownership. Before sending the reverse request, the worker
 binds a session-private local endpoint and creates a one-use launch secret. The
 terminal launcher starts the exact target as its child with terminal standard
-handles and `DOTNET_DefaultDiagnosticPortSuspend=1`, then reports its actual
-child PID over that endpoint. The worker authenticates this report, retains the
-target process handle, registers dbgshim's runtime-startup callback, and only
-then sends `ResumeRuntime` to the target's diagnostics port. The callback
+handles, then reports its actual child PID over that endpoint. Managed debug
+launches set `DOTNET_DefaultDiagnosticPortSuspend=1`; no-debug launches run
+immediately. For managed debug launches, the worker authenticates the report,
+retains the target process handle, registers dbgshim's runtime-startup callback,
+and only then sends `ResumeRuntime` to the target's diagnostics port. The callback
 attaches CoreCLR while its initial managed code is still stopped, so configured
 source and entry breakpoints bind before user code executes. The launcher's
 socket address and one-use secret do not enter the target environment. A

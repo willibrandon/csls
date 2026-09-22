@@ -34,7 +34,18 @@ internal sealed partial class CorDebugDebuggee
     private async Task<int> WaitForOperatingSystemExitAsync(CancellationToken cancellationToken)
     {
         int exitCode;
-        if (_unixExitMonitor is not null)
+        if (_terminalExitCode is not null)
+        {
+            Task<int> terminalExit;
+            lock (_terminalExitGate)
+            {
+                terminalExit = _terminalExitTask ??=
+                    _terminalExitCode(CancellationToken.None);
+            }
+
+            exitCode = await terminalExit.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else if (_unixExitMonitor is not null)
         {
             int? monitoredExitCode = await _unixExitMonitor.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);

@@ -81,6 +81,12 @@
       "default": false,
       "description": "Launch the target without activating CoreCLR debugging."
     },
+    "console": {
+      "type": "string",
+      "enum": ["internalConsole", "integratedTerminal", "externalTerminal"],
+      "default": "internalConsole",
+      "description": "Choose DAP output events or a client terminal with interactive target input and output."
+    },
     "runtimeHost": {
       "type": "string",
       "description": "Absolute path to the compatible dotnet host used for a managed assembly."

@@ -25,6 +25,9 @@ internal sealed partial class DapSession
         _clientSupportsInvalidatedEvent = request.Arguments.ValueKind == JsonValueKind.Object &&
             request.Arguments.TryGetProperty("supportsInvalidatedEvent", out JsonElement invalidated) &&
             invalidated.ValueKind == JsonValueKind.True;
+        _clientSupportsRunInTerminal = request.Arguments.ValueKind == JsonValueKind.Object &&
+            request.Arguments.TryGetProperty("supportsRunInTerminalRequest", out JsonElement terminal) &&
+            terminal.ValueKind == JsonValueKind.True;
         _state = DapSessionState.Initialized;
         await _writer.WriteResponseAsync(
             request,

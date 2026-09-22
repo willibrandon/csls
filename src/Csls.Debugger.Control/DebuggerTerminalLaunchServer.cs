@@ -12,6 +12,7 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
     private readonly NamedPipeServerStream _pipe;
     private readonly byte[] _secret = RandomNumberGenerator.GetBytes(DebuggerTerminalLaunchProtocol.SecretBytes);
     private Process? _target;
+    private int _targetProcessId;
     private int _accepted;
     private int _disposed;
 
@@ -38,7 +39,7 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
     /// <summary>
     /// Gets the retained target identity after the launcher reports its child.
     /// </summary>
-    public int? TargetProcessId => _target?.Id;
+    public int? TargetProcessId => _targetProcessId == 0 ? null : _targetProcessId;
 
     /// <summary>
     /// Authenticates the launcher, sends its invocation, and receives the actual child PID.
@@ -73,8 +74,16 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
             throw new InvalidDataException("The terminal launcher did not report a valid target PID.");
         }
 
-        _target = Process.GetProcessById(processId);
-        if (_target.HasExited)
+        _targetProcessId = processId;
+        try
+        {
+            _target = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException) when (!instruction.SuspendForDebugging)
+        {
+            _target = null;
+        }
+        if (instruction.SuspendForDebugging && (_target is null || _target.HasExited))
         {
             throw new InvalidOperationException("The terminal target exited during startup.");
         }
@@ -83,13 +92,13 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Receives the launcher-owned target's final exit code.
+    /// Receives the target exit code or reports an interrupted terminal as minus one.
     /// </summary>
     /// <param name="cancellationToken">Cancels observation of the terminal session.</param>
     /// <returns>The target exit code reported by its direct parent.</returns>
     public async Task<int> ReadExitCodeAsync(CancellationToken cancellationToken)
     {
-        if (_target is null)
+        if (_targetProcessId == 0)
         {
             throw new InvalidOperationException("The terminal target has not started.");
         }
@@ -101,12 +110,16 @@ public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
         }
         catch (EndOfStreamException)
         {
-            if (!_target.HasExited)
+            if (_target is not null && !_target.HasExited)
             {
                 _target.Kill(entireProcessTree: false);
             }
 
-            throw new IOException("The terminal launcher closed before reporting target exit.");
+            if (_target is not null)
+            {
+                await _target.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return -1;
         }
     }
 

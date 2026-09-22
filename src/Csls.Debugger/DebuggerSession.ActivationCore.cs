@@ -43,6 +43,31 @@ public sealed partial class DebuggerSession
         }
     }
 
+    private async ValueTask LaunchWithoutDebuggingInTerminalCoreAsync(
+        DebuggeeLaunchOptions options,
+        int processId,
+        Func<CancellationToken, Task<int>> terminalExitCode,
+        CancellationToken cancellationToken)
+    {
+        await BeginLaunchCoreAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _debuggee = DebuggeeTerminalProcess.Open(options, processId, terminalExitCode);
+            await CompleteLaunchCoreAsync(_debuggee, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (_debuggee is not null)
+            {
+                await _debuggee.DisposeAsync().ConfigureAwait(false);
+                _debuggee = null;
+            }
+
+            _state = DebugSessionState.Created;
+            throw;
+        }
+    }
+
     private ValueTask BeginLaunchCoreAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
