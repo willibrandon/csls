@@ -474,6 +474,13 @@ internal static class DebuggerDumpArrayFixture
         PreferContextualReferenceForDebugger(default);
 
     /// <summary>
+    /// Runs the compiler-selected object overload for a typed default.
+    /// </summary>
+    /// <returns>The target-observed overload marker.</returns>
+    internal static int CompilerTypedReferenceForDebugger() =>
+        PreferContextualReferenceForDebugger(default(object));
+
+    /// <summary>
     /// Identifies the preferred integer overload for a contextual default.
     /// </summary>
     /// <param name="value">The target-typed integer value.</param>
@@ -493,6 +500,13 @@ internal static class DebuggerDumpArrayFixture
     /// <returns>The target-observed overload marker.</returns>
     internal static int CompilerContextualNumericForDebugger() =>
         PreferContextualNumericForDebugger(default);
+
+    /// <summary>
+    /// Runs the compiler-selected long overload for a typed default.
+    /// </summary>
+    /// <returns>The target-observed overload marker.</returns>
+    internal static int CompilerTypedNumericForDebugger() =>
+        PreferContextualNumericForDebugger(default(long));
 
     /// <summary>
     /// Supplies a value-type candidate for an ambiguous contextual default.

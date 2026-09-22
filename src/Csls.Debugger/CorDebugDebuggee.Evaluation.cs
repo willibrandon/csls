@@ -128,7 +128,29 @@ internal sealed partial class CorDebugDebuggee
         ManagedExpressionValue operand = EvaluateNode(frame, plan, node.Children[0], generation);
         if (operand.IsContextualDefault)
         {
-            throw new InvalidOperationException("A default literal requires a destination type before a type operation.");
+            if (node.Kind != DebugExpressionNodeKind.Conversion)
+            {
+                throw new InvalidOperationException("A default literal requires a destination type before a type operation.");
+            }
+
+            nint defaultThread = GetThread(frame.ThreadId);
+            try
+            {
+                ManagedBoundType target = _boundTypes.BindName(node.TypeName!, plan.Language, defaultThread);
+                ManagedExpressionValue value = ManagedFunctionImplicitDefaults.TryCreateContextual(
+                    target, _boundTypes, defaultThread)
+                    ?? throw new NotSupportedException(
+                        $"A default value of type '{target.DisplayName}' cannot be materialized.");
+                return value with
+                {
+                    DeclaredType = target,
+                    Display = value.Display with { Type = target.DisplayName }
+                };
+            }
+            finally
+            {
+                _ = ComAbi.Release(defaultThread);
+            }
         }
 
         string? primitiveType = node.Kind == DebugExpressionNodeKind.Conversion

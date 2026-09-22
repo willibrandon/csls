@@ -133,6 +133,9 @@ strings, decimal, DateTime, and zero-initialized value types such as Guid and
 argument conversions are otherwise tied.
 Explicit C# `default` and Visual Basic `Nothing` arguments use the selected
 parameter type for method calls and constructors.
+Typed C# defaults such as `default(int)` and `default(MyStruct)` bind to the
+loaded type before overload selection and initialize value types without
+running their constructors.
 
 Function evaluation runs on the selected managed thread with a five-second deadline.
 Evaluations run one at a time. Overlapping DAP requests queue in arrival order.

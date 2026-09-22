@@ -154,4 +154,59 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             nullToValue.GetProperty("message").GetString()));
         await DisconnectAsync(client).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Binds typed defaults to their exact loaded types without running constructors.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TypedDefaultsRetainTheirDeclaredTypes()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string receiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
+        foreach ((string expression, string expected) in new[]
+        {
+            ("default(int)", "0"),
+            ("default(int) + 3", "3"),
+            ("default(string)", "null"),
+            ($"{receiver}.PreferContextualNumericForDebugger(default(long))", "2"),
+            ($"{receiver}.CompilerTypedNumericForDebugger()", "2"),
+            ($"{receiver}.PreferContextualReferenceForDebugger(default(object))", "2"),
+            ($"{receiver}.CompilerTypedReferenceForDebugger()", "2"),
+            ($"{receiver}.OptionalEnumWithoutConstantForDebugger(default(System.IO.FileShare))", "1"),
+            ($"{receiver}.OptionalDecimalWithoutConstantForDebugger(default(decimal))", "1"),
+            ($"{receiver}.OptionalDateTimeWithoutConstantForDebugger(default(System.DateTime))", "1"),
+            ($"{receiver}.OptionalGuidWithoutConstantForDebugger(default(System.Guid))", "1"),
+            ($"{receiver}.OptionalGuidWithoutConstantForDebugger(default(global::System.Guid))", "1"),
+            ($"{receiver}.OptionalPairWithoutConstantForDebugger(default(System.Collections.Generic.KeyValuePair<int, string>))", "1"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(default(int?))", "1"),
+            ($"{receiver}.OptionalStructWithoutConstantForDebugger(default(Csls.TestProcessHost.DebuggerOptionalStructFixture))", "1")
+        })
+        {
+            JsonElement result = await ReadEvaluationAsync(client, frameId, expression, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, result.GetProperty("result").GetString(), expression);
+            if (expression.Contains(receiver, StringComparison.Ordinal))
+            {
+                using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(invalidated.RootElement, "invalidated");
+            }
+        }
+
+        JsonElement unknownType = await ReadEvaluationAsync(client, frameId,
+            "default(Csls.TestProcessHost.TypeThatDoesNotExist)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("TypeThatDoesNotExist", Assert.IsInstanceOfType<string>(
+            unknownType.GetProperty("message").GetString()));
+        JsonElement untyped = await ReadEvaluationAsync(client, frameId,
+            "default", success: false, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("destination type", Assert.IsInstanceOfType<string>(
+            untyped.GetProperty("message").GetString()));
+
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
 }

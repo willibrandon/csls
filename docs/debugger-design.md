@@ -584,6 +584,9 @@ value-type defaults from the loaded declaration. Generic value types retain thei
 exact loaded arguments, and zero initialization does not execute authored constructors.
 Explicit C# `default` and Visual Basic `Nothing` arguments remain untyped through
 overload selection, then materialize from the selected loaded parameter type.
+Typed C# `default(T)` expressions bind `T` to an exact loaded runtime type before
+overload selection, preserving reference and value-type identity without running
+an authored value-type constructor.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather
