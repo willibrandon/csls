@@ -37,6 +37,39 @@ public sealed class DapMessageReaderTests
     }
 
     /// <summary>
+    /// Keeps a second request buffered when both frames arrive in one operating-system pipe write.
+    /// </summary>
+    [TestMethod]
+    public async Task CoalescedOperatingSystemPipeRequestsRemainIndependent()
+    {
+        const string Initialize = "{\"seq\":7,\"type\":\"request\",\"command\":\"initialize\"}";
+        const string Unsupported = "{\"seq\":8,\"type\":\"request\",\"command\":\"unsupportedProbe\"}";
+        DapTestClient client = await DapTestClient
+            .CreateAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+
+        await client.SendFrameAsync(
+            [.. CreateFrame(Initialize), .. CreateFrame(Unsupported)],
+            fragment: false,
+            CancellationToken.None).ConfigureAwait(false);
+
+        using JsonDocument initialized = await client.ReadMessageAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+        Assert.AreEqual("response", initialized.RootElement.GetProperty("type").GetString());
+        Assert.AreEqual(7, initialized.RootElement.GetProperty("request_seq").GetInt32());
+        Assert.AreEqual("initialize", initialized.RootElement.GetProperty("command").GetString());
+        Assert.IsTrue(initialized.RootElement.GetProperty("success").GetBoolean());
+
+        using JsonDocument unsupported = await client.ReadMessageAsync(CancellationToken.None)
+            .ConfigureAwait(false);
+        Assert.AreEqual("response", unsupported.RootElement.GetProperty("type").GetString());
+        Assert.AreEqual(8, unsupported.RootElement.GetProperty("request_seq").GetInt32());
+        Assert.AreEqual("unsupportedProbe", unsupported.RootElement.GetProperty("command").GetString());
+        Assert.IsFalse(unsupported.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    /// <summary>
     /// Rejects duplicate content lengths before allocating the payload.
     /// </summary>
     [TestMethod]

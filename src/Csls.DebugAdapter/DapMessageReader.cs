@@ -23,6 +23,10 @@ internal sealed class DapMessageReader
     private readonly Stream _input;
     private readonly int _maximumHeaderBytes;
     private readonly int _maximumPayloadBytes;
+    private readonly byte[] _header;
+    private readonly byte[] _readBuffer = new byte[DefaultMaximumHeaderBytes];
+    private int _readOffset;
+    private int _readLength;
 
     /// <summary>
     /// Gets the wire payload size of the last successfully read request.
@@ -47,6 +51,7 @@ internal sealed class DapMessageReader
         _input = input;
         _maximumHeaderBytes = maximumHeaderBytes;
         _maximumPayloadBytes = maximumPayloadBytes;
+        _header = new byte[maximumHeaderBytes];
     }
 
     /// <summary>
@@ -56,51 +61,55 @@ internal sealed class DapMessageReader
     /// <returns>The next validated DAP request, or null before a new header starts.</returns>
     internal async ValueTask<Request?> ReadRequestAsync(CancellationToken cancellationToken)
     {
-        byte[] header = new byte[_maximumHeaderBytes];
-        byte[] singleByte = new byte[1];
         int headerLength = 0;
         while (true)
         {
-            int count = await _input
-                .ReadAsync(singleByte.AsMemory(), cancellationToken)
-                .ConfigureAwait(false);
-            if (count == 0)
+            if (_readOffset == _readLength)
             {
-                if (headerLength == 0)
+                _readLength = await _input
+                    .ReadAsync(_readBuffer.AsMemory(), cancellationToken)
+                    .ConfigureAwait(false);
+                _readOffset = 0;
+                if (_readLength == 0)
                 {
-                    return null;
-                }
+                    if (headerLength == 0)
+                    {
+                        return null;
+                    }
 
-                throw new InvalidDataException("A DAP header was truncated.");
+                    throw new InvalidDataException("A DAP header was truncated.");
+                }
             }
 
-            byte value = singleByte[0];
+            byte value = _readBuffer[_readOffset++];
             if (value > 0x7f)
             {
                 throw new InvalidDataException("DAP headers must contain only ASCII bytes.");
             }
 
-            if (headerLength == header.Length)
+            if (headerLength == _header.Length)
             {
                 throw new InvalidDataException(
                     $"DAP headers exceed the permitted {_maximumHeaderBytes}-byte limit.");
             }
 
-            header[headerLength] = value;
+            _header[headerLength] = value;
             headerLength++;
             if (headerLength >= 4 &&
-                header[headerLength - 4] == (byte)'\r' &&
-                header[headerLength - 3] == (byte)'\n' &&
-                header[headerLength - 2] == (byte)'\r' &&
-                header[headerLength - 1] == (byte)'\n')
+                _header[headerLength - 4] == (byte)'\r' &&
+                _header[headerLength - 3] == (byte)'\n' &&
+                _header[headerLength - 2] == (byte)'\r' &&
+                _header[headerLength - 1] == (byte)'\n')
             {
                 break;
             }
         }
 
-        int payloadLength = ParseContentLength(header.AsSpan(0, headerLength - 4));
+        int payloadLength = ParseContentLength(_header.AsSpan(0, headerLength - 4));
         byte[] payload = GC.AllocateUninitializedArray<byte>(payloadLength);
-        int payloadOffset = 0;
+        int payloadOffset = Math.Min(payloadLength, _readLength - _readOffset);
+        _readBuffer.AsSpan(_readOffset, payloadOffset).CopyTo(payload);
+        _readOffset += payloadOffset;
         while (payloadOffset < payload.Length)
         {
             int count = await _input
