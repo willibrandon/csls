@@ -167,7 +167,8 @@ Nth matching hit. Logpoints write interpolated values to debugger output.
 
 Inspect threads, stacks, modules, arguments, locals, fields, arrays, and managed IL.
 Expressions and completions use the selected stopped frame. Explicit method calls
-and object construction use guarded target execution. Direct assignments update
+and object construction use guarded target execution. Calls accept named arguments
+and loaded optional defaults, including enum values. Direct assignments update
 stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the

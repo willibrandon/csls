@@ -382,6 +382,10 @@ public sealed class DapArrayPagingTests : DapTestContext
             ($"{staticReceiver}.PreferExactForDebugger(vector[0], vector[1])", "4142"),
             ($"{staticReceiver}.OptionalStringForDebugger()", "\"loaded default\""),
             ($"{staticReceiver}.OptionalNullForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalEnumForDebugger()", "-1"),
+            ($"{staticReceiver}.OptionalFlagsForDebugger()", "3"),
+            ($"{staticReceiver}.OptionalWideEnumForDebugger()", "1"),
+            ($"{staticReceiver}.OptionalExternalEnumForDebugger()", "3"),
             ("capturedObject.CombineOptionalForDebugger(vector[0])", "4184")
         })
         {

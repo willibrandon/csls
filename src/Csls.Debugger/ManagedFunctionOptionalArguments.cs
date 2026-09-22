@@ -16,7 +16,9 @@ internal static class ManagedFunctionOptionalArguments
         ManagedMetadataImage metadata,
         MethodDefinitionHandle method,
         IReadOnlyList<ManagedBoundType> parameters,
-        IReadOnlyList<int> parameterSourceIndices)
+        IReadOnlyList<int> parameterSourceIndices,
+        ManagedBoundTypeSystem types,
+        nint thread)
     {
         var defaults = new ManagedExpressionValue?[parameters.Count];
         if (!parameterSourceIndices.Contains(-1))
@@ -60,6 +62,11 @@ internal static class ManagedFunctionOptionalArguments
             Constant constant = metadata.GetConstant(parameter.GetDefaultValue());
             object? value = metadata.GetBlobReader(constant.Value).ReadConstant(constant.TypeCode);
             string? typeName = GetSupportedTypeName(parameters[index], value);
+            if (typeName is null && types.TryGetEnumUnderlyingType(parameters[index], thread) is
+                ManagedBoundType underlying)
+            {
+                typeName = GetSupportedTypeName(underlying, value);
+            }
             if (typeName is null)
             {
                 return null;

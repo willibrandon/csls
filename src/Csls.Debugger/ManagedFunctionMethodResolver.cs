@@ -140,7 +140,7 @@ internal static class ManagedFunctionMethodResolver
             ManagedBoundType[] declaredParameters = [.. signature.ParameterTypes.Select(parameter =>
                 types.Bind(parameter, declaringTypeArguments ?? [], [], thread))];
             ManagedExpressionValue?[]? optionalArguments = ManagedFunctionOptionalArguments.TryCreate(
-                metadata, methodHandle, declaredParameters, parameterSourceIndices);
+                metadata, methodHandle, declaredParameters, parameterSourceIndices, types, thread);
             if (optionalArguments is null)
             {
                 continue;

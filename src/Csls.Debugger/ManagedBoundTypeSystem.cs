@@ -57,6 +57,48 @@ internal sealed class ManagedBoundTypeSystem
     internal bool IsCoreType(ManagedBoundType type, string name, nint thread) =>
         type.ModuleId == _coreLibrary.GetModule(thread).Id && type.Name == name;
 
+    /// <summary>
+    /// Resolves the exact primitive storage type of a loaded enum declaration.
+    /// </summary>
+    internal ManagedBoundType? TryGetEnumUnderlyingType(ManagedBoundType type, nint thread)
+    {
+        if (type.ElementType != 0x11)
+        {
+            return null;
+        }
+
+        IReadOnlyList<ManagedBoundType> parents = GetParents(type, thread);
+        if (parents.Count == 0 || !IsCoreType(parents[0], "System.Enum", thread))
+        {
+            return null;
+        }
+
+        CorDebugLoadedModule module = GetModule(type);
+        using PEReader pe = OpenModule(module);
+        MetadataReader reader = pe.GetMetadataReader();
+        TypeDefinition definition = GetDefinition(reader, type.DefinitionToken);
+        FieldDefinitionHandle[] fields = [.. definition.GetFields().Where(handle =>
+            string.Equals(reader.GetString(reader.GetFieldDefinition(handle).Name),
+                "value__", StringComparison.Ordinal))];
+        if (fields is not [FieldDefinitionHandle fieldHandle])
+        {
+            return null;
+        }
+
+        FieldDefinition field = reader.GetFieldDefinition(fieldHandle);
+        if ((field.Attributes & (FieldAttributes.Static | FieldAttributes.RTSpecialName)) !=
+            FieldAttributes.RTSpecialName)
+        {
+            return null;
+        }
+
+        ManagedMetadataTypeSignature signature = field.DecodeSignature(
+            new ManagedMetadataTypeSignatureProvider(module.Pointer), genericContext: null);
+        ManagedBoundType? underlying = signature.PrimitiveType is null
+            ? null : Bind(signature, [], [], thread);
+        return underlying?.ElementType is >= 0x04 and <= 0x0b ? underlying : null;
+    }
+
     private ManagedBoundType BindNamedType(
         ManagedRuntimeTypeReference reference, DebugExpressionLanguage language, nint thread)
     {

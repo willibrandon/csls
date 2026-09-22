@@ -259,6 +259,38 @@ internal static class DebuggerDumpArrayFixture
     internal static int OptionalNullForDebugger(string? text = null) => text is null ? 1 : 0;
 
     /// <summary>
+    /// Exposes an enum default stored as its underlying metadata constant.
+    /// </summary>
+    /// <param name="mode">The optional signed enum value.</param>
+    /// <returns>The target-observed underlying value.</returns>
+    internal static int OptionalEnumForDebugger(DebuggerFixtureMode mode = DebuggerFixtureMode.First) =>
+        (short)mode;
+
+    /// <summary>
+    /// Exposes a flags enum default stored as a signed 32-bit metadata constant.
+    /// </summary>
+    /// <param name="options">The optional flags value.</param>
+    /// <returns>The target-observed underlying value.</returns>
+    internal static int OptionalFlagsForDebugger(DebuggerFixtureOptions options = DebuggerFixtureOptions.ReadWrite) =>
+        (int)options;
+
+    /// <summary>
+    /// Exposes a high-bit unsigned enum default from loaded metadata.
+    /// </summary>
+    /// <param name="mode">The optional unsigned wide enum value.</param>
+    /// <returns>One when the target receives the high-bit value.</returns>
+    internal static int OptionalWideEnumForDebugger(DebuggerFixtureWideMode mode = DebuggerFixtureWideMode.High) =>
+        mode == DebuggerFixtureWideMode.High ? 1 : 0;
+
+    /// <summary>
+    /// Exposes an optional enum declared by another loaded assembly.
+    /// </summary>
+    /// <param name="share">The optional framework enum value.</param>
+    /// <returns>The target-observed underlying value.</returns>
+    internal static int OptionalExternalEnumForDebugger(FileShare share = FileShare.ReadWrite) =>
+        (int)share;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>
