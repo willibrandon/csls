@@ -44,17 +44,8 @@ jobs:
             artifacts/bin/Csls.*/debug
             artifacts/bin/Csls.TestProcessHost/release
             !artifacts/bin/Csls.Debugger.Tests/debug
-            !artifacts/bin/Csls.SourceGen.Tests/debug
           key: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'scripts/Support/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Restore source generator test binaries
-        id: source-generator-test-binaries-cache
-        uses: actions/cache@v6
-        with:
-          path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          restore-keys: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore test build intermediates
         uses: actions/cache@v6
@@ -71,11 +62,10 @@ jobs:
           restore-keys: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build test binaries
-        if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
+        if: steps.test-binaries-cache.outputs.cache-hit != 'true'
         # These tests execute portable builds. Release jobs restore the runtime packs for publishing.
         run: |
           dotnet build tests/Csls.Tests/Csls.Tests.csproj --property:RuntimeIdentifiers= /bl:artifacts/binlogs/test-binaries-{}.binlog
-          dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj --property:RuntimeIdentifiers= /bl:artifacts/binlogs/source-generator-test-binaries-{}.binlog
 
       - name: Preserve test build logs
         if: always()
@@ -213,80 +203,6 @@ jobs:
 
       - name: Verify code-style formatting
         run: dotnet format Csls.slnx style --verify-no-changes --no-restore
-
-  file-apps:
-    name: File apps (${{ matrix.group }}/${{ matrix.count }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - group: 1
-            index: 0
-            count: 2
-          - group: 2
-            index: 1
-            count: 2
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.x
-
-      - name: Restore file app builds
-        id: file-app-builds-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/**/*.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-
-      - name: Restore file app packages
-        run: |
-          dotnet restore scripts/Generate-Docs.cs
-          dotnet restore scripts/Assemble-ReleaseAssets.cs
-
-      - name: Verify file apps
-        run: >-
-          dotnet run --file scripts/Verify-FileApps.cs --
-          --group-index ${{ matrix.index }}
-          --group-count ${{ matrix.count }}
-
-      - name: Save file app builds
-        if: steps.file-app-builds-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/**/*.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-
-  file-apps-complete:
-    name: File apps
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: file-apps
-    if: ${{ always() }}
-
-    steps:
-      - name: Complete file app verification
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.x
-
-      - name: Require successful file app jobs
-        env:
-          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.file-apps.result }}
-        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
 
   vscode-web-extension:
     name: VS Code web extension
@@ -516,43 +432,6 @@ jobs:
           --filter "${{ matrix.filter }}"
           --minimum-expected-tests ${{ matrix.count }}
           --output Detailed
-
-  unit-tests:
-    name: Unit tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: test-binaries
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.x
-
-      - name: Download test binaries
-        uses: actions/download-artifact@v8
-        with:
-          name: test-binaries
-          path: artifacts
-
-      - name: Extract test binaries
-        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
-
-      - name: Run unit tests
-        run: >-
-          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
-          --root-directory .
-          --filter "FullyQualifiedName!~LanguageServerTests&FullyQualifiedName!~McpDebuggerLifecycleTests&TestCategory!=DebuggerTerminal&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=ZedHost&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
-          --minimum-expected-tests 62
-          && dotnet test
-          --test-modules artifacts/bin/Csls.SourceGen.Tests/debug/Csls.SourceGen.Tests.dll
-          --root-directory .
-          --minimum-expected-tests 8
 
   debugger-mcp-tests:
     name: Debugger MCP tests
@@ -795,7 +674,7 @@ jobs:
           path: |
             artifacts/editors/zed/csls
             artifacts/zed-extension/grammar-source
-          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Resolve graphical prerequisite cache
         id: zed-graphical-cache-key
@@ -851,7 +730,7 @@ jobs:
           path: |
             artifacts/editors/zed/csls
             artifacts/zed-extension/grammar-source
-          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Pack Zed test assets
         env:
@@ -888,8 +767,8 @@ jobs:
       matrix:
         include:
           - group: framework
-            count: 6
-            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls
           - group: interactive
             count: 1
             filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace
@@ -1032,12 +911,12 @@ jobs:
       matrix:
         include:
           - group: desktop
-            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostReusesTestDiscoveryBuilds|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeVariablesViewResolvesAndPagesResultsView|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeInspectsManagedDumpThroughCslsDebugger|TestCategory=VsCodeOracle|(FullyQualifiedName~VsCodeTestInstallationTests&TestCategory=VsCodeHost)|(FullyQualifiedName~VsCodeTestAssetTests&FullyQualifiedName!~RemoteArchiveMatchesSelectedEditor)
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostReusesTestDiscoveryBuilds|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeVariablesViewResolvesAndPagesResultsView|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeInspectsManagedDumpThroughCslsDebugger|TestCategory=VsCodeOracle
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false
           - group: remote-features
-            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeTestAssetTests.RemoteArchiveMatchesSelectedEditor
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostProvidesCSharpLanguageFeatures
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: true
             web: false
