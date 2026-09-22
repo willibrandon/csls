@@ -55,6 +55,32 @@ internal static class ValueProgressProbe
             ["initial"] = JsonSerializer.SerializeToNode(initial, StackProbeJsonContext.Default.IReadOnlyListDebugVariableInfo),
             ["baseline"] = JsonSerializer.SerializeToNode(baseline.Updates.Single(), StackProbeJsonContext.Default.DebugValueReadProgress)
         };
+        if (mode == "repeat")
+        {
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                var observation = new ValueProgressRecorder(requestCancellation, 0, "observe");
+                IReadOnlyList<DebugVariableInfo> page = await ReadPageAsync(
+                    service, reference, 0, 64, cancellationToken, observation).ConfigureAwait(false);
+                if (attempt is not (0 or 63))
+                {
+                    continue;
+                }
+
+                string prefix = attempt == 0 ? "first" : "last";
+                result[$"{prefix}Page"] = JsonSerializer.SerializeToNode(
+                    page, StackProbeJsonContext.Default.IReadOnlyListDebugVariableInfo);
+                result[$"{prefix}Progress"] = JsonSerializer.SerializeToNode(
+                    observation.Updates.Single(), StackProbeJsonContext.Default.DebugValueReadProgress);
+            }
+
+            result["terminated"] = JsonSerializer.SerializeToNode(
+                await service.TerminateAsync(cancellationToken).ConfigureAwait(false),
+                StackProbeJsonContext.Default.DebugSessionSnapshot);
+            await Console.Out.WriteLineAsync(result.ToJsonString()).ConfigureAwait(false);
+            return;
+        }
+
         if (mode == "pre-cancel")
         {
             await requestCancellation.CancelAsync().ConfigureAwait(false);
