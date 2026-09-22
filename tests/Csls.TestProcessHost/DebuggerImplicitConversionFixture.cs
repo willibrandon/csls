@@ -189,6 +189,25 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerExplicitNumericResultSource source) => (int)source;
 
     /// <summary>
+    /// Runs the compiler's runtime-checked reference conversion before an explicit operator.
+    /// </summary>
+    /// <param name="source">The base-declared reference source.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static int CompilerExplicitReferenceInputForDebugger(
+        DebuggerImplicitConversionReferenceSource source) =>
+        ((DebuggerExplicitReferenceInputDestination)
+            (DebuggerImplicitConversionReferenceDerived)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's runtime-checked reference conversion after an explicit operator.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The number carried through the derived conversion result.</returns>
+    internal static int CompilerExplicitReferenceResultDowncastForDebugger(
+        DebuggerExplicitReferenceResultSource source) =>
+        ((DebuggerExplicitReferenceDowncastResult)source).Number;
+
+    /// <summary>
     /// Runs the compiler's reference conversions around an inherited conversion operator.
     /// </summary>
     /// <param name="source">The derived reference source.</param>

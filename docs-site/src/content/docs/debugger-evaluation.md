@@ -148,7 +148,7 @@ cancellation, thread isolation, and exception recovery as the final call, then p
 primitive, reference, null, or value-type result to that call. Lifted nullable conversions
 execute the operator once for populated values and propagate null directly for empty values.
 Explicit casts resolve loaded explicit or implicit conversion operators, apply standard numeric and
-implicit reference conversions around the operator, and box operator inputs when required. They run
+reference conversions around the operator, and box operator inputs when required. They run
 under the same target-code authorization policy, and their results can be inspected directly or
 assigned through `setExpression`.
 Calls to generic methods infer exact loaded type arguments from

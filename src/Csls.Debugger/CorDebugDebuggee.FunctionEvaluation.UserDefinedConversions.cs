@@ -94,6 +94,35 @@ internal sealed partial class CorDebugDebuggee
             return value with { DeclaredType = conversion.ParameterType };
         }
 
+        if (sourceType.IsReference && conversion.ParameterType.IsReference &&
+            referenceConversions.IsImplicit(conversion.ParameterType, sourceType, thread))
+        {
+            if (value is not { HasScalar: true, Scalar: null })
+            {
+                if (value.RuntimeValueReference <= 0)
+                {
+                    throw new InvalidOperationException(
+                        "An explicit reference conversion has no retained runtime value.");
+                }
+
+                ManagedBoundType actual = _boundTypes.CaptureValue(
+                    GetRuntimeValue(value), thread);
+                if (!referenceConversions.IsRuntimeAssignable(
+                    actual, conversion.ParameterType, thread))
+                {
+                    throw new InvalidOperationException(
+                        $"The runtime value of type '{actual.DisplayName}' cannot be cast to " +
+                        $"'{conversion.ParameterType.DisplayName}'.");
+                }
+            }
+
+            return value with
+            {
+                DeclaredType = conversion.ParameterType,
+                ExplicitReceiverType = conversion.ParameterType
+            };
+        }
+
         if (referenceConversions.IsImplicitBoxing(
             sourceType, conversion.ParameterType, thread))
         {
@@ -511,8 +540,14 @@ internal sealed partial class CorDebugDebuggee
         out ManagedFunctionEvaluationResult result)
     {
         ManagedUserDefinedConversion? conversion = evaluation.ExplicitUserDefinedConversion;
-        if (conversion is null ||
-            conversion.ResultType.IsSameType(conversion.TargetType) ||
+        if (conversion is null)
+        {
+            result = null!;
+            return false;
+        }
+
+        ValidateExplicitUserDefinedReferenceResult(value, conversion, evaluation.Thread);
+        if (conversion.ResultType.IsSameType(conversion.TargetType) ||
             !ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
                 conversion.ResultType, conversion.TargetType, conversion.Language))
         {
@@ -543,6 +578,47 @@ internal sealed partial class CorDebugDebuggee
             DebuggerTypeProxyApplied: false,
             DeclaredType: conversion.TargetType);
         return true;
+    }
+
+    private void ValidateExplicitUserDefinedReferenceResult(
+        nint value,
+        ManagedUserDefinedConversion conversion,
+        nint thread)
+    {
+        if (!conversion.ResultType.IsReference || !conversion.TargetType.IsReference ||
+            conversion.ResultType.IsSameType(conversion.TargetType))
+        {
+            return;
+        }
+
+        var referenceConversions = new ManagedReferenceConversion(_boundTypes);
+        if (referenceConversions.IsImplicit(
+            conversion.ResultType, conversion.TargetType, thread))
+        {
+            return;
+        }
+
+        nint dereferenced = 0;
+        try
+        {
+            if (!TryDereferenceValue(value, out dereferenced))
+            {
+                return;
+            }
+
+            ManagedBoundType actual = _boundTypes.CaptureValue(dereferenced, thread);
+            if (!referenceConversions.IsRuntimeAssignable(
+                actual, conversion.TargetType, thread))
+            {
+                throw new InvalidOperationException(
+                    $"The conversion result has runtime type '{actual.DisplayName}', which cannot be " +
+                    $"cast to '{conversion.TargetType.DisplayName}'.");
+            }
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(dereferenced);
+        }
     }
 
     private ManagedFunctionBinding ResolveUserDefinedExplicitConversion(

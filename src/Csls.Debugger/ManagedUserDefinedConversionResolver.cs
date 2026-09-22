@@ -401,6 +401,7 @@ internal sealed class ManagedUserDefinedConversionResolver
     private bool HasSupportedStandardExplicitInputConversion(
         ManagedBoundType source,
         ManagedBoundType destination) => HasStandardImplicitConversion(source, destination) ||
+        HasStandardExplicitReferenceConversion(source, destination) ||
         ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
             source, destination, _language);
 
@@ -408,6 +409,12 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType source,
         ManagedBoundType destination) => source.IsSameType(destination) ||
         _referenceConversions.IsImplicit(source, destination, _thread) ||
+        HasStandardExplicitReferenceConversion(source, destination) ||
         ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
             source, destination, _language);
+
+    private bool HasStandardExplicitReferenceConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) => source.IsReference && destination.IsReference &&
+        _referenceConversions.IsImplicit(destination, source, _thread);
 }
