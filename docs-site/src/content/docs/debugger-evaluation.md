@@ -145,7 +145,8 @@ participate in overload selection with standard numeric and reference conversion
 operator and boxing into constructed generic operator parameters. The debugger executes the
 selected operator under the same deadline,
 cancellation, thread isolation, and exception recovery as the final call, then passes its
-primitive, reference, null, or value-type result to that call.
+primitive, reference, null, or value-type result to that call. Lifted nullable conversions
+execute the operator once for populated values and propagate null directly for empty values.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

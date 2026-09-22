@@ -113,4 +113,30 @@ internal static class DebuggerImplicitConversionFixture
     /// <returns>The compiler-produced generic destination result.</returns>
     internal static int CompilerRequireBoxedSourceForDebugger(int source) =>
         RequireBoxedSourceForDebugger(source);
+
+    /// <summary>
+    /// Reads a lifted nullable value-type conversion result.
+    /// </summary>
+    /// <param name="value">The lifted nullable destination.</param>
+    /// <returns>The converted number plus five hundred, or minus one for null.</returns>
+    internal static int RequireNullableDestinationForDebugger(
+        DebuggerImplicitConversionDestination? value) =>
+        value is { } present ? present.Number + 500 : -1;
+
+    /// <summary>
+    /// Runs the compiler's lifted nullable value-type conversion.
+    /// </summary>
+    /// <param name="source">The nullable authored source value.</param>
+    /// <returns>The compiler-produced nullable destination result.</returns>
+    internal static int CompilerRequireNullableDestinationForDebugger(
+        DebuggerImplicitConversionSource? source) =>
+        RequireNullableDestinationForDebugger(source);
+
+    /// <summary>
+    /// Runs the compiler's lifted nullable reference conversion.
+    /// </summary>
+    /// <param name="source">The nullable authored source value.</param>
+    /// <returns>The compiler-produced reference result length.</returns>
+    internal static int CompilerRequireNullableStringForDebugger(
+        DebuggerImplicitConversionSource? source) => RequireStringForDebugger(source);
 }

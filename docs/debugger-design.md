@@ -611,7 +611,9 @@ operator parameters. The selected `op_Implicit` executes
 as a supervised evaluation stage, retains its exact primitive, reference, null, or
 value-type result, and supplies that result to the already-selected method call. Target
 exceptions use the ordinary function-evaluation recovery path and leave the process
-stopped for inspection.
+stopped for inspection. Lifted nullable conversions read the exact contained source field,
+execute the underlying operator once for populated values, materialize exact nullable result
+storage for value-type targets, and propagate null without target execution.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

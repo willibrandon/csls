@@ -51,6 +51,12 @@ internal sealed class ManagedUserDefinedConversionResolver
             return null;
         }
 
+        if ((_types.GetAttributes(source) & TypeAttributes.Interface) != 0 ||
+            (_types.GetAttributes(destination) & TypeAttributes.Interface) != 0)
+        {
+            return null;
+        }
+
         foreach ((ManagedBoundType cachedSource, ManagedBoundType cachedDestination,
             ManagedUserDefinedConversion? result) in _cache)
         {
@@ -60,8 +66,11 @@ internal sealed class ManagedUserDefinedConversionResolver
             }
         }
 
+        ManagedBoundType participatingSource = StripNullable(source);
+        ManagedBoundType participatingDestination = StripNullable(destination);
         var matches = new List<ManagedUserDefinedConversion>();
-        foreach (ManagedBoundType declaringType in GetParticipatingTypes(source, destination))
+        foreach (ManagedBoundType declaringType in GetParticipatingTypes(
+            participatingSource, participatingDestination))
         {
             AddMatches(declaringType, source, destination, matches);
         }
@@ -118,8 +127,11 @@ internal sealed class ManagedUserDefinedConversionResolver
                 parameter, declaringType.TypeArguments, [], _thread);
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
-            if (HasStandardImplicitConversion(source, parameterType) &&
-                HasStandardImplicitConversion(resultType, destination) &&
+            bool normal = HasStandardImplicitConversion(source, parameterType) &&
+                HasStandardImplicitConversion(resultType, destination);
+            bool lifted = !normal && IsApplicableLiftedConversion(
+                source, destination, parameterType, resultType);
+            if ((normal || lifted) &&
                 !matches.Any(match =>
                     match.DeclaringType.ModuleId == declaringType.ModuleId &&
                     match.MethodToken == checked((uint)MetadataTokens.GetToken(handle))))
@@ -130,7 +142,8 @@ internal sealed class ManagedUserDefinedConversionResolver
                     parameterType,
                     resultType,
                     destination,
-                    _language));
+                    _language,
+                    lifted));
             }
         }
     }
@@ -186,7 +199,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedBoundType? bestSource = SelectBestType(
-            matches.Select(static match => match.ParameterType), source,
+            matches.Select(match => match.IsLifted ? source : match.ParameterType), source,
             mostEncompassing: false);
         if (bestSource is null)
         {
@@ -194,7 +207,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedBoundType? bestTarget = SelectBestType(
-            matches.Select(static match => match.ResultType), destination,
+            matches.Select(match => match.IsLifted ? destination : match.ResultType), destination,
             mostEncompassing: true);
         if (bestTarget is null)
         {
@@ -202,9 +215,50 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedUserDefinedConversion[] best = [.. matches.Where(match =>
-            match.ParameterType.IsSameType(bestSource) &&
-            match.ResultType.IsSameType(bestTarget))];
+            (match.IsLifted ? source : match.ParameterType).IsSameType(bestSource) &&
+            (match.IsLifted ? destination : match.ResultType).IsSameType(bestTarget))];
         return best.Length == 1 ? best[0] : null;
+    }
+
+    private bool IsApplicableLiftedConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination,
+        ManagedBoundType parameter,
+        ManagedBoundType result)
+    {
+        if (!TryGetNullableUnderlying(source, out ManagedBoundType sourceUnderlying) ||
+            !sourceUnderlying.IsSameType(parameter))
+        {
+            return false;
+        }
+
+        if (TryGetNullableUnderlying(destination, out ManagedBoundType destinationUnderlying))
+        {
+            return result.IsSameType(destinationUnderlying);
+        }
+
+        return result.IsReference && destination.IsReference &&
+            _referenceConversions.IsImplicit(result, destination, _thread);
+    }
+
+    private ManagedBoundType StripNullable(ManagedBoundType type) =>
+        TryGetNullableUnderlying(type, out ManagedBoundType underlying)
+            ? underlying
+            : type;
+
+    private bool TryGetNullableUnderlying(
+        ManagedBoundType type,
+        out ManagedBoundType underlying)
+    {
+        if (_types.IsCoreType(type, "System.Nullable`1", _thread) &&
+            type.TypeArguments is [ManagedBoundType argument])
+        {
+            underlying = argument;
+            return true;
+        }
+
+        underlying = type;
+        return false;
     }
 
     private ManagedBoundType? SelectBestType(

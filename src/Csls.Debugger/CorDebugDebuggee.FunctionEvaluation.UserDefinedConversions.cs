@@ -15,6 +15,16 @@ internal sealed partial class CorDebugDebuggee
         ManagedReferenceConversion referenceConversions,
         nint thread)
     {
+        if (conversion.IsLifted)
+        {
+            if (IsNullableBoxingEmpty(value, sourceType, thread))
+            {
+                return CreateEmptyLiftedConversionValue(conversion.TargetType);
+            }
+
+            return value with { UserDefinedConversion = conversion };
+        }
+
         ManagedExpressionValue prepared;
         if (sourceType.IsSameType(conversion.ParameterType) ||
             referenceConversions.IsImplicit(sourceType, conversion.ParameterType, thread))
@@ -74,11 +84,18 @@ internal sealed partial class CorDebugDebuggee
             function = GetModuleFunction(module.Pointer, conversion.MethodToken);
             typeArguments = ManagedRuntimeTypeArguments.ResolveBound(
                 conversion.DeclaringType.TypeArguments, _boundTypes, evaluation.Thread);
-            nint source = CreateFunctionArgument(
-                evaluation.Pointer,
-                argument,
-                evaluation.RuntimeArguments[index],
-                temporaryArguments);
+            nint source = conversion.IsLifted
+                ? CreateLiftedUserDefinedConversionArgument(
+                    argument,
+                    conversion,
+                    evaluation.RuntimeArguments[index],
+                    evaluation.Thread,
+                    temporaryArguments)
+                : CreateFunctionArgument(
+                    evaluation.Pointer,
+                    argument,
+                    evaluation.RuntimeArguments[index],
+                    temporaryArguments);
             int result;
             nint evaluation2 = 0;
             try
@@ -265,6 +282,67 @@ internal sealed partial class CorDebugDebuggee
         evaluation.PendingUserDefinedConversionTypeArguments = [];
     }
 
+    private nint CreateLiftedUserDefinedConversionArgument(
+        ManagedExpressionValue argument,
+        ManagedUserDefinedConversion conversion,
+        nint runtimeArgument,
+        nint thread,
+        List<nint> temporaryArguments)
+    {
+        if (runtimeArgument == 0 || argument.DeclaredType is not ManagedBoundType nullableType)
+        {
+            throw new InvalidOperationException(
+                "A populated lifted conversion has no retained nullable source value.");
+        }
+
+        nint nullableValue = 0;
+        nint runtimeType = 0;
+        nint containedValue = 0;
+        try
+        {
+            if (!TryDereferenceAndUnboxValue(runtimeArgument, out nullableValue))
+            {
+                throw new InvalidOperationException(
+                    "A populated lifted conversion has no nullable source storage.");
+            }
+
+            runtimeType = _boundTypes.ResolveRuntimeType(nullableType, thread);
+            VisitDeclaredRuntimeFields(nullableValue, runtimeType, (name, field) =>
+            {
+                if (!string.Equals(name, "value", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                ManagedBoundType actual = _boundTypes.CaptureValue(field, thread);
+                if (!actual.IsSameType(conversion.ParameterType))
+                {
+                    throw new InvalidOperationException(
+                        "A lifted conversion's contained value does not match its operator parameter.");
+                }
+
+                _ = ComAbi.AddRef(field);
+                containedValue = field;
+            });
+            if (containedValue == 0)
+            {
+                throw new InvalidOperationException(
+                    "System.Nullable<T> does not expose its required value field.");
+            }
+
+            temporaryArguments.Add(containedValue);
+            nint result = containedValue;
+            containedValue = 0;
+            return result;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(containedValue);
+            ReleaseFunctionEvaluationPointer(runtimeType);
+            ReleaseFunctionEvaluationPointer(nullableValue);
+        }
+    }
+
     private static ManagedExpressionValue CreateMaterializedUserDefinedConversionValue(
         ManagedBoundType type) => new(
             new DebugVariableInfo(
@@ -286,6 +364,18 @@ internal sealed partial class CorDebugDebuggee
         ManagedUserDefinedConversion conversion,
         nint thread)
     {
+        if (conversion.IsLifted &&
+            _boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", thread))
+        {
+            return value with
+            {
+                DeclaredType = conversion.TargetType,
+                IsNullableValue = true,
+                RequiresNullableMaterialization = true,
+                IsMaterializedFunctionArgument = false
+            };
+        }
+
         if (conversion.ResultType.IsSameType(conversion.TargetType))
         {
             return value with { DeclaredType = conversion.TargetType };
@@ -311,5 +401,26 @@ internal sealed partial class CorDebugDebuggee
         throw new InvalidOperationException(
             $"The implicit conversion result '{conversion.ResultType.DisplayName}' cannot flow to " +
             $"'{conversion.TargetType.DisplayName}'.");
+    }
+
+    private static ManagedExpressionValue CreateEmptyLiftedConversionValue(
+        ManagedBoundType target)
+    {
+        if (target.IsReference)
+        {
+            return ManagedExpressionValueFactory.FromScalar(
+                value: null, target.DisplayName) with
+            {
+                DeclaredType = target
+            };
+        }
+
+        ManagedExpressionValue empty =
+            ManagedExpressionValueFactory.FromZeroValueTypeDefault(target);
+        return empty with
+        {
+            Display = empty.Display with { Value = "null" },
+            IsNullableValue = true
+        };
     }
 }

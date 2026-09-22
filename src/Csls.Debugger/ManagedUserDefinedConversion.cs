@@ -11,10 +11,12 @@ namespace Csls.Debugger;
 /// <param name="ResultType">The exact loaded operator result type.</param>
 /// <param name="TargetType">The exact loaded call parameter receiving the converted result.</param>
 /// <param name="Language">The source language controlling standard numeric conversions.</param>
+/// <param name="IsLifted">Whether nullable source semantics wrap the operator execution.</param>
 internal sealed record ManagedUserDefinedConversion(
     ManagedBoundType DeclaringType,
     uint MethodToken,
     ManagedBoundType ParameterType,
     ManagedBoundType ResultType,
     ManagedBoundType TargetType,
-    DebugExpressionLanguage Language);
+    DebugExpressionLanguage Language,
+    bool IsLifted);

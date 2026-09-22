@@ -285,7 +285,23 @@ public sealed class DapArrayPagingTests : DapTestContext
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerRequireBoxedSourceForDebugger(vector[0])", "441"),
             ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
-                "GetConversionCountForDebugger()", "13")
+                "RequireNullableDestinationForDebugger(populatedLiftedImplicitConversion)", "541"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerRequireNullableDestinationForDebugger(populatedLiftedImplicitConversion)", "541"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireNullableDestinationForDebugger(emptyLiftedImplicitConversion)", "-1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerRequireNullableDestinationForDebugger(emptyLiftedImplicitConversion)", "-1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireStringForDebugger(populatedLiftedImplicitConversion)", "2"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerRequireNullableStringForDebugger(populatedLiftedImplicitConversion)", "2"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "RequireStringForDebugger(emptyLiftedImplicitConversion)", "-1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerRequireNullableStringForDebugger(emptyLiftedImplicitConversion)", "-1"),
+            ("Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "GetConversionCountForDebugger()", "17")
         })
         {
             JsonElement value = await ReadEvaluationAsync(client, frameId, expression, success: true,
