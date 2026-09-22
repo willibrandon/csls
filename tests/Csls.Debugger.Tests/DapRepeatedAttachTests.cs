@@ -47,7 +47,7 @@ public sealed class DapRepeatedAttachTests : DapTestContext
 
                 for (int attempt = 0; attempt < 10; attempt++)
                 {
-                    await AttachAndDetachAsync(target.Id).ConfigureAwait(false);
+                    await AttachAndDetachAsync(target.Id, inspect: attempt == 9).ConfigureAwait(false);
                     Assert.IsFalse(target.HasExited, $"The target exited after attach {attempt + 1}.");
                 }
 
@@ -74,7 +74,7 @@ public sealed class DapRepeatedAttachTests : DapTestContext
         }
     }
 
-    private async Task AttachAndDetachAsync(int processId)
+    private async Task AttachAndDetachAsync(int processId, bool inspect)
     {
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -120,6 +120,11 @@ public sealed class DapRepeatedAttachTests : DapTestContext
                 .GetProperty("systemProcessId").GetInt32());
         }
 
+        if (inspect)
+        {
+            await InspectAttachedTargetAsync(client).ConfigureAwait(false);
+        }
+
         int disconnect = await client.SendRequestAsync("disconnect", writer =>
         {
             writer.WriteStartObject();
@@ -135,5 +140,59 @@ public sealed class DapRepeatedAttachTests : DapTestContext
         Assert.AreEqual(0, await client.WaitForProcessExitAsync(TestContext.CancellationToken)
             .ConfigureAwait(false));
         TestContext.WriteLine(client.Diagnostics.ToString());
+    }
+
+    private async Task InspectAttachedTargetAsync(DapTestClient client)
+    {
+        int pause = await client.SendRequestAsync("pause", WriteEmptyObject, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, pause, "pause", success: true);
+        }
+        int stoppedThread;
+        using (JsonDocument stopped = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(stopped.RootElement, "stopped");
+            stoppedThread = stopped.RootElement.GetProperty("body").GetProperty("threadId").GetInt32();
+        }
+
+        int threads = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, threads, "threads", success: true);
+            int[] threadIds = [.. response.RootElement.GetProperty("body")
+                .GetProperty("threads").EnumerateArray()
+                .Select(static thread => thread.GetProperty("id").GetInt32())];
+            Assert.Contains(stoppedThread, threadIds);
+        }
+
+        int resume = await client.SendRequestAsync("continue", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("threadId", stoppedThread);
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        bool responseReceived = false;
+        bool continuedReceived = false;
+        while (!responseReceived || !continuedReceived)
+        {
+            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            if (message.RootElement.GetProperty("type").GetString() == "response")
+            {
+                AssertResponse(message.RootElement, resume, "continue", success: true);
+                responseReceived = true;
+            }
+            else
+            {
+                AssertEvent(message.RootElement, "continued");
+                continuedReceived = true;
+            }
+        }
     }
 }
