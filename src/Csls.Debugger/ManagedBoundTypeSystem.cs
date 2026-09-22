@@ -666,7 +666,10 @@ internal sealed class ManagedBoundTypeSystem
         return CreateDefinition(module, signature.DefinitionToken, 0x12, arguments, thread);
     }
 
-    private CorDebugLoadedModule GetModule(ManagedBoundType type) => type.ModuleId is int id
+    /// <summary>
+    /// Gets the loaded module that owns one exact bound type.
+    /// </summary>
+    internal CorDebugLoadedModule GetModule(ManagedBoundType type) => type.ModuleId is int id
         ? _modules.FindModule(id) ?? throw new InvalidOperationException("The declared type's module has unloaded.")
         : throw new InvalidOperationException("The type has no defining module.");
 

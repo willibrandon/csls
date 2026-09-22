@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
+using System.Reflection;
 
 namespace Csls.Debugger;
 
@@ -74,6 +75,23 @@ internal sealed partial class CorDebugDebuggee
             currentType = RequirePointer(
                 Volatile.Read(ref *exactTypeAddress),
                 "ICorDebugValue2.GetExactType");
+
+            if (selectedReceiverType is not null &&
+                (_boundTypes.GetAttributes(selectedReceiverType) & TypeAttributes.Interface) != 0)
+            {
+                ManagedBoundType actualReceiverType = _boundTypes.CaptureType(currentType, thread);
+                if (!new ManagedReferenceConversion(_boundTypes).IsRuntimeAssignable(
+                        actualReceiverType, selectedReceiverType, thread))
+                {
+                    throw new InvalidOperationException(
+                        $"Runtime type '{actualReceiverType.DisplayName}' does not implement " +
+                        $"interface '{selectedReceiverType.DisplayName}'.");
+                }
+
+                return ResolveInterfaceFunction(
+                    selectedReceiverType, methodName, language, arguments, constantArguments,
+                    argumentNames, thread, exactMethodToken);
+            }
 
             bool selectedTypeReached = selectedReceiverType is null;
             if (ManagedRuntimeValueIdentity.GetElementType(receiver) is 0x14 or 0x1d)
@@ -198,6 +216,134 @@ internal sealed partial class CorDebugDebuggee
         throw new InvalidOperationException(
             $"No instance method named '{methodName}' with {arguments.Length} argument(s) " +
             "is available on the runtime type hierarchy.");
+    }
+
+    private ManagedFunctionBinding ResolveInterfaceFunction(
+        ManagedBoundType selectedInterface,
+        string methodName,
+        DebugExpressionLanguage language,
+        ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
+        nint thread,
+        uint? exactMethodToken)
+    {
+        const int maximumInterfaces = 4096;
+        var pending = new Queue<(ManagedBoundType Type, int Depth)>();
+        var visited = new List<ManagedBoundType>();
+        var matches = new List<(ManagedBoundType DeclaringType, CorDebugLoadedModule Module,
+            uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+            ManagedExpressionValue?[] OptionalArguments, ManagedBoundType[] MethodTypeArguments)>();
+        pending.Enqueue((selectedInterface, 0));
+        int? matchingDepth = null;
+        while (pending.TryDequeue(out (ManagedBoundType Type, int Depth) current))
+        {
+            if (matchingDepth is int depth && current.Depth > depth)
+            {
+                break;
+            }
+
+            if (visited.Count >= maximumInterfaces)
+            {
+                throw new InvalidOperationException(
+                    "The runtime interface hierarchy exceeds the supported type budget.");
+            }
+
+            if (visited.Any(current.Type.IsSameType))
+            {
+                continue;
+            }
+
+            visited.Add(current.Type);
+            CorDebugLoadedModule module = _boundTypes.GetModule(current.Type);
+            (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+                ManagedExpressionValue?[] OptionalArguments,
+                ManagedBoundType[] MethodTypeArguments)? method =
+                exactMethodToken is uint getterToken && current.Depth == 0
+                    ? (getterToken, [], [], [], [])
+                    : ManagedFunctionMethodResolver.ResolveCall(
+                        module,
+                        current.Type.DefinitionToken,
+                        methodName,
+                        language,
+                        arguments,
+                        staticMethod: false,
+                        _boundTypes,
+                        thread,
+                        current.Type.TypeArguments,
+                        constantArguments,
+                        argumentNames,
+                        allowAbstract: true);
+            if (method is { } resolved)
+            {
+                matchingDepth = current.Depth;
+                matches.Add((
+                    current.Type,
+                    module,
+                    resolved.Token,
+                    resolved.Parameters,
+                    resolved.ParameterSourceIndices,
+                    resolved.OptionalArguments,
+                    resolved.MethodTypeArguments));
+                continue;
+            }
+
+            foreach (ManagedBoundType parent in _boundTypes.GetParents(current.Type, thread).Where(
+                parent => (_boundTypes.GetAttributes(parent) & TypeAttributes.Interface) != 0))
+            {
+                pending.Enqueue((parent, current.Depth + 1));
+            }
+        }
+
+        if (matches.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No interface method named '{methodName}' with {arguments.Length} argument(s) " +
+                $"is available on '{selectedInterface.DisplayName}'.");
+        }
+
+        if (matches.Count != 1)
+        {
+            throw new InvalidOperationException(
+                $"Interface method call '{methodName}' with {arguments.Length} argument(s) is " +
+                $"ambiguous on '{selectedInterface.DisplayName}'.");
+        }
+
+        (ManagedBoundType declaringType, CorDebugLoadedModule declaringModule, uint token,
+            ManagedBoundType[] parameters, int[] parameterSourceIndices,
+            ManagedExpressionValue?[] optionalArguments,
+            ManagedBoundType[] methodTypeArguments) = matches[0];
+        ManagedBoundType? resultType = _boundTypes.BindMethodResult(
+            declaringModule.Pointer,
+            token,
+            declaringType.TypeArguments,
+            thread,
+            methodArguments: methodTypeArguments);
+        nint[] declaringArguments = ManagedRuntimeTypeArguments.ResolveBound(
+            declaringType.TypeArguments, _boundTypes, thread);
+        nint[] methodArguments = [];
+        try
+        {
+            methodArguments = ManagedRuntimeTypeArguments.ResolveBound(
+                methodTypeArguments, _boundTypes, thread);
+            nint[] typeArguments = [.. declaringArguments, .. methodArguments];
+            return new ManagedFunctionBinding(
+                GetModuleFunction(declaringModule.Pointer, token),
+                typeArguments,
+                resultType,
+                parameters,
+                parameterSourceIndices,
+                optionalArguments);
+        }
+        catch
+        {
+            foreach (nint argument in declaringArguments.Concat(methodArguments))
+            {
+                _ = ComAbi.Release(argument);
+            }
+
+            throw;
+        }
     }
 
 

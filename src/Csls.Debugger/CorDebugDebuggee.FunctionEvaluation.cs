@@ -215,7 +215,8 @@ internal sealed partial class CorDebugDebuggee
                             argumentTypes, constantArguments, argumentNames, thread)
                         : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language,
                             argumentTypes, constantArguments, argumentNames, thread,
-                            property?.DeclaringType ?? receiver?.ExplicitReceiverType, property?.Getter.MethodToken);
+                            property?.DeclaringType ?? receiver?.ExplicitReceiverType ?? receiver?.DeclaredType,
+                            property?.Getter.MethodToken);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;

@@ -275,6 +275,24 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             AssertEvent(genericInvalidated.RootElement, "invalidated");
         }
 
+        foreach ((string expression, string expected) in new[]
+        {
+            ("implicitInterface.Transform(41)", "141"),
+            ("explicitInterface.Transform(41)", "241"),
+            ("explicitInterface.DefaultTransform(41)", "341"),
+            ("implicitInterface.Echo(51)", "51"),
+            ("derivedInterface.Transform(41)", "441"),
+            ("((Csls.TestProcessHost.IDebuggerInterfaceFixture<int>)explicitInterfaceObject).Transform(41)", "241")
+        })
+        {
+            JsonElement interfaceResult = await ReadEvaluationAsync(client, frameId, expression,
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, interfaceResult.GetProperty("result").GetString());
+            using JsonDocument interfaceInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(interfaceInvalidated.RootElement, "invalidated");
+        }
+
         foreach (string rejectedCall in new[]
         {
             "ClassConstraintForDebugger(41)",

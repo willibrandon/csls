@@ -764,6 +764,10 @@ internal static class DebuggerDumpArrayFixture
         StrongBox<int>? absentObject = null;
         DebuggerFixtureList inheritedObject = new(81);
         DebuggerAmbiguousEnumerable ambiguousEnumerable = new();
+        IDebuggerInterfaceFixture<int> implicitInterface = new DebuggerImplicitInterfaceFixture();
+        IDebuggerInterfaceFixture<int> explicitInterface = new DebuggerExplicitInterfaceFixture();
+        IDebuggerDerivedInterfaceFixture derivedInterface = new DebuggerDerivedInterfaceFixture();
+        object explicitInterfaceObject = explicitInterface;
         DebuggerFixtureValue capturedObject = new(42, "answer!", path);
         object boxedPair = (73, "captured pair");
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
@@ -801,6 +805,10 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(absentObject);
         GC.KeepAlive(inheritedObject);
         GC.KeepAlive(ambiguousEnumerable);
+        GC.KeepAlive(implicitInterface);
+        GC.KeepAlive(explicitInterface);
+        GC.KeepAlive(derivedInterface);
+        GC.KeepAlive(explicitInterfaceObject);
         GC.KeepAlive(capturedObject);
         GC.KeepAlive(boxedPair);
         GC.KeepAlive(chain);

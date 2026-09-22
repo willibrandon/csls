@@ -120,7 +120,9 @@ including subsequent updates, while the calling frame keeps its own method-versi
 symbols. Added methods retain their declared return type for assignment checks.
 
 The binder reads metadata signatures, including inherited instance methods in
-another module. Arguments can be CLR primitives, `null`, current-generation object and
+another module. Interface-typed and explicitly cast receivers bind loaded interface
+declarations and use CoreCLR dispatch for implicit, explicit, inherited, and default
+implementations. Arguments can be CLR primitives, `null`, current-generation object and
 array references, or literal and side-effect-free computed strings. Strings are
 allocated in the target with their exact UTF-16 length, including embedded NUL values.
 The binder validates type identity and resolves the overload before execution.

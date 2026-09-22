@@ -44,7 +44,8 @@ internal static class ManagedFunctionMethodResolver
         nint thread,
         IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
         IReadOnlyList<ManagedExpressionValue?>? constantArguments = null,
-        IReadOnlyList<string?>? argumentNames = null)
+        IReadOnlyList<string?>? argumentNames = null,
+        bool allowAbstract = false)
     {
         using PEReader? reader = module.OpenPeReader();
         if (reader is null)
@@ -54,7 +55,8 @@ internal static class ManagedFunctionMethodResolver
 
         using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), module.MetadataDeltas);
         return ResolveCall(metadata, module.Pointer, typeToken, methodName, language, arguments,
-            staticMethod, types, thread, declaringTypeArguments, constantArguments, argumentNames);
+            staticMethod, types, thread, declaringTypeArguments, constantArguments, argumentNames,
+            allowAbstract);
     }
 
     /// <summary>
@@ -92,7 +94,8 @@ internal static class ManagedFunctionMethodResolver
         nint thread,
         IReadOnlyList<ManagedBoundType>? declaringTypeArguments = null,
         IReadOnlyList<ManagedExpressionValue?>? constantArguments = null,
-        IReadOnlyList<string?>? argumentNames = null)
+        IReadOnlyList<string?>? argumentNames = null,
+        bool allowAbstract = false)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -114,7 +117,7 @@ internal static class ManagedFunctionMethodResolver
         {
             MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
             bool methodIsStatic = (method.Attributes & MethodAttributes.Static) != 0;
-            if ((method.Attributes & MethodAttributes.Abstract) != 0 ||
+            if (!allowAbstract && (method.Attributes & MethodAttributes.Abstract) != 0 ||
                 methodIsStatic != staticMethod ||
                 !string.Equals(metadata.GetString(method.Name), methodName, comparison))
             {
