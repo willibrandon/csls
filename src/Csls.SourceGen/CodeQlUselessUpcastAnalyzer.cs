@@ -8,7 +8,7 @@ using System.Collections.Immutable;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents redundant nested and class-receiver upcasts reported by CodeQL.
+/// Prevents redundant implicit casts reported by CodeQL.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
@@ -52,7 +52,7 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (IsRedundantNullUpcast(cast, targetType, context))
+        if (IsRedundantInitializerCast(cast, targetType, context))
         {
             context.ReportDiagnostic(Diagnostic.Create(
                 s_rule,
@@ -91,13 +91,12 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
             targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
     }
 
-    private static bool IsRedundantNullUpcast(
+    private static bool IsRedundantInitializerCast(
         CastExpressionSyntax cast,
         ITypeSymbol targetType,
         SyntaxNodeAnalysisContext context)
     {
-        if (!cast.Expression.IsKind(SyntaxKind.NullLiteralExpression) ||
-            cast.Parent is not EqualsValueClauseSyntax equalsValue ||
+        if (cast.Parent is not EqualsValueClauseSyntax equalsValue ||
             equalsValue.Parent is not VariableDeclaratorSyntax declarator ||
             context.SemanticModel.GetDeclaredSymbol(
                 declarator,
@@ -106,6 +105,15 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
             return false;
         }
 
-        return SymbolEqualityComparer.Default.Equals(local.Type, targetType);
+        Conversion targetConversion = context.SemanticModel.ClassifyConversion(
+            cast.Expression,
+            targetType,
+            isExplicitInSource: false);
+        Conversion destinationConversion = context.SemanticModel.ClassifyConversion(
+            cast.Expression,
+            local.Type,
+            isExplicitInSource: false);
+        return targetConversion.IsImplicit && !targetConversion.IsUserDefined &&
+            destinationConversion.IsImplicit && !destinationConversion.IsUserDefined;
     }
 }

@@ -14,7 +14,7 @@ CSLS0012 | CodeQuality | Error | By-reference method state is encapsulated after
 CSLS0013 | CodeQuality | Error | Complex Boolean conditions use named decisions
 CSLS0014 | CodeQuality | Error | Deconstructed collection aliases are not mutation-only
 CSLS0015 | CodeQuality | Error | Nullable out variables are proved before dereferencing
-CSLS0016 | CodeQuality | Error | Redundant nested and class-receiver implicit upcasts are removed
+CSLS0016 | CodeQuality | Error | Redundant initializer, nested, and class-receiver implicit casts are removed
 CSLS0017 | CodeQuality | Error | Repeated null tests after exiting guards are removed
 CSLS0018 | CodeQuality | Error | Writes to unread locals are removed
 CSLS0019 | CodeQuality | Error | Explicit casts to the operand's existing type are removed

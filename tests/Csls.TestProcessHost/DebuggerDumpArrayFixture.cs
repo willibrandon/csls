@@ -778,10 +778,10 @@ internal static class DebuggerDumpArrayFixture
         object explicitInterfaceObject = explicitInterface;
         DebuggerFixtureValue capturedObject = new(42, "answer!", path);
         object boxedPair = (73, "captured pair");
-        object boxedNullableValue = (int?)47;
-        object? boxedNullableEmpty = (int?)null;
+        object boxedNullableValue = 47;
+        object? boxedNullableEmpty = null;
         object boxedNullableMismatch = "not an integer";
-        object boxedNullableStruct = (DebuggerOptionalStructFixture?)new DebuggerOptionalStructFixture();
+        object boxedNullableStruct = new DebuggerOptionalStructFixture();
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
         cycleObject.Value = cycleObject;

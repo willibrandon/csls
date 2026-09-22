@@ -31,8 +31,8 @@ internal static class ReferenceAssignmentFixture<TBase>
         Exception? nullBaseTarget = null;
         object objectTarget = "original object";
         object boxedSource = 42;
-        object boxedNullableValue = (int?)43;
-        object? boxedNullableEmpty = (int?)null;
+        object boxedNullableValue = 43;
+        object? boxedNullableEmpty = null;
         object boxedNullableMismatch = "not an integer";
         object boxedStruct = (Number: 17, Reference: new StrongBox<int>(23));
         (int Number, StrongBox<int> Reference) structTarget = (31, new StrongBox<int>(37));

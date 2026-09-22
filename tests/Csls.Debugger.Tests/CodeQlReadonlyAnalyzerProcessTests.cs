@@ -4,7 +4,7 @@ using System.Security;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Verifies the readonly-field analyzer through a real compiler process.
+/// Verifies CodeQL parity analyzers through a real compiler process.
 /// </summary>
 [TestClass]
 public sealed class CodeQlReadonlyAnalyzerProcessTests
@@ -15,7 +15,7 @@ public sealed class CodeQlReadonlyAnalyzerProcessTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Rejects initialization-only struct fields while preserving native and mutable storage.
+    /// Rejects readonly-field and useless-upcast findings while preserving intentional mutable storage.
     /// </summary>
     [TestMethod]
     [Timeout(30000, CooperativeCancellation = true)]
@@ -66,6 +66,17 @@ public sealed class CodeQlReadonlyAnalyzerProcessTests
                 {
                     public int Value;
                 }
+
+                public static class NullableUpcastProbe
+                {
+                    public static void Run()
+                    {
+                        object? empty = (int?)null;
+                        object value = (InitializedFields?)new InitializedFields(1, "one");
+                        System.GC.KeepAlive(empty);
+                        System.GC.KeepAlive(value);
+                    }
+                }
                 """, TestContext.CancellationToken).ConfigureAwait(false);
 
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
@@ -84,6 +95,8 @@ public sealed class CodeQlReadonlyAnalyzerProcessTests
             Assert.Contains("CSLS0011: Field 'Number'", result);
             Assert.Contains("CSLS0011: Field 'Text'", result);
             Assert.DoesNotContain("CSLS0011: Field 'Value'", result);
+            Assert.Contains("CSLS0016: Explicit conversion to 'int?'", result);
+            Assert.Contains("CSLS0016: Explicit conversion to 'InitializedFields?'", result);
         }
         finally
         {
