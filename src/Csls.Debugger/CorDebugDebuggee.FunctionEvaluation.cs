@@ -135,6 +135,17 @@ internal sealed partial class CorDebugDebuggee
                         plan,
                         argumentNode,
                         generation);
+                    if (plan.Language == DebugExpressionLanguage.VisualBasic &&
+                        argumentNode is { Kind: DebugExpressionNodeKind.Literal, TypeName: null })
+                    {
+                        suppliedArguments[index] = ManagedExpressionValueFactory.FromContextualDefault();
+                    }
+
+                    if (suppliedArguments[index].IsContextualDefault)
+                    {
+                        constantArguments[index] = suppliedArguments[index];
+                    }
+
                     if (argumentNode.Kind == DebugExpressionNodeKind.Literal &&
                         suppliedArguments[index].Scalar is int or long)
                     {
@@ -210,7 +221,13 @@ internal sealed partial class CorDebugDebuggee
                 {
                     ManagedBoundType? sourceType = argumentTypes[index];
                     ManagedBoundType parameterType = binding.ParameterTypes[index];
-                    if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
+                    if (suppliedArguments[index].IsContextualDefault)
+                    {
+                        suppliedArguments[index] = ManagedFunctionImplicitDefaults.TryCreateContextual(
+                            parameterType, _boundTypes, thread) ?? throw new InvalidOperationException(
+                                $"A default literal cannot be materialized as '{parameterType.DisplayName}'.");
+                    }
+                    else if (sourceType is not null && !sourceType.IsSameType(parameterType) &&
                         ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
                             sourceType, parameterType, plan.Language))
                     {

@@ -85,4 +85,73 @@ public sealed class DapOptionalArgumentTests : DapTestContext
             missingRequired.GetProperty("message").GetString()));
         await DisconnectAsync(client).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Binds explicit default literals to the selected loaded parameter types.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ContextualDefaultsFollowCompilerInvocationSemantics()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+        int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        const string receiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
+        foreach ((string expression, string expected) in new[]
+        {
+            ($"{receiver}.OptionalIntegerWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalBooleanWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalEnumWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalExternalEnumForDebugger(default)", "0"),
+            ($"{receiver}.OptionalNullForDebugger(default)", "1"),
+            ($"{receiver}.ContextualObjectForDebugger(default)", "1"),
+            ($"{receiver}.OptionalDecimalWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalDateTimeWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalGuidWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalPairWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalNullableWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.OptionalStructWithoutConstantForDebugger(default)", "1"),
+            ($"{receiver}.CombineOptionalForDebugger(first: default)", "4243"),
+            ($"{receiver}.PreferContextualReferenceForDebugger(default)", "1"),
+            ($"{receiver}.CompilerContextualReferenceForDebugger()", "1"),
+            ($"{receiver}.PreferContextualNumericForDebugger(default)", "1"),
+            ($"{receiver}.CompilerContextualNumericForDebugger()", "1")
+        })
+        {
+            JsonElement result = await ReadEvaluationAsync(client, frameId, expression, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, result.GetProperty("result").GetString(), expression);
+            using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement created = await ReadEvaluationAsync(client, frameId,
+            "new Csls.TestProcessHost.DebuggerFixtureValue(number: default)", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement[] fields = await ReadPageAsync(client,
+            created.GetProperty("variablesReference").GetInt32(), 0, 0, "named").ConfigureAwait(false);
+        JsonElement number = Assert.ContainsSingle(fields.Where(field =>
+            field.GetProperty("name").GetString() == "Number"));
+        Assert.AreEqual("0", number.GetProperty("value").GetString());
+
+        JsonElement ambiguous = await ReadEvaluationAsync(client, frameId,
+            $"{receiver}.AmbiguousContextualDefaultForDebugger(default)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("ambiguous", Assert.IsInstanceOfType<string>(
+            ambiguous.GetProperty("message").GetString()));
+        JsonElement nullToValue = await ReadEvaluationAsync(client, frameId,
+            $"{receiver}.OptionalIntegerWithoutConstantForDebugger(null)", success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("No static method", Assert.IsInstanceOfType<string>(
+            nullToValue.GetProperty("message").GetString()));
+        await DisconnectAsync(client).ConfigureAwait(false);
+    }
 }

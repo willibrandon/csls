@@ -582,6 +582,8 @@ evaluates named arguments in source order, maps them to CLR parameter positions,
 materializes omitted primitive, string, null, decimal, DateTime, and zero-initialized
 value-type defaults from the loaded declaration. Generic value types retain their
 exact loaded arguments, and zero initialization does not execute authored constructors.
+Explicit C# `default` and Visual Basic `Nothing` arguments remain untyped through
+overload selection, then materialize from the selected loaded parameter type.
 When supplied-argument conversions tie, a candidate requiring no defaults wins.
 The engine walks the exact `ICorDebugType` inheritance graph reported by CoreCLR,
 so inherited methods resolve through the target's actual loaded modules and generic base types rather

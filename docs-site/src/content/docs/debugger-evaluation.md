@@ -131,6 +131,8 @@ Omitted optional parameters use loaded declaration defaults for primitives, enum
 strings, decimal, DateTime, and zero-initialized value types such as Guid and
 `Nullable<T>`. An exact-arity overload wins when explicit
 argument conversions are otherwise tied.
+Explicit C# `default` and Visual Basic `Nothing` arguments use the selected
+parameter type for method calls and constructors.
 
 Function evaluation runs on the selected managed thread with a five-second deadline.
 Evaluations run one at a time. Overlapping DAP requests queue in arrival order.

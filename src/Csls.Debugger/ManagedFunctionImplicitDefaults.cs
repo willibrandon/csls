@@ -8,6 +8,19 @@ namespace Csls.Debugger;
 internal static class ManagedFunctionImplicitDefaults
 {
     /// <summary>
+    /// Materializes an explicit contextual default from its selected parameter type.
+    /// </summary>
+    internal static ManagedExpressionValue? TryCreateContextual(
+        ManagedBoundType parameter,
+        ManagedBoundTypeSystem types,
+        nint thread) => parameter.IsReference
+            ? ManagedExpressionValueFactory.FromScalar(value: null, "object") with
+            {
+                DeclaredType = parameter
+            }
+            : TryCreate(parameter, types, thread);
+
+    /// <summary>
     /// Gets a supported default while preserving the loaded parameter identity.
     /// </summary>
     internal static ManagedExpressionValue? TryCreate(

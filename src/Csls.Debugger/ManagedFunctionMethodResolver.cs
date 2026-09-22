@@ -155,7 +155,7 @@ internal static class ManagedFunctionMethodResolver
                 }
             }
 
-            if (IsApplicable(arguments, parameters, constantArguments, language, conversions, thread))
+            if (IsApplicable(arguments, parameters, constantArguments, language, conversions, types, thread))
             {
                 matches.Add((methodHandle, parameters, parameterSourceIndices, optionalArguments));
             }
@@ -194,12 +194,23 @@ internal static class ManagedFunctionMethodResolver
         IReadOnlyList<ManagedExpressionValue?>? constantArguments,
         DebugExpressionLanguage language,
         ManagedReferenceConversion conversions,
+        ManagedBoundTypeSystem types,
         nint thread)
     {
         for (int index = 0; index < arguments.Count; index++)
         {
             ManagedBoundType? argument = arguments[index];
             ManagedBoundType parameter = parameters[index];
+            if (constantArguments?[index]?.IsContextualDefault == true)
+            {
+                if (ManagedFunctionImplicitDefaults.TryCreateContextual(parameter, types, thread) is null)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
             if (argument is null)
             {
                 if (!parameter.IsReference)

@@ -21,8 +21,8 @@ internal sealed partial class CorDebugDebuggee
             ManagedExpressionValue argument = arguments[index];
             if (argument.IsContextualDefault)
             {
-                throw new InvalidOperationException(
-                    "A default literal requires an explicitly selected parameter type.");
+                types[index] = null;
+                continue;
             }
 
             if (argument.DeclaredType is ManagedBoundType declared)

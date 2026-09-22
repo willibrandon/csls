@@ -446,6 +446,69 @@ internal static class DebuggerDumpArrayFixture
         OptionalStructWithoutConstantForDebugger();
 
     /// <summary>
+    /// Observes a contextual default passed to an object parameter.
+    /// </summary>
+    /// <param name="value">The target-typed object value.</param>
+    /// <returns>One when the target receives null.</returns>
+    internal static int ContextualObjectForDebugger(object? value) => value is null ? 1 : 0;
+
+    /// <summary>
+    /// Identifies an object overload selected from a contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed object value.</param>
+    /// <returns>Two when the object overload executes.</returns>
+    internal static int PreferContextualReferenceForDebugger(object? value) => value is null ? 2 : 0;
+
+    /// <summary>
+    /// Identifies the more specific string overload for a contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed string value.</param>
+    /// <returns>One when the string overload executes.</returns>
+    internal static int PreferContextualReferenceForDebugger(string? value) => value is null ? 1 : 0;
+
+    /// <summary>
+    /// Runs the compiler-selected overload for a contextual default.
+    /// </summary>
+    /// <returns>The target-observed overload marker.</returns>
+    internal static int CompilerContextualReferenceForDebugger() =>
+        PreferContextualReferenceForDebugger(default);
+
+    /// <summary>
+    /// Identifies the preferred integer overload for a contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed integer value.</param>
+    /// <returns>One when the integer overload executes.</returns>
+    internal static int PreferContextualNumericForDebugger(int value) => value == 0 ? 1 : 0;
+
+    /// <summary>
+    /// Identifies the wider numeric overload for a contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed long value.</param>
+    /// <returns>Two when the long overload executes.</returns>
+    internal static int PreferContextualNumericForDebugger(long value) => value == 0 ? 2 : 0;
+
+    /// <summary>
+    /// Runs the compiler-selected numeric overload for a contextual default.
+    /// </summary>
+    /// <returns>The target-observed overload marker.</returns>
+    internal static int CompilerContextualNumericForDebugger() =>
+        PreferContextualNumericForDebugger(default);
+
+    /// <summary>
+    /// Supplies a value-type candidate for an ambiguous contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed integer value.</param>
+    /// <returns>The supplied value.</returns>
+    internal static int AmbiguousContextualDefaultForDebugger(int value) => value;
+
+    /// <summary>
+    /// Supplies a reference-type candidate for an ambiguous contextual default.
+    /// </summary>
+    /// <param name="value">The target-typed string value.</param>
+    /// <returns>The supplied string length.</returns>
+    internal static int AmbiguousContextualDefaultForDebugger(string? value) => value?.Length ?? 0;
+
+    /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
     /// <param name="path">The test-owned capture identity retained in the frame.</param>
