@@ -450,6 +450,39 @@ public sealed partial class DapArrayPagingTests
             "(double?)nullNullableResultConversion",
             "null").ConfigureAwait(false);
 
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitConversionDestination)" +
+                "populatedNullableNumericConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNullableNumericSourceForDebugger(" +
+                "populatedNullableNumericConversion)",
+            "41").ConfigureAwait(false);
+
+        JsonElement emptyNullableNumeric = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitConversionDestination)" +
+                "emptyNullableNumericConversion",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("null", emptyNullableNumeric.GetProperty("result").GetString());
+        JsonElement compilerEmptyNullableNumeric = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNullableNumericSourceForDebugger(" +
+                "emptyNullableNumericConversion)",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("-1", compilerEmptyNullableNumeric.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(
+            TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
         JsonElement nonStandardNumericBridge = await ReadEvaluationAsync(
             client,
             frameId,
@@ -532,7 +565,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("63", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("65", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {

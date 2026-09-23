@@ -149,6 +149,7 @@ internal sealed partial class CorDebugDebuggee
                     RequiresNullableSourceExtraction(
                         evaluation.Arguments[index], explicitConversion, evaluation.Thread)
                         ? CreateNullableSourceConversionArgument(
+                            evaluation.Pointer,
                             evaluation.Arguments[index],
                             explicitConversion,
                             evaluation.RuntimeArguments[index],

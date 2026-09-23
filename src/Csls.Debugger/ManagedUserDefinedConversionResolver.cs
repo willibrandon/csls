@@ -354,8 +354,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType parameter,
         ManagedBoundType result)
     {
-        if (!TryGetNullableUnderlying(source, out ManagedBoundType sourceUnderlying) ||
-            !sourceUnderlying.IsSameType(parameter))
+        if (!HasSupportedExplicitNullableInputConversion(source, parameter))
         {
             return false;
         }
@@ -450,7 +449,9 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType source,
         ManagedBoundType destination) =>
         TryGetNullableUnderlying(source, out ManagedBoundType underlying) &&
-        underlying.IsSameType(destination);
+        (underlying.IsSameType(destination) ||
+            ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                underlying, destination, _language));
 
     private bool HasSupportedExplicitNullableResultConversion(
         ManagedBoundType source,

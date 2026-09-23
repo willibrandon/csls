@@ -197,6 +197,18 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerExplicitNullableResultSource? source) => (double?)source;
 
     /// <summary>
+    /// Runs the compiler's nullable numeric conversion before an explicit operator.
+    /// </summary>
+    /// <param name="source">The nullable numeric source value.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static long CompilerExplicitNullableNumericSourceForDebugger(short? source)
+    {
+        var converted =
+            (DebuggerExplicitConversionDestination?)source;
+        return converted?.Number ?? -1;
+    }
+
+    /// <summary>
     /// Runs the compiler's numeric widening after an implicit operator selected by an explicit cast.
     /// </summary>
     /// <param name="source">The authored source value.</param>

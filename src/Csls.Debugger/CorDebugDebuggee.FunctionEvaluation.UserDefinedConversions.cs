@@ -245,6 +245,7 @@ internal sealed partial class CorDebugDebuggee
             nint source = RequiresNullableSourceExtraction(
                 argument, conversion, evaluation.Thread)
                 ? CreateNullableSourceConversionArgument(
+                    evaluation.Pointer,
                     argument,
                     conversion,
                     evaluation.RuntimeArguments[index],
@@ -395,6 +396,7 @@ internal sealed partial class CorDebugDebuggee
     }
 
     private nint CreateNullableSourceConversionArgument(
+        nint evaluation,
         ManagedExpressionValue argument,
         ManagedUserDefinedConversion conversion,
         nint runtimeArgument,
@@ -410,6 +412,7 @@ internal sealed partial class CorDebugDebuggee
         nint nullableValue = 0;
         nint runtimeType = 0;
         nint containedValue = 0;
+        ManagedBoundType? containedType = null;
         try
         {
             if (!TryDereferenceAndUnboxValue(runtimeArgument, out nullableValue))
@@ -427,7 +430,9 @@ internal sealed partial class CorDebugDebuggee
                 }
 
                 ManagedBoundType actual = _boundTypes.CaptureValue(field, thread);
-                if (!actual.IsSameType(conversion.ParameterType))
+                if (!actual.IsSameType(conversion.ParameterType) &&
+                    !ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                        actual, conversion.ParameterType, conversion.Language))
                 {
                     throw new InvalidOperationException(
                         "A lifted conversion's contained value does not match its operator parameter.");
@@ -435,11 +440,41 @@ internal sealed partial class CorDebugDebuggee
 
                 _ = ComAbi.AddRef(field);
                 containedValue = field;
+                containedType = actual;
             });
-            if (containedValue == 0)
+            if (containedValue == 0 || containedType is null)
             {
                 throw new InvalidOperationException(
                     "System.Nullable<T> does not expose its required value field.");
+            }
+
+            if (!containedType.IsSameType(conversion.ParameterType))
+            {
+                ManagedValueDisplay display = CorDebugValueFormatter.Format(containedValue);
+                ManagedExpressionValue extracted = ManagedExpressionValueFactory.FromVariable(
+                    new DebugVariableInfo(
+                        "$conversionSource",
+                        display.Value,
+                        display.Type,
+                        VariablesReference: 0,
+                        MemoryReference: null,
+                        EvaluateName: null),
+                    runtimeValueReference: 0,
+                    display) with
+                {
+                    DeclaredType = containedType
+                };
+                ManagedExpressionValue converted =
+                    ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
+                        extracted,
+                        containedType,
+                        conversion.ParameterType,
+                        conversion.Language) with
+                    {
+                        DeclaredType = conversion.ParameterType
+                    };
+                return CreateFunctionArgument(
+                    evaluation, converted, runtimeArgument: 0, temporaryArguments);
             }
 
             temporaryArguments.Add(containedValue);
@@ -588,7 +623,9 @@ internal sealed partial class CorDebugDebuggee
         nint thread) =>
         _boundTypes.IsCoreType(source, "System.Nullable`1", thread) &&
         source.TypeArguments is [ManagedBoundType underlying] &&
-        underlying.IsSameType(conversion.ParameterType);
+        (underlying.IsSameType(conversion.ParameterType) ||
+            ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                underlying, conversion.ParameterType, conversion.Language));
 
     private bool RequiresNullableTargetMaterialization(
         ManagedUserDefinedConversion conversion,
