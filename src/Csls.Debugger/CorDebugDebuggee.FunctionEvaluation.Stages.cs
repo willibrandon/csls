@@ -144,7 +144,17 @@ internal sealed partial class CorDebugDebuggee
             {
                 ManagedUserDefinedConversion? explicitConversion =
                     evaluation.ExplicitUserDefinedConversion;
-                arguments[index + receiverCount] = index == 0 &&
+                ManagedUserDefinedOperator? userDefinedOperator =
+                    evaluation.UserDefinedOperator;
+                arguments[index + receiverCount] = userDefinedOperator is { IsLifted: true }
+                    ? CreateLiftedOperatorArgument(
+                        evaluation.Arguments[index],
+                        userDefinedOperator,
+                        index,
+                        evaluation.RuntimeArguments[index],
+                        evaluation.Thread,
+                        temporaryArguments)
+                    : index == 0 &&
                     explicitConversion is not null &&
                     RequiresNullableSourceExtraction(
                         evaluation.Arguments[index], explicitConversion, evaluation.Thread)

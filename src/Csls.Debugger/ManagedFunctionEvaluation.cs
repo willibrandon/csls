@@ -31,6 +31,11 @@ internal sealed class ManagedFunctionEvaluation
     internal ManagedUserDefinedConversion? ExplicitUserDefinedConversion { get; init; }
 
     /// <summary>
+    /// Gets the selected operator whose lifted operands require nullable extraction.
+    /// </summary>
+    internal ManagedUserDefinedOperator? UserDefinedOperator { get; init; }
+
+    /// <summary>
     /// Gets the property result's tuple names captured before the target executes.
     /// </summary>
     internal ManagedTupleCustomTypeInfo? ResultTupleCustomTypeInfo { get; init; }

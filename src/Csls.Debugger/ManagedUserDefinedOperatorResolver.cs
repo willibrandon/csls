@@ -69,6 +69,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
             participatingSources.Add(participatingSource);
             AddCandidatesFromHierarchy(
                 participatingSource,
+                operation,
                 primaryName,
                 fallbackName,
                 operands,
@@ -97,6 +98,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
     private void AddCandidatesFromHierarchy(
         ManagedBoundType source,
+        DebugExpressionOperator operation,
         string primaryName,
         string? fallbackName,
         IReadOnlyList<ManagedBoundType?> operands,
@@ -112,7 +114,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
             }
 
             List<ManagedUserDefinedOperator> declared = ReadDeclared(
-                current, primaryName, fallbackName, operands.Count);
+                current, operation, primaryName, fallbackName, operands.Count);
             ManagedUserDefinedOperator[] applicable = [.. declared.Where(candidate =>
                 IsApplicable(candidate, operands, constantOperands))];
             if (applicable.Length != 0)
@@ -139,6 +141,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
     private List<ManagedUserDefinedOperator> ReadDeclared(
         ManagedBoundType declaringType,
+        DebugExpressionOperator operation,
         string primaryName,
         string? fallbackName,
         int parameterCount)
@@ -201,19 +204,22 @@ internal sealed class ManagedUserDefinedOperatorResolver
                 declaringType,
                 checked((uint)MetadataTokens.GetToken(handle)),
                 parameters,
-                result);
+                result,
+                parameters,
+                result,
+                IsLifted: false);
             (string.Equals(name, primaryName, StringComparison.Ordinal)
                 ? primary
                 : fallback).Add(candidate);
         }
 
-        if (fallbackName is null)
+        if (fallbackName is not null)
         {
-            return primary;
+            primary.AddRange(fallback.Where(ordinary => !primary.Any(@checked =>
+                HasPairedSignature(@checked, ordinary))));
         }
 
-        primary.AddRange(fallback.Where(ordinary => !primary.Any(@checked =>
-            HasPairedSignature(@checked, ordinary))));
+        AddLiftedBooleanCandidates(operation, primary);
         return primary;
     }
 
@@ -225,7 +231,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
         for (int index = 0; index < operands.Count; index++)
         {
             ManagedBoundType? operand = operands[index];
-            ManagedBoundType parameter = candidate.ParameterTypes[index];
+            ManagedBoundType parameter = candidate.OperandTypes[index];
             if (!HasStandardImplicitConversion(operand, parameter) &&
                 !(operand is not null && constantOperands?[index] is ManagedExpressionValue constant &&
                     ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
@@ -244,10 +250,10 @@ internal sealed class ManagedUserDefinedOperatorResolver
         IReadOnlyList<ManagedBoundType?> operands)
     {
         bool strictlyBetter = false;
-        for (int index = 0; index < candidate.ParameterTypes.Count; index++)
+        for (int index = 0; index < candidate.OperandTypes.Count; index++)
         {
-            ManagedBoundType preferred = candidate.ParameterTypes[index];
-            ManagedBoundType other = alternative.ParameterTypes[index];
+            ManagedBoundType preferred = candidate.OperandTypes[index];
+            ManagedBoundType other = alternative.OperandTypes[index];
             if (preferred.IsSameType(other))
             {
                 continue;
@@ -300,6 +306,49 @@ internal sealed class ManagedUserDefinedOperatorResolver
         _types.IsCoreType(type, "System.Enum", _thread) ||
         _types.IsCoreType(type, "System.MulticastDelegate", _thread) ||
         _types.IsCoreType(type, "System.ValueType", _thread);
+
+    private void AddLiftedBooleanCandidates(
+        DebugExpressionOperator operation,
+        List<ManagedUserDefinedOperator> candidates)
+    {
+        if (operation is not (DebugExpressionOperator.Equal or
+            DebugExpressionOperator.NotEqual or
+            DebugExpressionOperator.LessThan or
+            DebugExpressionOperator.LessThanOrEqual or
+            DebugExpressionOperator.GreaterThan or
+            DebugExpressionOperator.GreaterThanOrEqual))
+        {
+            return;
+        }
+
+        foreach (ManagedUserDefinedOperator candidate in candidates.ToArray())
+        {
+            if (candidate.ParameterTypes is not [ManagedBoundType left, ManagedBoundType right] ||
+                candidate.ResultType.ElementType != 0x02 ||
+                !CanLift(left) ||
+                !CanLift(right) ||
+                (operation is DebugExpressionOperator.Equal or DebugExpressionOperator.NotEqual) &&
+                    !left.IsSameType(right))
+            {
+                continue;
+            }
+
+            candidates.Add(candidate with
+            {
+                OperandTypes =
+                [
+                    _types.MakeNullable(left, _thread),
+                    _types.MakeNullable(right, _thread)
+                ],
+                IsLifted = true
+            });
+        }
+    }
+
+    private bool CanLift(ManagedBoundType type) =>
+        !_types.IsCoreType(type, "System.Nullable`1", _thread) &&
+        type.ElementType is >= 0x02 and <= 0x0d or 0x11 or 0x18 or 0x19 &&
+        (type.ElementType != 0x11 || !_types.IsByRefLike(type));
 
     private static bool HasPairedSignature(
         ManagedUserDefinedOperator left,

@@ -919,7 +919,7 @@ internal static class DebuggerDumpArrayFixture
         DebuggerExplicitNullableTargetRankingSource nullableTargetRankingSource = new(41);
         DebuggerCheckedOperatorValue checkedOperator = new(41);
         object checkedOperatorObject = checkedOperator;
-        DebuggerNullableOperatorValue?[] nullableOperators = [new(41), null];
+        DebuggerNullableOperatorValue?[] nullableOperators = [new(41), null, new(9)];
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         DebuggerImplicitConversionReferenceSource explicitReferenceInput = implicitReferenceConversion;
         DebuggerImplicitConversionReferenceSource invalidExplicitReferenceInput = new(41);

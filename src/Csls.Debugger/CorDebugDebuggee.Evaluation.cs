@@ -354,6 +354,16 @@ internal sealed partial class CorDebugDebuggee
                 "bool");
         }
 
+        if (TryEvaluateEmptyLiftedOperator(
+            frame,
+            node.Operator,
+            [left, right],
+            plan.Language,
+            out ManagedExpressionValue lifted))
+        {
+            return lifted;
+        }
+
         return ManagedPrimitiveOperatorEvaluator.EvaluateBinary(node.Operator, left, right);
     }
 

@@ -34,6 +34,26 @@ internal readonly struct DebuggerNullableOperatorValue
         12000 + (value.HasValue ? value.Value._number : 300);
 
     /// <summary>
+    /// Applies a relational operator that is lifted by the C# compiler.
+    /// </summary>
+    /// <param name="left">The underlying left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>A deliberately reversed comparison result.</returns>
+    public static bool operator >(
+        DebuggerNullableOperatorValue left,
+        DebuggerNullableOperatorValue right) => left._number < right._number;
+
+    /// <summary>
+    /// Applies the paired relational operator required by C#.
+    /// </summary>
+    /// <param name="left">The underlying left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>A deliberately reversed comparison result.</returns>
+    public static bool operator <(
+        DebuggerNullableOperatorValue left,
+        DebuggerNullableOperatorValue right) => left._number > right._number;
+
+    /// <summary>
     /// Runs compiler-selected binary nullable-parameter addition.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -49,4 +69,14 @@ internal readonly struct DebuggerNullableOperatorValue
     /// <param name="value">The optional operand.</param>
     /// <returns>The compiler-selected result.</returns>
     internal static int CompilerNegate(DebuggerNullableOperatorValue? value) => -value;
+
+    /// <summary>
+    /// Runs compiler-selected lifted nullable relational comparison.
+    /// </summary>
+    /// <param name="left">The optional left operand.</param>
+    /// <param name="right">The optional right operand.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static bool CompilerGreaterThan(
+        DebuggerNullableOperatorValue? left,
+        DebuggerNullableOperatorValue? right) => left > right;
 }

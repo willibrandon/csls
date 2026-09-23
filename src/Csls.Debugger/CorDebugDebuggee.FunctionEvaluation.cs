@@ -207,6 +207,7 @@ internal sealed partial class CorDebugDebuggee
             setupPhase = "resolving the runtime method";
             ManagedBoundType? declaredResultType;
             ManagedUserDefinedConversion? explicitConversion = null;
+            ManagedUserDefinedOperator? userDefinedOperator = null;
             if (materializesString)
             {
                 declaredResultType = _boundTypes.Bind(
@@ -236,7 +237,8 @@ internal sealed partial class CorDebugDebuggee
                         argumentTypes,
                         constantArguments,
                         plan.Language,
-                        thread)
+                        thread,
+                        out userDefinedOperator)
                     : constructsObject
                     ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
                         constantArguments, argumentNames, thread)
@@ -294,6 +296,14 @@ internal sealed partial class CorDebugDebuggee
                                 referenceConversions,
                                 thread);
                         }
+                    }
+                    else if (appliesOperator && userDefinedOperator?.IsLifted == true)
+                    {
+                        suppliedArguments[index] = suppliedArguments[index] with
+                        {
+                            DeclaredType = sourceType ?? throw new InvalidOperationException(
+                                "A lifted operator has no exact nullable operand type.")
+                        };
                     }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {
@@ -406,6 +416,7 @@ internal sealed partial class CorDebugDebuggee
                 TypeArguments = callTypeArguments,
                 DeclaredResultType = declaredResultType,
                 ExplicitUserDefinedConversion = explicitConversion,
+                UserDefinedOperator = userDefinedOperator,
                 ResultTupleCustomTypeInfo = property?.Getter.TupleCustomTypeInfo,
                 ResultFrameId = frame.Id,
                 Thread = thread,
