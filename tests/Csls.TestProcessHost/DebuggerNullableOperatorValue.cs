@@ -72,6 +72,16 @@ internal readonly struct DebuggerNullableOperatorValue
         13000 + value._number;
 
     /// <summary>
+    /// Applies an operator whose second lifted operand requires numeric widening.
+    /// </summary>
+    /// <param name="left">The underlying authored operand.</param>
+    /// <param name="right">The widened numeric operand.</param>
+    /// <returns>A marker derived from both operands.</returns>
+    public static int operator %(
+        DebuggerNullableOperatorValue left,
+        long right) => checked((int)((left._number * 100) + right));
+
+    /// <summary>
     /// Runs compiler-selected binary nullable-parameter addition.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -125,4 +135,14 @@ internal readonly struct DebuggerNullableOperatorValue
     /// <returns>The compiler-selected nullable result.</returns>
     internal static int? CompilerOnesComplement(
         DebuggerNullableOperatorValue? value) => ~value;
+
+    /// <summary>
+    /// Runs compiler-selected lifted arithmetic with nullable numeric widening.
+    /// </summary>
+    /// <param name="left">The optional authored operand.</param>
+    /// <param name="right">The optional integer operand.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerNumericRemainder(
+        DebuggerNullableOperatorValue? left,
+        int? right) => left % right;
 }

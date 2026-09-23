@@ -207,7 +207,8 @@ internal sealed class ManagedUserDefinedOperatorResolver
                 result,
                 parameters,
                 result,
-                IsLifted: false);
+                IsLifted: false,
+                _language);
             (string.Equals(name, primaryName, StringComparison.Ordinal)
                 ? primary
                 : fallback).Add(candidate);
@@ -297,7 +298,9 @@ internal sealed class ManagedUserDefinedOperatorResolver
             if (_types.IsCoreType(source, "System.Nullable`1", _thread) &&
                 source.TypeArguments is [ManagedBoundType sourceUnderlying])
             {
-                return sourceUnderlying.IsSameType(destinationUnderlying);
+                return sourceUnderlying.IsSameType(destinationUnderlying) ||
+                    ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                        sourceUnderlying, destinationUnderlying, _language);
             }
 
             return source.IsSameType(destinationUnderlying) ||

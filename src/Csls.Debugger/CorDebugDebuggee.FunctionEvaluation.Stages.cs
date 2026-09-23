@@ -150,6 +150,7 @@ internal sealed partial class CorDebugDebuggee
                     RequiresLiftedOperatorExtraction(
                         evaluation.Arguments[index], evaluation.Thread)
                     ? CreateLiftedOperatorArgument(
+                        evaluation.Pointer,
                         evaluation.Arguments[index],
                         userDefinedOperator,
                         index,

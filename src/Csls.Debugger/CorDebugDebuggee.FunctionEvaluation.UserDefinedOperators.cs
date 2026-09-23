@@ -350,6 +350,7 @@ internal sealed partial class CorDebugDebuggee
     }
 
     private nint CreateLiftedOperatorArgument(
+        nint evaluation,
         ManagedExpressionValue argument,
         ManagedUserDefinedOperator selected,
         int index,
@@ -361,7 +362,11 @@ internal sealed partial class CorDebugDebuggee
             argument.DeclaredType is not ManagedBoundType nullableType ||
             !_boundTypes.IsCoreType(nullableType, "System.Nullable`1", thread) ||
             nullableType.TypeArguments is not [ManagedBoundType underlying] ||
-            !underlying.IsSameType(selected.ParameterTypes[index]))
+            selected.OperandTypes[index].TypeArguments is not
+                [ManagedBoundType effectiveUnderlying] ||
+            !underlying.IsSameType(effectiveUnderlying) &&
+                !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                    underlying, effectiveUnderlying, selected.Language))
         {
             throw new InvalidOperationException(
                 "A populated lifted operator has no exact nullable operand storage.");
@@ -387,7 +392,10 @@ internal sealed partial class CorDebugDebuggee
                 }
 
                 ManagedBoundType actual = _boundTypes.CaptureValue(field, thread);
-                if (!actual.IsSameType(underlying))
+                ManagedBoundType parameter = selected.ParameterTypes[index];
+                if (!actual.IsSameType(parameter) &&
+                    !ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                        actual, parameter, selected.Language))
                 {
                     throw new InvalidOperationException(
                         "A lifted operator's contained value does not match its parameter.");
@@ -402,10 +410,40 @@ internal sealed partial class CorDebugDebuggee
                     "System.Nullable<T> does not expose its required value field.");
             }
 
-            temporaryArguments.Add(containedValue);
-            nint result = containedValue;
-            containedValue = 0;
-            return result;
+            ManagedBoundType parameterType = selected.ParameterTypes[index];
+            if (underlying.IsSameType(parameterType))
+            {
+                temporaryArguments.Add(containedValue);
+                nint result = containedValue;
+                containedValue = 0;
+                return result;
+            }
+
+            ManagedValueDisplay display = CorDebugValueFormatter.Format(containedValue);
+            ManagedExpressionValue extracted = ManagedExpressionValueFactory.FromVariable(
+                new DebugVariableInfo(
+                    "$operatorOperand",
+                    display.Value,
+                    display.Type,
+                    VariablesReference: 0,
+                    MemoryReference: null,
+                    EvaluateName: null),
+                runtimeValueReference: 0,
+                display) with
+            {
+                DeclaredType = underlying
+            };
+            ManagedExpressionValue converted =
+                ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+                    extracted,
+                    underlying,
+                    parameterType,
+                    selected.Language) with
+                {
+                    DeclaredType = parameterType
+                };
+            return CreateFunctionArgument(
+                evaluation, converted, runtimeArgument: 0, temporaryArguments);
         }
         finally
         {

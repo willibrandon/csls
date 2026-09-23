@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace Csls.Debugger;
 /// <param name="OperandTypes">The effective source-language operand types.</param>
 /// <param name="ExpressionResultType">The effective source-language result type.</param>
 /// <param name="IsLifted">Whether nullable operands wrap the underlying operator execution.</param>
+/// <param name="Language">The source language controlling standard operand conversions.</param>
 internal sealed record ManagedUserDefinedOperator(
     ManagedBoundType DeclaringType,
     uint MethodToken,
@@ -17,4 +20,5 @@ internal sealed record ManagedUserDefinedOperator(
     ManagedBoundType ResultType,
     IReadOnlyList<ManagedBoundType> OperandTypes,
     ManagedBoundType ExpressionResultType,
-    bool IsLifted);
+    bool IsLifted,
+    DebugExpressionLanguage Language);

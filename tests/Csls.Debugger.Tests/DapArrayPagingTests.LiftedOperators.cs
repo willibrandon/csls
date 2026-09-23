@@ -25,7 +25,10 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[0], nonNullableOperator)", "4109", "int?"),
             ("~nullableOperators[0]",
                 $"{nullableOperatorType}.CompilerOnesComplement(nullableOperators[0])",
-                "13041", "int?")
+                "13041", "int?"),
+            ("nullableOperators[0] % nullable[0]",
+                $"{nullableOperatorType}.CompilerNumericRemainder(" +
+                    "nullableOperators[0], nullable[0])", "4137", "int?")
         })
         {
             foreach (string selectedExpression in new[] { expression, compilerExpression })
@@ -62,7 +65,10 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[1], nonNullableOperator)", "null", "int?"),
             ("~nullableOperators[1]",
                 $"{nullableOperatorType}.CompilerOnesComplement(nullableOperators[1])",
-                "null", "int?")
+                "null", "int?"),
+            ("nullableOperators[0] % nullable[1]",
+                $"{nullableOperatorType}.CompilerNumericRemainder(" +
+                    "nullableOperators[0], nullable[1])", "null", "int?")
         })
         {
             JsonElement direct = await ReadEvaluationAsync(
