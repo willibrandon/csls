@@ -913,6 +913,8 @@ internal static class DebuggerDumpArrayFixture
         short? populatedNullableNumericConversion = 41;
         short? emptyNullableNumericConversion = null;
         DebuggerExplicitNumericResultSource explicitNumericResultSource = new(41);
+        DebuggerExplicitNumericResultSource? populatedLiftedNumericResult = explicitNumericResultSource;
+        DebuggerExplicitNumericResultSource? emptyLiftedNumericResult = null;
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         DebuggerImplicitConversionReferenceSource explicitReferenceInput =
             implicitReferenceConversion;
@@ -979,9 +981,8 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(populatedNullableResultConversion);
         GC.KeepAlive(nullNullableResultConversion);
         GC.KeepAlive(emptyNullableResultConversion);
-        GC.KeepAlive(populatedNullableNumericConversion);
-        GC.KeepAlive(emptyNullableNumericConversion);
-        GC.KeepAlive(explicitNumericResultSource);
+        GC.KeepAlive((populatedNullableNumericConversion, emptyNullableNumericConversion,
+            explicitNumericResultSource, populatedLiftedNumericResult, emptyLiftedNumericResult));
         GC.KeepAlive(explicitReferenceInput);
         GC.KeepAlive(invalidExplicitReferenceInput);
         GC.KeepAlive(explicitReferenceResultSource);

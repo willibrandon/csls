@@ -343,7 +343,7 @@ internal sealed class ManagedUserDefinedConversionResolver
 
     private ManagedBoundType GetEffectiveTargetType(
         ManagedUserDefinedConversion conversion,
-        ManagedBoundType destination) => conversion.IsLifted ||
+        ManagedBoundType destination) => conversion.ResultType.IsSameType(destination) ||
         HasExactExplicitNullableResultConversion(conversion.ResultType, destination)
             ? destination
             : conversion.ResultType;
@@ -361,8 +361,9 @@ internal sealed class ManagedUserDefinedConversionResolver
 
         if (TryGetNullableUnderlying(destination, out ManagedBoundType destinationUnderlying))
         {
-            return result.IsSameType(destination) ||
-                result.IsSameType(destinationUnderlying);
+            return result.IsSameType(destination) || result.IsSameType(destinationUnderlying) ||
+                ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                    result, destinationUnderlying, _language);
         }
 
         return result.IsReference && destination.IsReference &&
