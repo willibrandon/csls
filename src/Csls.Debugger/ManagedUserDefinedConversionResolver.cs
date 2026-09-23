@@ -161,8 +161,10 @@ internal sealed class ManagedUserDefinedConversionResolver
             bool lifted = IsApplicableLiftedConversion(
                 source, destination, parameterType, resultType);
             bool normal = !lifted &&
-                HasSupportedStandardExplicitInputConversion(source, parameterType) &&
-                HasSupportedStandardExplicitResultConversion(resultType, destination);
+                (HasSupportedStandardExplicitInputConversion(source, parameterType) ||
+                    HasSupportedExplicitNullableInputConversion(source, parameterType)) &&
+                (HasSupportedStandardExplicitResultConversion(resultType, destination) ||
+                    HasSupportedExplicitNullableResultConversion(resultType, destination));
             if ((normal || lifted) &&
                 !matches.Any(match =>
                     match.DeclaringType.ModuleId == declaringType.ModuleId &&
@@ -299,7 +301,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedBoundType? bestSource = SelectBestType(
-            matches.Select(match => match.IsLifted ? source : match.ParameterType), source,
+            matches.Select(match => GetEffectiveSourceType(match, source)), source,
             mostEncompassing: false);
         if (bestSource is null)
         {
@@ -307,7 +309,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedBoundType? bestTarget = SelectBestType(
-            matches.Select(match => match.IsLifted ? destination : match.ResultType), destination,
+            matches.Select(match => GetEffectiveTargetType(match, destination)), destination,
             mostEncompassing: true);
         if (bestTarget is null)
         {
@@ -315,10 +317,24 @@ internal sealed class ManagedUserDefinedConversionResolver
         }
 
         ManagedUserDefinedConversion[] best = [.. matches.Where(match =>
-            (match.IsLifted ? source : match.ParameterType).IsSameType(bestSource) &&
-            (match.IsLifted ? destination : match.ResultType).IsSameType(bestTarget))];
+            GetEffectiveSourceType(match, source).IsSameType(bestSource) &&
+            GetEffectiveTargetType(match, destination).IsSameType(bestTarget))];
         return best.Length == 1 ? best[0] : null;
     }
+
+    private ManagedBoundType GetEffectiveSourceType(
+        ManagedUserDefinedConversion conversion,
+        ManagedBoundType source) => conversion.IsLifted ||
+        HasSupportedExplicitNullableInputConversion(source, conversion.ParameterType)
+            ? source
+            : conversion.ParameterType;
+
+    private ManagedBoundType GetEffectiveTargetType(
+        ManagedUserDefinedConversion conversion,
+        ManagedBoundType destination) => conversion.IsLifted ||
+        HasSupportedExplicitNullableResultConversion(conversion.ResultType, destination)
+            ? destination
+            : conversion.ResultType;
 
     private bool IsApplicableLiftedConversion(
         ManagedBoundType source,
@@ -416,6 +432,18 @@ internal sealed class ManagedUserDefinedConversionResolver
         HasStandardExplicitReferenceConversion(source, destination) ||
         ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
             source, destination, _language);
+
+    private bool HasSupportedExplicitNullableInputConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) =>
+        TryGetNullableUnderlying(source, out ManagedBoundType underlying) &&
+        underlying.IsSameType(destination);
+
+    private bool HasSupportedExplicitNullableResultConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) =>
+        TryGetNullableUnderlying(destination, out ManagedBoundType underlying) &&
+        source.IsSameType(underlying);
 
     private bool HasStandardExplicitReferenceConversion(
         ManagedBoundType source,

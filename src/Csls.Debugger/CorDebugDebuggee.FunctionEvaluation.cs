@@ -259,14 +259,30 @@ internal sealed partial class CorDebugDebuggee
                         ManagedUserDefinedConversion selected = explicitConversion ??
                             throw new InvalidOperationException(
                                 "An explicit conversion has no selected loaded operator.");
-                        suppliedArguments[index] = selected.IsLifted
-                            ? suppliedArguments[index] with { DeclaredType = exactSource }
-                            : PrepareUserDefinedConversionInput(
+                        if (RequiresNullableSourceExtraction(
+                            exactSource, selected, thread))
+                        {
+                            if (!selected.IsLifted && IsNullableBoxingEmpty(
+                                suppliedArguments[index], exactSource, thread))
+                            {
+                                throw new InvalidOperationException(
+                                    "Nullable object must have a value.");
+                            }
+
+                            suppliedArguments[index] = suppliedArguments[index] with
+                            {
+                                DeclaredType = exactSource
+                            };
+                        }
+                        else
+                        {
+                            suppliedArguments[index] = PrepareUserDefinedConversionInput(
                                 suppliedArguments[index],
                                 exactSource,
                                 selected,
                                 referenceConversions,
                                 thread);
+                        }
                     }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {
@@ -540,7 +556,7 @@ internal sealed partial class CorDebugDebuggee
         {
             try
             {
-                if (TryContinueWithLiftedExplicitResultMaterialization(active))
+                if (TryContinueWithNullableExplicitResultMaterialization(active))
                 {
                     return true;
                 }
@@ -629,7 +645,7 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (!isException)
                     {
-                        PopulateLiftedExplicitResult(value, active);
+                        PopulateNullableExplicitResult(value, active);
                     }
 
                     ManagedValueDisplay display = FormatRuntimeValue(value, isException ? null : active.ResultTupleCustomTypeInfo);

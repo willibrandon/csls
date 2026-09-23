@@ -165,6 +165,30 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerImplicitConversionSource? source) => (double?)source;
 
     /// <summary>
+    /// Runs the compiler's explicit conversion followed by nullable result wrapping.
+    /// </summary>
+    /// <param name="source">The non-nullable authored source value.</param>
+    /// <returns>The compiler-produced nullable value result.</returns>
+    internal static double? CompilerExplicitNullableTargetForDebugger(
+        DebuggerImplicitConversionSource source) => (double?)source;
+
+    /// <summary>
+    /// Runs the compiler's nullable source unwrapping before an explicit conversion.
+    /// </summary>
+    /// <param name="source">The nullable authored source value.</param>
+    /// <returns>The compiler-produced non-nullable value result.</returns>
+    internal static double CompilerExplicitNullableSourceForDebugger(
+        DebuggerImplicitConversionSource? source)
+    {
+        if (!source.HasValue)
+        {
+            throw new InvalidOperationException("Nullable object must have a value.");
+        }
+
+        return (double)source.Value;
+    }
+
+    /// <summary>
     /// Runs the compiler's numeric widening after an implicit operator selected by an explicit cast.
     /// </summary>
     /// <param name="source">The authored source value.</param>

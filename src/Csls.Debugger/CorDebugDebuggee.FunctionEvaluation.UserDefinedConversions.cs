@@ -242,8 +242,9 @@ internal sealed partial class CorDebugDebuggee
             function = GetModuleFunction(module.Pointer, conversion.MethodToken);
             typeArguments = ManagedRuntimeTypeArguments.ResolveBound(
                 conversion.DeclaringType.TypeArguments, _boundTypes, evaluation.Thread);
-            nint source = conversion.IsLifted
-                ? CreateLiftedUserDefinedConversionArgument(
+            nint source = RequiresNullableSourceExtraction(
+                argument, conversion, evaluation.Thread)
+                ? CreateNullableSourceConversionArgument(
                     argument,
                     conversion,
                     evaluation.RuntimeArguments[index],
@@ -393,7 +394,7 @@ internal sealed partial class CorDebugDebuggee
         evaluation.PendingUserDefinedConversionTypeArguments = [];
     }
 
-    private nint CreateLiftedUserDefinedConversionArgument(
+    private nint CreateNullableSourceConversionArgument(
         ManagedExpressionValue argument,
         ManagedUserDefinedConversion conversion,
         nint runtimeArgument,
@@ -527,8 +528,7 @@ internal sealed partial class CorDebugDebuggee
         ManagedUserDefinedConversion conversion,
         nint thread)
     {
-        if (conversion.IsLifted &&
-            _boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", thread))
+        if (RequiresNullableTargetMaterialization(conversion, thread))
         {
             return value with
             {
@@ -576,6 +576,27 @@ internal sealed partial class CorDebugDebuggee
             $"'{conversion.TargetType.DisplayName}'.");
     }
 
+    private bool RequiresNullableSourceExtraction(
+        ManagedExpressionValue argument,
+        ManagedUserDefinedConversion conversion,
+        nint thread) => argument.DeclaredType is ManagedBoundType source &&
+        RequiresNullableSourceExtraction(source, conversion, thread);
+
+    private bool RequiresNullableSourceExtraction(
+        ManagedBoundType source,
+        ManagedUserDefinedConversion conversion,
+        nint thread) =>
+        _boundTypes.IsCoreType(source, "System.Nullable`1", thread) &&
+        source.TypeArguments is [ManagedBoundType underlying] &&
+        underlying.IsSameType(conversion.ParameterType);
+
+    private bool RequiresNullableTargetMaterialization(
+        ManagedUserDefinedConversion conversion,
+        nint thread) =>
+        _boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", thread) &&
+        conversion.TargetType.TypeArguments is [ManagedBoundType underlying] &&
+        underlying.IsSameType(conversion.ResultType);
+
     private static ManagedExpressionValue CreateEmptyLiftedConversionValue(
         ManagedBoundType target)
     {
@@ -597,13 +618,13 @@ internal sealed partial class CorDebugDebuggee
         };
     }
 
-    private unsafe bool TryContinueWithLiftedExplicitResultMaterialization(
+    private unsafe bool TryContinueWithNullableExplicitResultMaterialization(
         ManagedFunctionEvaluation active)
     {
         ManagedUserDefinedConversion? conversion = active.ExplicitUserDefinedConversion;
-        if (active.PendingLiftedExplicitResult ||
-            conversion is not { IsLifted: true } ||
-            !_boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", active.Thread))
+        if (active.PendingNullableExplicitResult ||
+            conversion is null ||
+            !RequiresNullableTargetMaterialization(conversion, active.Thread))
         {
             return false;
         }
@@ -647,7 +668,7 @@ internal sealed partial class CorDebugDebuggee
             ReleaseFunctionEvaluationArgument(oldArgument, oldArgumentIsHeapHandle);
             active.Pointer = nextEvaluation;
             nextEvaluation = 0;
-            active.PendingLiftedExplicitResult = true;
+            active.PendingNullableExplicitResult = true;
             _ = ComAbi.Release(completedEvaluation);
             completedEvaluation = 0;
 
@@ -667,11 +688,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private void PopulateLiftedExplicitResult(
+    private void PopulateNullableExplicitResult(
         nint value,
         ManagedFunctionEvaluation active)
     {
-        if (!active.PendingLiftedExplicitResult)
+        if (!active.PendingNullableExplicitResult)
         {
             return;
         }
@@ -696,7 +717,7 @@ internal sealed partial class CorDebugDebuggee
                 runtimeType,
                 active.Arguments[0],
                 active.RuntimeArguments[0]);
-            active.PendingLiftedExplicitResult = false;
+            active.PendingNullableExplicitResult = false;
         }
         finally
         {

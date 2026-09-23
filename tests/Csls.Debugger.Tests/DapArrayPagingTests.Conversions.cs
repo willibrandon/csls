@@ -275,13 +275,13 @@ public sealed partial class DapArrayPagingTests
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 
-        await AssignAndAssertLiftedConversionAsync(
+        await AssignAndAssertConversionAsync(
             client,
             frameId,
             "explicitLiftedConversionResult",
             "(string?)populatedLiftedImplicitConversion",
             "\"41\"").ConfigureAwait(false);
-        await AssignAndAssertLiftedConversionAsync(
+        await AssignAndAssertConversionAsync(
             client,
             frameId,
             "explicitLiftedConversionResult",
@@ -320,18 +320,74 @@ public sealed partial class DapArrayPagingTests
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 
-        await AssignAndAssertLiftedConversionAsync(
+        await AssignAndAssertConversionAsync(
             client,
             frameId,
             "explicitLiftedValueResult",
             "(double?)populatedLiftedImplicitConversion",
             "41.5").ConfigureAwait(false);
-        await AssignAndAssertLiftedConversionAsync(
+        await AssignAndAssertConversionAsync(
             client,
             frameId,
             "explicitLiftedValueResult",
             "(double?)emptyLiftedImplicitConversion",
             "null").ConfigureAwait(false);
+
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "(double?)implicitConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNullableTargetForDebugger(implicitConversion)",
+            "41.5",
+            "double?",
+            expectExpandable: true).ConfigureAwait(false);
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "(double)populatedLiftedImplicitConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNullableSourceForDebugger(populatedLiftedImplicitConversion)",
+            "41.5",
+            "double").ConfigureAwait(false);
+
+        JsonElement emptyNullableSource = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(double)emptyLiftedImplicitConversion",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("value", Assert.IsInstanceOfType<string>(
+            emptyNullableSource.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
+        JsonElement compilerEmptyNullableSource = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitNullableSourceForDebugger(emptyLiftedImplicitConversion)",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("System.InvalidOperationException", Assert.IsInstanceOfType<string>(
+            compilerEmptyNullableSource.GetProperty("message").GetString()),
+            StringComparison.Ordinal);
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        await AssignAndAssertConversionAsync(
+            client,
+            frameId,
+            "explicitLiftedValueResult",
+            "(double?)implicitConversion",
+            "41.5").ConfigureAwait(false);
+        await AssignAndAssertConversionAsync(
+            client,
+            frameId,
+            "explicitConversionResult",
+            "(double)populatedLiftedImplicitConversion",
+            "41.5").ConfigureAwait(false);
 
         JsonElement nonStandardNumericBridge = await ReadEvaluationAsync(
             client,
@@ -384,7 +440,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("47", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("53", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {
@@ -492,7 +548,7 @@ public sealed partial class DapArrayPagingTests
         AssertEvent(compilerInvalidated.RootElement, "invalidated");
     }
 
-    private async Task AssignAndAssertLiftedConversionAsync(
+    private async Task AssignAndAssertConversionAsync(
         DapTestClient client,
         int frameId,
         string targetExpression,

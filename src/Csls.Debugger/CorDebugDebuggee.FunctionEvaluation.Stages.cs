@@ -145,8 +145,10 @@ internal sealed partial class CorDebugDebuggee
                 ManagedUserDefinedConversion? explicitConversion =
                     evaluation.ExplicitUserDefinedConversion;
                 arguments[index + receiverCount] = index == 0 &&
-                    explicitConversion is { IsLifted: true }
-                        ? CreateLiftedUserDefinedConversionArgument(
+                    explicitConversion is not null &&
+                    RequiresNullableSourceExtraction(
+                        evaluation.Arguments[index], explicitConversion, evaluation.Thread)
+                        ? CreateNullableSourceConversionArgument(
                             evaluation.Arguments[index],
                             explicitConversion,
                             evaluation.RuntimeArguments[index],

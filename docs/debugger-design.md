@@ -621,6 +621,9 @@ conversions to reference targets read populated nullable storage before invoking
 operator and produce a null reference directly for empty nullable storage. Lifted explicit
 conversions to nullable value targets allocate the exact closed `Nullable<T>`, copy the underlying
 operator result into its runtime fields, and retain the complete value for inspection and assignment.
+Normal explicit conversions unwrap populated nullable sources before invoking non-nullable operators,
+surface the standard nullable-value failure for empty sources, and wrap non-nullable results for
+nullable targets.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

@@ -184,9 +184,11 @@ Explicit casts select loaded explicit or implicit conversion operators, apply st
 reference conversions around the operator, and box or unbox operator inputs when required. Lifted
 explicit casts to reference targets invoke the underlying operator for populated nullable values and
 produce null directly for empty values. Lifted explicit casts to nullable value targets materialize
-exact `Nullable<T>` result storage after the underlying operator returns. They require target-code
-authorization and can supply generation-safe direct assignment. Direct assignments update stopped
-target storage.
+exact `Nullable<T>` result storage after the underlying operator returns. Explicit casts also unwrap
+populated nullable inputs for non-nullable operators and wrap non-nullable operator results for
+nullable targets. Empty inputs to non-nullable targets produce the standard nullable-value failure.
+These casts require target-code authorization and can supply generation-safe direct assignment.
+Direct assignments update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the
 result to a local, field, or array element of the same runtime type to copy its
