@@ -182,7 +182,9 @@ internal static class CSharpExpressionLowerer
             SyntaxKind.MultiplyExpression => checkedContext
                 ? DebugExpressionOperator.CheckedMultiply
                 : DebugExpressionOperator.Multiply,
-            SyntaxKind.DivideExpression => DebugExpressionOperator.Divide,
+            SyntaxKind.DivideExpression => checkedContext
+                ? DebugExpressionOperator.CheckedDivide
+                : DebugExpressionOperator.Divide,
             SyntaxKind.ModuloExpression => DebugExpressionOperator.Remainder,
             SyntaxKind.EqualsExpression => DebugExpressionOperator.Equal,
             SyntaxKind.NotEqualsExpression => DebugExpressionOperator.NotEqual,

@@ -84,22 +84,25 @@ internal sealed partial class CorDebugDebuggee
             TypeName: "string"
         };
         bool convertsValue = operation.Kind == DebugExpressionNodeKind.Conversion;
+        bool appliesOperator = operation.Kind is
+            DebugExpressionNodeKind.Unary or DebugExpressionNodeKind.Binary;
         if (operation.Kind is not DebugExpressionNodeKind.Invocation and
             not DebugExpressionNodeKind.ObjectCreation &&
             !convertsValue &&
+            !appliesOperator &&
             !materializesString)
         {
             throw new InvalidDataException(
                 "Target-code evaluation requires an invocation, object creation, " +
-                "user-defined conversion, or string-materialization root.");
+                "user-defined conversion or operator, or string-materialization root.");
         }
 
         bool constructsObject = operation.Kind == DebugExpressionNodeKind.ObjectCreation;
-        int argumentOffset = constructsObject || convertsValue ? 0 : 1;
+        int argumentOffset = constructsObject || convertsValue || appliesOperator ? 0 : 1;
         int argumentCount = materializesString
             ? 1
-            : convertsValue
-                ? 1
+            : convertsValue || appliesOperator
+                ? operation.Children.Count
                 : operation.Children.Count - argumentOffset;
         if (argumentCount > MaximumFunctionEvaluationArgumentCount)
         {
@@ -120,7 +123,7 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                if (!constructsObject && !convertsValue &&
+                if (!constructsObject && !convertsValue && !appliesOperator &&
                     !TryResolveStaticReceiver(frame, operation.Children[0], out _))
                 {
                     receiver = property?.Receiver ?? EvaluateNode(frame, plan, operation.Children[0], generation);
@@ -227,6 +230,12 @@ internal sealed partial class CorDebugDebuggee
                         operation.Operator == DebugExpressionOperator.CheckedConversion,
                         thread,
                         out explicitConversion)
+                    : appliesOperator
+                    ? ResolveUserDefinedOperator(
+                        operation.Operator,
+                        argumentTypes,
+                        plan.Language,
+                        thread)
                     : constructsObject
                     ? ResolveConstructor(operation.Text!, plan.Language, argumentTypes,
                         constantArguments, argumentNames, thread)

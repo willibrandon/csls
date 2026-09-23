@@ -145,6 +145,12 @@ public sealed partial class DebuggerSession
                     isInvocation = debuggee.HasUserDefinedExplicitConversion(
                         frameId, value, generation);
                 }
+                if (!isInvocation && value.Root.Kind is
+                    DebugExpressionNodeKind.Unary or DebugExpressionNodeKind.Binary)
+                {
+                    isInvocation = debuggee.HasUserDefinedOperator(
+                        frameId, value, generation);
+                }
                 stringAssignment = isInvocation ? null : debuggee.CreateStringMaterializationPlan(
                     frameId, target, value, targetExpression, generation);
                 DebugExpressionPlan? executionPlan = isInvocation ? value : stringAssignment?.Plan;

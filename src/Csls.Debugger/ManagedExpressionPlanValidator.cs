@@ -149,6 +149,7 @@ internal static class ManagedExpressionPlanValidator
                 DebugExpressionOperator.CheckedSubtract or
                 DebugExpressionOperator.Multiply or
                 DebugExpressionOperator.CheckedMultiply or
+                DebugExpressionOperator.CheckedDivide or
                 DebugExpressionOperator.Divide or
                 DebugExpressionOperator.Remainder or
                 DebugExpressionOperator.Equal or

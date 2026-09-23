@@ -71,6 +71,11 @@ public enum DebugExpressionOperator
     CheckedMultiply,
 
     /// <summary>
+    /// Divides operands in a checked C# context.
+    /// </summary>
+    CheckedDivide,
+
+    /// <summary>
     /// Divides the left numeric operand by the right.
     /// </summary>
     Divide,

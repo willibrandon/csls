@@ -918,9 +918,10 @@ internal static class DebuggerDumpArrayFixture
         DebuggerExplicitNumericResultSource? emptyLiftedNumericResult = null;
         DebuggerExplicitTargetRankingSource targetRankingSource = new(41);
         DebuggerExplicitNullableTargetRankingSource nullableTargetRankingSource = new(41);
+        DebuggerCheckedOperatorValue checkedOperator = new(41);
+        object checkedOperatorObject = checkedOperator;
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
-        DebuggerImplicitConversionReferenceSource explicitReferenceInput =
-            implicitReferenceConversion;
+        DebuggerImplicitConversionReferenceSource explicitReferenceInput = implicitReferenceConversion;
         DebuggerImplicitConversionReferenceSource invalidExplicitReferenceInput = new(41);
         DebuggerExplicitReferenceResultSource explicitReferenceResultSource = new(41);
         DebuggerExplicitReferenceResultSource invalidExplicitReferenceResultSource = new(-1);
@@ -982,7 +983,8 @@ internal static class DebuggerDumpArrayFixture
             emptyNullableResultConversion));
         GC.KeepAlive((populatedNullableNumericConversion, emptyNullableNumericConversion,
             liftedNumericOverloadSource, explicitNumericResultSource, populatedLiftedNumericResult,
-            emptyLiftedNumericResult, targetRankingSource, nullableTargetRankingSource));
+            emptyLiftedNumericResult, targetRankingSource, nullableTargetRankingSource, checkedOperator,
+            checkedOperatorObject));
         GC.KeepAlive((explicitReferenceInput, invalidExplicitReferenceInput));
         GC.KeepAlive((explicitReferenceResultSource, invalidExplicitReferenceResultSource));
         GC.KeepAlive(explicitConversionResult);

@@ -58,6 +58,12 @@ public sealed partial class DebuggerSession
                     explicitCall = managedDebuggee.HasUserDefinedExplicitConversion(
                         frameId, plan, generation);
                 }
+                if (!explicitCall && plan.Root.Kind is
+                    DebugExpressionNodeKind.Unary or DebugExpressionNodeKind.Binary)
+                {
+                    explicitCall = managedDebuggee.HasUserDefinedOperator(
+                        frameId, plan, generation);
+                }
                 if (!explicitCall)
                 {
                     result = managedDebuggee.PrepareEvaluation(frameId, plan, generation, out property);

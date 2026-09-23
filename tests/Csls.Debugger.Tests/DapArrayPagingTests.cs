@@ -171,7 +171,8 @@ public sealed partial class DapArrayPagingTests : DapTestContext
             foreach (string targetCodeExpression in new[]
             {
                 "Csls.TestProcessHost.DebuggerDumpArrayFixture.CrashDuringDebuggerEvaluation()",
-                "(double)implicitConversion"
+                "(double)implicitConversion",
+                "checked(checkedOperator + checkedOperator)"
             })
             {
                 int sequence = await client.SendRequestAsync("evaluate", writer =>

@@ -579,6 +579,7 @@ public sealed partial class DapArrayPagingTests
 
         foreach ((string expression, string expected, string type) in new[]
         {
+            ("checked(8 / 2)", "4", "int"),
             ("checked(1.5f + 2.5f)", "4", "float"),
             ("checked(1.5 + 2.5)", "4", "double"),
             ("checked(1m + 2m)", "3", "decimal"),
@@ -593,6 +594,60 @@ public sealed partial class DapArrayPagingTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(expected, unchanged.GetProperty("result").GetString());
             Assert.AreEqual(type, unchanged.GetProperty("type").GetString());
+        }
+
+        const string checkedOperatorType =
+            "Csls.TestProcessHost.DebuggerCheckedOperatorValue";
+        foreach ((string expression, string compilerExpression, string expected) in new[]
+        {
+            ("unchecked(checkedOperator + checkedOperator)",
+                $"{checkedOperatorType}.CompilerAdd(checkedOperator)", "1082"),
+            ("checked(checkedOperator + checkedOperator)",
+                $"{checkedOperatorType}.CompilerCheckedAdd(checkedOperator)", "2082"),
+            ("checked(checkedOperator + checkedOperatorObject)",
+                $"{checkedOperatorType}.CompilerCheckedFallback(" +
+                    "checkedOperator, checkedOperatorObject)", "3041"),
+            ("unchecked(checkedOperator / checkedOperator)",
+                $"{checkedOperatorType}.CompilerDivide(checkedOperator)", "4082"),
+            ("checked(checkedOperator / checkedOperator)",
+                $"{checkedOperatorType}.CompilerCheckedDivide(checkedOperator)", "5082"),
+            ("unchecked(-checkedOperator)",
+                $"{checkedOperatorType}.CompilerNegate(checkedOperator)", "6041"),
+            ("checked(-checkedOperator)",
+                $"{checkedOperatorType}.CompilerCheckedNegate(checkedOperator)", "7041")
+        })
+        {
+            foreach (string selectedExpression in new[] { expression, compilerExpression })
+            {
+                JsonElement selected = await ReadEvaluationAsync(
+                    client, frameId, selectedExpression, success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(expected, selected.GetProperty("result").GetString());
+                using JsonDocument invalidated = await client.ReadMessageAsync(
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                AssertEvent(invalidated.RootElement, "invalidated");
+            }
+        }
+
+        int operatorAssignment = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "explicitConversionResult");
+            writer.WriteString("value", "checked(checkedOperator + checkedOperator)");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(
+            TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, operatorAssignment, "setExpression", success: true);
+            Assert.AreEqual("2082", response.RootElement.GetProperty("body")
+                .GetProperty("value").GetString());
+        }
+        using (JsonDocument invalidated = await client.ReadMessageAsync(
+            TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
         }
 
         JsonElement emptyLiftedNumericResultValue = await ReadEvaluationAsync(
