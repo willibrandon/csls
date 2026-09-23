@@ -819,7 +819,6 @@ internal static class DebuggerDumpArrayFixture
     /// <returns>The target-observed overload marker.</returns>
     internal static int CompilerTypedNumericForDebugger() =>
         PreferContextualNumericForDebugger(default(long));
-
     /// <summary>
     /// Supplies a value-type candidate for an ambiguous contextual default.
     /// </summary>
@@ -919,6 +918,7 @@ internal static class DebuggerDumpArrayFixture
         DebuggerCheckedOperatorValue checkedOperator = new(41);
         object checkedOperatorObject = checkedOperator;
         DebuggerNullableOperatorValue?[] nullableOperators = [new(41), null, new(9)];
+        DebuggerNullableOperatorValue nonNullableOperator = new(9);
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         DebuggerImplicitConversionReferenceSource explicitReferenceInput = implicitReferenceConversion;
         DebuggerImplicitConversionReferenceSource invalidExplicitReferenceInput = new(41);
@@ -984,7 +984,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive((populatedNullableNumericConversion, emptyNullableNumericConversion,
             liftedNumericOverloadSource, explicitNumericResultSource, populatedLiftedNumericResult,
             emptyLiftedNumericResult, targetRankingSource, nullableTargetRankingSource, checkedOperator,
-            checkedOperatorObject, nullableOperators));
+            checkedOperatorObject, nullableOperators, nonNullableOperator));
         GC.KeepAlive((explicitReferenceInput, invalidExplicitReferenceInput));
         GC.KeepAlive((explicitReferenceResultSource, invalidExplicitReferenceResultSource));
         GC.KeepAlive(explicitConversionResult);

@@ -284,13 +284,33 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
     private bool HasStandardImplicitConversion(
         ManagedBoundType? source,
-        ManagedBoundType destination) => source is null
-        ? destination.IsReference
-        : source.IsSameType(destination) ||
+        ManagedBoundType destination)
+    {
+        if (source is null)
+        {
+            return destination.IsReference;
+        }
+
+        if (_types.IsCoreType(destination, "System.Nullable`1", _thread) &&
+            destination.TypeArguments is [ManagedBoundType destinationUnderlying])
+        {
+            if (_types.IsCoreType(source, "System.Nullable`1", _thread) &&
+                source.TypeArguments is [ManagedBoundType sourceUnderlying])
+            {
+                return sourceUnderlying.IsSameType(destinationUnderlying);
+            }
+
+            return source.IsSameType(destinationUnderlying) ||
+                ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                    source, destinationUnderlying, _language);
+        }
+
+        return source.IsSameType(destination) ||
             _referenceConversions.IsImplicit(source, destination, _thread) ||
             _referenceConversions.IsImplicitBoxing(source, destination, _thread) ||
             ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
                 source, destination, _language);
+    }
 
     private ManagedBoundType StripNullable(ManagedBoundType type) =>
         _types.IsCoreType(type, "System.Nullable`1", _thread) &&

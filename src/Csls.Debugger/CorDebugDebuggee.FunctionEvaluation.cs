@@ -299,11 +299,14 @@ internal sealed partial class CorDebugDebuggee
                     }
                     else if (appliesOperator && userDefinedOperator?.IsLifted == true)
                     {
-                        suppliedArguments[index] = suppliedArguments[index] with
-                        {
-                            DeclaredType = sourceType ?? throw new InvalidOperationException(
-                                "A lifted operator has no exact nullable operand type.")
-                        };
+                        suppliedArguments[index] = PrepareLiftedOperatorArgument(
+                            suppliedArguments[index],
+                            constantArguments[index],
+                            sourceType ?? throw new InvalidOperationException(
+                                "A lifted operator has no exact operand type."),
+                            userDefinedOperator.ParameterTypes[index],
+                            plan.Language,
+                            thread);
                     }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {

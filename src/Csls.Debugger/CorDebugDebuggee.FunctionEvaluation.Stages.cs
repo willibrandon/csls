@@ -146,7 +146,9 @@ internal sealed partial class CorDebugDebuggee
                     evaluation.ExplicitUserDefinedConversion;
                 ManagedUserDefinedOperator? userDefinedOperator =
                     evaluation.UserDefinedOperator;
-                arguments[index + receiverCount] = userDefinedOperator is { IsLifted: true }
+                arguments[index + receiverCount] = userDefinedOperator is { IsLifted: true } &&
+                    RequiresLiftedOperatorExtraction(
+                        evaluation.Arguments[index], evaluation.Thread)
                     ? CreateLiftedOperatorArgument(
                         evaluation.Arguments[index],
                         userDefinedOperator,

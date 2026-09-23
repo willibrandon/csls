@@ -19,7 +19,13 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[0], nullableOperators[2])", "false", "bool"),
             ("nullableOperators[0] * nullableOperators[2]",
                 $"{nullableOperatorType}.CompilerMultiply(" +
-                    "nullableOperators[0], nullableOperators[2])", "4109", "int?")
+                    "nullableOperators[0], nullableOperators[2])", "4109", "int?"),
+            ("nullableOperators[0] * nonNullableOperator",
+                $"{nullableOperatorType}.CompilerMixedMultiply(" +
+                    "nullableOperators[0], nonNullableOperator)", "4109", "int?"),
+            ("~nullableOperators[0]",
+                $"{nullableOperatorType}.CompilerOnesComplement(nullableOperators[0])",
+                "13041", "int?")
         })
         {
             foreach (string selectedExpression in new[] { expression, compilerExpression })
@@ -50,7 +56,13 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[1], nullableOperators[2])", "false", "bool"),
             ("nullableOperators[0] * nullableOperators[1]",
                 $"{nullableOperatorType}.CompilerMultiply(" +
-                    "nullableOperators[0], nullableOperators[1])", "null", "int?")
+                    "nullableOperators[0], nullableOperators[1])", "null", "int?"),
+            ("nullableOperators[1] * nonNullableOperator",
+                $"{nullableOperatorType}.CompilerMixedMultiply(" +
+                    "nullableOperators[1], nonNullableOperator)", "null", "int?"),
+            ("~nullableOperators[1]",
+                $"{nullableOperatorType}.CompilerOnesComplement(nullableOperators[1])",
+                "null", "int?")
         })
         {
             JsonElement direct = await ReadEvaluationAsync(

@@ -64,6 +64,14 @@ internal readonly struct DebuggerNullableOperatorValue
         DebuggerNullableOperatorValue right) => (left._number * 100) + right._number;
 
     /// <summary>
+    /// Applies a unary operator that returns a liftable value type.
+    /// </summary>
+    /// <param name="value">The underlying operand.</param>
+    /// <returns>A marker derived from the operand.</returns>
+    public static int operator ~(DebuggerNullableOperatorValue value) =>
+        13000 + value._number;
+
+    /// <summary>
     /// Runs compiler-selected binary nullable-parameter addition.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -99,4 +107,22 @@ internal readonly struct DebuggerNullableOperatorValue
     internal static int? CompilerMultiply(
         DebuggerNullableOperatorValue? left,
         DebuggerNullableOperatorValue? right) => left * right;
+
+    /// <summary>
+    /// Runs compiler-selected lifted arithmetic with one non-nullable operand.
+    /// </summary>
+    /// <param name="left">The optional left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerMixedMultiply(
+        DebuggerNullableOperatorValue? left,
+        DebuggerNullableOperatorValue right) => left * right;
+
+    /// <summary>
+    /// Runs compiler-selected lifted nullable unary arithmetic.
+    /// </summary>
+    /// <param name="value">The optional operand.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerOnesComplement(
+        DebuggerNullableOperatorValue? value) => ~value;
 }

@@ -44,7 +44,7 @@ internal sealed partial class CorDebugDebuggee
                     plan.Root.Operator, operandTypes, constantOperands);
             return selected is not null &&
                 (!selected.IsLifted || !operands.Select((operand, index) =>
-                    IsNullableBoxingEmpty(
+                    IsEmptyLiftedOperatorOperand(
                         operand,
                         operandTypes[index] ?? throw new InvalidOperationException(
                             "A lifted operator has no exact nullable operand type."),
@@ -119,7 +119,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             bool[] empty = [.. operands.Select((operand, index) =>
-                IsNullableBoxingEmpty(
+                IsEmptyLiftedOperatorOperand(
                     operand,
                     operandTypes[index] ?? throw new InvalidOperationException(
                         "A lifted operator has no exact nullable operand type."),
@@ -167,6 +167,56 @@ internal sealed partial class CorDebugDebuggee
             ReleaseFunctionEvaluationPointer(thread);
         }
     }
+
+    private bool IsEmptyLiftedOperatorOperand(
+        ManagedExpressionValue operand,
+        ManagedBoundType operandType,
+        nint thread) =>
+        _boundTypes.IsCoreType(operandType, "System.Nullable`1", thread) &&
+        IsNullableBoxingEmpty(operand, operandType, thread);
+
+    private ManagedExpressionValue PrepareLiftedOperatorArgument(
+        ManagedExpressionValue argument,
+        ManagedExpressionValue? constant,
+        ManagedBoundType source,
+        ManagedBoundType parameter,
+        DebugExpressionLanguage language,
+        nint thread)
+    {
+        if (_boundTypes.IsCoreType(source, "System.Nullable`1", thread))
+        {
+            return argument with { DeclaredType = source };
+        }
+
+        if (source.IsSameType(parameter))
+        {
+            return argument with { DeclaredType = parameter };
+        }
+
+        if (ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+            source, parameter, language))
+        {
+            return ManagedPrimitiveConversionEvaluator.ConvertForInvocation(
+                argument, source, parameter, language);
+        }
+
+        if (constant is not null &&
+            ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
+                constant, source, parameter, language))
+        {
+            return ManagedPrimitiveConversionEvaluator.ConvertInvocationConstant(
+                constant, source, parameter, language);
+        }
+
+        throw new InvalidOperationException(
+            $"The lifted operator cannot receive '{source.DisplayName}' as " +
+            $"'{parameter.DisplayName}'.");
+    }
+
+    private bool RequiresLiftedOperatorExtraction(
+        ManagedExpressionValue argument,
+        nint thread) => argument.DeclaredType is ManagedBoundType declared &&
+        _boundTypes.IsCoreType(declared, "System.Nullable`1", thread);
 
     private string FormatBoundType(ManagedBoundType type, nint thread)
     {
