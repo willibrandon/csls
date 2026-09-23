@@ -283,6 +283,14 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerExplicitNumericResultSource source) => (int)source;
 
     /// <summary>
+    /// Runs the compiler's numeric conversion before nullable result wrapping.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The nullable narrowed operator result.</returns>
+    internal static int? CompilerExplicitNullableNumericResultForDebugger(
+        DebuggerExplicitNumericResultSource source) => (int?)source;
+
+    /// <summary>
     /// Runs the compiler's runtime-checked reference conversion before an explicit operator.
     /// </summary>
     /// <param name="source">The base-declared reference source.</param>

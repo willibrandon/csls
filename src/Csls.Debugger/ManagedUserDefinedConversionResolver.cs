@@ -344,7 +344,7 @@ internal sealed class ManagedUserDefinedConversionResolver
     private ManagedBoundType GetEffectiveTargetType(
         ManagedUserDefinedConversion conversion,
         ManagedBoundType destination) => conversion.IsLifted ||
-        HasSupportedExplicitNullableResultConversion(conversion.ResultType, destination)
+        HasExactExplicitNullableResultConversion(conversion.ResultType, destination)
             ? destination
             : conversion.ResultType;
 
@@ -454,6 +454,14 @@ internal sealed class ManagedUserDefinedConversionResolver
                 underlying, destination, _language));
 
     private bool HasSupportedExplicitNullableResultConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) =>
+        HasExactExplicitNullableResultConversion(source, destination) ||
+        TryGetNullableUnderlying(destination, out ManagedBoundType underlying) &&
+            ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                source, underlying, _language);
+
+    private bool HasExactExplicitNullableResultConversion(
         ManagedBoundType source,
         ManagedBoundType destination) =>
         TryGetNullableUnderlying(destination, out ManagedBoundType underlying) &&

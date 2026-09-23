@@ -565,7 +565,18 @@ internal sealed partial class CorDebugDebuggee
     {
         if (RequiresNullableTargetMaterialization(conversion, thread))
         {
-            return value with
+            ManagedBoundType underlying = conversion.TargetType.TypeArguments[0];
+            ManagedExpressionValue nullableValue = conversion.ResultType.IsSameType(underlying)
+                ? value
+                : ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
+                    value,
+                    conversion.ResultType,
+                    underlying,
+                    conversion.Language) with
+                {
+                    DeclaredType = underlying
+                };
+            return nullableValue with
             {
                 DeclaredType = conversion.TargetType,
                 IsNullableValue = true,
@@ -632,7 +643,9 @@ internal sealed partial class CorDebugDebuggee
         nint thread) =>
         _boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", thread) &&
         conversion.TargetType.TypeArguments is [ManagedBoundType underlying] &&
-        underlying.IsSameType(conversion.ResultType);
+        (underlying.IsSameType(conversion.ResultType) ||
+            ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
+                conversion.ResultType, underlying, conversion.Language));
 
     private static ManagedExpressionValue CreateEmptyLiftedConversionValue(
         ManagedBoundType target)
