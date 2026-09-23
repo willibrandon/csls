@@ -33,11 +33,6 @@ internal sealed partial class CorDebugDebuggee
             child.Kind == DebugExpressionNodeKind.Literal && operands[index].Scalar is int or long
                 ? operands[index]
                 : null)];
-        if (operands.All(static operand => operand.HasScalar))
-        {
-            return false;
-        }
-
         nint thread = GetThread(frame.ThreadId);
         try
         {

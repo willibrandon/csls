@@ -598,6 +598,8 @@ public sealed partial class DapArrayPagingTests
 
         const string checkedOperatorType =
             "Csls.TestProcessHost.DebuggerCheckedOperatorValue";
+        const string nullableOperatorType =
+            "Csls.TestProcessHost.DebuggerNullableOperatorValue";
         foreach ((string expression, string compilerExpression, string expected) in new[]
         {
             ("unchecked(checkedOperator + checkedOperator)",
@@ -618,7 +620,12 @@ public sealed partial class DapArrayPagingTests
             ("unchecked(-checkedOperator)",
                 $"{checkedOperatorType}.CompilerNegate(checkedOperator)", "6041"),
             ("checked(-checkedOperator)",
-                $"{checkedOperatorType}.CompilerCheckedNegate(checkedOperator)", "7041")
+                $"{checkedOperatorType}.CompilerCheckedNegate(checkedOperator)", "7041"),
+            ("nullableOperators[0] + nullableOperators[1]",
+                $"{nullableOperatorType}.CompilerAdd(nullableOperators[0], nullableOperators[1])",
+                "11241"),
+            ("-nullableOperators[1]",
+                $"{nullableOperatorType}.CompilerNegate(nullableOperators[1])", "12300")
         })
         {
             foreach (string selectedExpression in new[] { expression, compilerExpression })

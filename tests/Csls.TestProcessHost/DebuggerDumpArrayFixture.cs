@@ -833,7 +833,6 @@ internal static class DebuggerDumpArrayFixture
     /// <param name="value">The target-typed string value.</param>
     /// <returns>The supplied string length.</returns>
     internal static int AmbiguousContextualDefaultForDebugger(string? value) => value?.Length ?? 0;
-
     /// <summary>
     /// Announces initialized arrays after entering an observed runtime wait owned by the capturing test.
     /// </summary>
@@ -920,6 +919,7 @@ internal static class DebuggerDumpArrayFixture
         DebuggerExplicitNullableTargetRankingSource nullableTargetRankingSource = new(41);
         DebuggerCheckedOperatorValue checkedOperator = new(41);
         object checkedOperatorObject = checkedOperator;
+        DebuggerNullableOperatorValue?[] nullableOperators = [new(41), null];
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         DebuggerImplicitConversionReferenceSource explicitReferenceInput = implicitReferenceConversion;
         DebuggerImplicitConversionReferenceSource invalidExplicitReferenceInput = new(41);
@@ -984,7 +984,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive((populatedNullableNumericConversion, emptyNullableNumericConversion,
             liftedNumericOverloadSource, explicitNumericResultSource, populatedLiftedNumericResult,
             emptyLiftedNumericResult, targetRankingSource, nullableTargetRankingSource, checkedOperator,
-            checkedOperatorObject));
+            checkedOperatorObject, nullableOperators));
         GC.KeepAlive((explicitReferenceInput, invalidExplicitReferenceInput));
         GC.KeepAlive((explicitReferenceResultSource, invalidExplicitReferenceResultSource));
         GC.KeepAlive(explicitConversionResult);

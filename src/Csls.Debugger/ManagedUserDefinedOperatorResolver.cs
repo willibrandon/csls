@@ -56,16 +56,24 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
         var candidates = new List<ManagedUserDefinedOperator>();
         var participatingSources = new List<ManagedBoundType>();
-        foreach (ManagedBoundType source in operands.OfType<ManagedBoundType>())
+        foreach (ManagedBoundType participatingSource in operands
+            .OfType<ManagedBoundType>()
+            .Select(StripNullable))
         {
-            if (source.IsArray || participatingSources.Any(source.IsSameType))
+            if (IsPredefinedOperatorSource(participatingSource) ||
+                participatingSources.Any(participatingSource.IsSameType))
             {
                 continue;
             }
 
-            participatingSources.Add(source);
+            participatingSources.Add(participatingSource);
             AddCandidatesFromHierarchy(
-                source, primaryName, fallbackName, operands, constantOperands, candidates);
+                participatingSource,
+                primaryName,
+                fallbackName,
+                operands,
+                constantOperands,
+                candidates);
         }
 
         ManagedUserDefinedOperator[] distinct = [.. candidates.DistinctBy(candidate =>
@@ -277,6 +285,21 @@ internal sealed class ManagedUserDefinedOperatorResolver
             _referenceConversions.IsImplicitBoxing(source, destination, _thread) ||
             ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
                 source, destination, _language);
+
+    private ManagedBoundType StripNullable(ManagedBoundType type) =>
+        _types.IsCoreType(type, "System.Nullable`1", _thread) &&
+        type.TypeArguments is [ManagedBoundType underlying]
+            ? underlying
+            : type;
+
+    private bool IsPredefinedOperatorSource(ManagedBoundType type) =>
+        type.IsArray ||
+        type.ElementType is 0x01 or >= 0x02 and <= 0x0e or 0x18 or 0x19 or 0x1c ||
+        _types.IsCoreType(type, "System.Decimal", _thread) ||
+        _types.IsCoreType(type, "System.Delegate", _thread) ||
+        _types.IsCoreType(type, "System.Enum", _thread) ||
+        _types.IsCoreType(type, "System.MulticastDelegate", _thread) ||
+        _types.IsCoreType(type, "System.ValueType", _thread);
 
     private static bool HasPairedSignature(
         ManagedUserDefinedOperator left,
