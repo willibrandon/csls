@@ -289,4 +289,13 @@ internal static class DebuggerImplicitConversionFixture
     internal static int CompilerExplicitReferenceResultForDebugger(
         DebuggerImplicitConversionReferenceDerived source) =>
         ((DebuggerImplicitConversionReferenceResultBase)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's explicit operator lookup through the destination base hierarchy.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The number carried through the derived conversion result.</returns>
+    internal static int CompilerExplicitDestinationBaseForDebugger(
+        DebuggerImplicitConversionSource source) =>
+        ((DebuggerExplicitReferenceDowncastResult)source).Number;
 }

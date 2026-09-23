@@ -209,6 +209,13 @@ public sealed partial class DapArrayPagingTests
         await AssertExplicitConversionAsync(
             client,
             frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitReferenceDowncastResult)implicitConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitDestinationBaseForDebugger(implicitConversion)",
+            "41").ConfigureAwait(false);
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
             "(Csls.TestProcessHost.DebuggerExplicitUnboxedInputDestination)boxedIntegerValue",
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerExplicitUnboxedInputForDebugger(boxedIntegerValue)",
@@ -437,10 +444,41 @@ public sealed partial class DapArrayPagingTests
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 
+        JsonElement invalidDestinationBaseResult = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitReferenceDowncastResult)throwingImplicitConversion",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("cannot be cast", Assert.IsInstanceOfType<string>(
+            invalidDestinationBaseResult.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        JsonElement compilerInvalidDestinationBaseResult = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitDestinationBaseForDebugger(throwingImplicitConversion)",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("System.InvalidCastException", Assert.IsInstanceOfType<string>(
+            compilerInvalidDestinationBaseResult.GetProperty("message").GetString()),
+            StringComparison.Ordinal);
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("53", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("57", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {

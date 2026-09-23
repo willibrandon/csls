@@ -70,7 +70,9 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType participatingDestination = StripNullable(destination);
         var matches = new List<ManagedUserDefinedConversion>();
         foreach (ManagedBoundType declaringType in GetParticipatingTypes(
-            participatingSource, participatingDestination))
+            participatingSource,
+            participatingDestination,
+            includeDestinationBaseTypes: false))
         {
             AddMatches(declaringType, source, destination, matches);
         }
@@ -101,7 +103,9 @@ internal sealed class ManagedUserDefinedConversionResolver
 
         var matches = new List<ManagedUserDefinedConversion>();
         foreach (ManagedBoundType declaringType in GetParticipatingTypes(
-            StripNullable(source), StripNullable(destination)))
+            StripNullable(source),
+            StripNullable(destination),
+            includeDestinationBaseTypes: true))
         {
             AddExplicitMatches(declaringType, source, destination, matches);
         }
@@ -252,27 +256,43 @@ internal sealed class ManagedUserDefinedConversionResolver
 
     private List<ManagedBoundType> GetParticipatingTypes(
         ManagedBoundType source,
-        ManagedBoundType destination)
+        ManagedBoundType destination,
+        bool includeDestinationBaseTypes)
+    {
+        List<ManagedBoundType> result = [];
+        AddParticipatingTypeHierarchy(source, includeBaseTypes: true, result);
+        AddParticipatingTypeHierarchy(
+            destination, includeDestinationBaseTypes, result);
+        return result;
+    }
+
+    private void AddParticipatingTypeHierarchy(
+        ManagedBoundType type,
+        bool includeBaseTypes,
+        List<ManagedBoundType> result)
     {
         const int maximumTypes = 128;
-        List<ManagedBoundType> result = [];
-        ManagedBoundType? current = source;
+        ManagedBoundType? current = type;
         while (current is not null)
         {
-            if (result.Count >= maximumTypes)
-            {
-                throw new InvalidOperationException(
-                    "Implicit conversion lookup exceeds its bounded type hierarchy.");
-            }
-
             TypeAttributes attributes = _types.GetAttributes(current);
             if ((attributes & TypeAttributes.Interface) != 0)
             {
                 break;
             }
 
-            result.Add(current);
-            if (!current.IsReference)
+            if (!result.Any(current.IsSameType))
+            {
+                if (result.Count >= maximumTypes)
+                {
+                    throw new InvalidOperationException(
+                        "User-defined conversion lookup exceeds its bounded type hierarchy.");
+                }
+
+                result.Add(current);
+            }
+
+            if (!includeBaseTypes || !current.IsReference)
             {
                 break;
             }
@@ -280,14 +300,6 @@ internal sealed class ManagedUserDefinedConversionResolver
             current = _types.GetParents(current, _thread).FirstOrDefault(parent =>
                 (_types.GetAttributes(parent) & TypeAttributes.Interface) == 0);
         }
-
-        if (!result.Any(destination.IsSameType) &&
-            (_types.GetAttributes(destination) & TypeAttributes.Interface) == 0)
-        {
-            result.Add(destination);
-        }
-
-        return result;
     }
 
     private ManagedUserDefinedConversion? SelectBest(

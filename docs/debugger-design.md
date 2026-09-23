@@ -616,7 +616,8 @@ execute the underlying operator once for populated values, materialize exact nul
 storage for value-type targets, and propagate null without target execution.
 Explicit conversion expressions resolve exact loaded `op_Explicit` and `op_Implicit` methods,
 execute them through the supervised evaluator only when target code is authorized, and retain
-their declared result type for inspection and generation-safe assignment. Lifted explicit
+their declared result type for inspection and generation-safe assignment. Candidate discovery walks
+the exact loaded source and destination base-class hierarchies. Lifted explicit
 conversions to reference targets read populated nullable storage before invoking the underlying
 operator and produce a null reference directly for empty nullable storage. Lifted explicit
 conversions to nullable value targets allocate the exact closed `Nullable<T>`, copy the underlying

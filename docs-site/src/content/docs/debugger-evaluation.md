@@ -148,7 +148,8 @@ cancellation, thread isolation, and exception recovery as the final call, then p
 primitive, reference, null, or value-type result to that call. Lifted nullable conversions
 execute the operator once for populated values and propagate null directly for empty values.
 Explicit casts resolve loaded explicit or implicit conversion operators, apply standard numeric and
-reference conversions around the operator, and box or unbox operator inputs when required. Lifted
+reference conversions around the operator, and box or unbox operator inputs when required. Candidate
+lookup follows source and destination base classes for explicit casts. Lifted
 explicit casts to reference targets execute the underlying operator once for populated nullable
 values and produce null directly for empty values. Lifted explicit casts to nullable value targets
 materialize exact `Nullable<T>` storage around the operator result. Explicit casts unwrap populated

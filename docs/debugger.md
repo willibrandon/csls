@@ -181,7 +181,8 @@ reference conversions around the operator and boxing into constructed generic op
 parameters, then execute as supervised target-code stages before the selected call. Lifted
 nullable conversions invoke the operator for populated values and propagate null directly.
 Explicit casts select loaded explicit or implicit conversion operators, apply standard numeric and
-reference conversions around the operator, and box or unbox operator inputs when required. Lifted
+reference conversions around the operator, and box or unbox operator inputs when required. Candidate
+lookup follows source and destination base classes for explicit casts. Lifted
 explicit casts to reference targets invoke the underlying operator for populated nullable values and
 produce null directly for empty values. Lifted explicit casts to nullable value targets materialize
 exact `Nullable<T>` result storage after the underlying operator returns. Explicit casts also unwrap
