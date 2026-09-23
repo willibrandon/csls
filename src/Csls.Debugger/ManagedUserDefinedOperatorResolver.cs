@@ -373,7 +373,10 @@ internal sealed class ManagedUserDefinedOperatorResolver
                 DebugExpressionOperator.Remainder or
                 DebugExpressionOperator.BitwiseAnd or
                 DebugExpressionOperator.BitwiseOr or
-                DebugExpressionOperator.ExclusiveOr;
+                DebugExpressionOperator.ExclusiveOr or
+                DebugExpressionOperator.LeftShift or
+                DebugExpressionOperator.RightShift or
+                DebugExpressionOperator.UnsignedRightShift;
             if (!liftedBoolean && (!liftedNullable || !CanLift(candidate.ResultType)))
             {
                 continue;
@@ -435,6 +438,9 @@ internal sealed class ManagedUserDefinedOperatorResolver
             DebugExpressionOperator.BitwiseAnd => ("op_BitwiseAnd", null),
             DebugExpressionOperator.BitwiseOr => ("op_BitwiseOr", null),
             DebugExpressionOperator.ExclusiveOr => ("op_ExclusiveOr", null),
+            DebugExpressionOperator.LeftShift => ("op_LeftShift", null),
+            DebugExpressionOperator.RightShift => ("op_RightShift", null),
+            DebugExpressionOperator.UnsignedRightShift => ("op_UnsignedRightShift", null),
             _ => throw new NotSupportedException(
                 $"User-defined operator {operation} is not supported.")
         };

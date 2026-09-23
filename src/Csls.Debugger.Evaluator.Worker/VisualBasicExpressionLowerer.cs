@@ -169,6 +169,8 @@ internal static class VisualBasicExpressionLowerer
         SyntaxKind.AndExpression => DebugExpressionOperator.BitwiseAnd,
         SyntaxKind.OrExpression => DebugExpressionOperator.BitwiseOr,
         SyntaxKind.ExclusiveOrExpression => DebugExpressionOperator.ExclusiveOr,
+        SyntaxKind.LeftShiftExpression => DebugExpressionOperator.LeftShift,
+        SyntaxKind.RightShiftExpression => DebugExpressionOperator.RightShift,
         _ => throw new NotSupportedException(
             $"Visual Basic binary operator {kind} is not supported by safe evaluation.")
     };

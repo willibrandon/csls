@@ -95,6 +95,8 @@ module FSharpExpressionLowerer =
         | "op_BitwiseAnd" -> DebugExpressionOperator.BitwiseAnd
         | "op_BitwiseOr" -> DebugExpressionOperator.BitwiseOr
         | "op_ExclusiveOr" -> DebugExpressionOperator.ExclusiveOr
+        | "op_LeftShift" -> DebugExpressionOperator.LeftShift
+        | "op_RightShift" -> DebugExpressionOperator.RightShift
         | _ -> raise (unsupported $"operator '{name}'")
 
     let private conversionType name =

@@ -40,7 +40,16 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[0], null)", "11241", "int"),
             ("null + nullableOperators[0]",
                 $"{nullableOperatorType}.CompilerAdd(" +
-                    "null, nullableOperators[0])", "11141", "int")
+                    "null, nullableOperators[0])", "11141", "int"),
+            ("nullableOperators[0] << 2",
+                $"{nullableOperatorType}.CompilerLeftShift(" +
+                    "nullableOperators[0], 2)", "14043", "int?"),
+            ("nullableOperators[0] >> 2",
+                $"{nullableOperatorType}.CompilerRightShift(" +
+                    "nullableOperators[0], 2)", "15043", "int?"),
+            ("nullableOperators[0] >>> 2",
+                $"{nullableOperatorType}.CompilerUnsignedRightShift(" +
+                    "nullableOperators[0], 2)", "16043", "int?")
         })
         {
             foreach (string selectedExpression in new[] { expression, compilerExpression })
@@ -95,7 +104,19 @@ public sealed partial class DapArrayPagingTests
                     "nullableOperators[0], null)", "null", "int?"),
             ("null * nullableOperators[0]",
                 $"{nullableOperatorType}.CompilerMultiply(" +
-                    "null, nullableOperators[0])", "null", "int?")
+                    "null, nullableOperators[0])", "null", "int?"),
+            ("nullableOperators[1] << 2",
+                $"{nullableOperatorType}.CompilerLeftShift(" +
+                    "nullableOperators[1], 2)", "null", "int?"),
+            ("vector[0] << 2",
+                $"{nullableOperatorType}.CompilerBuiltInLeftShift(" +
+                    "vector[0], 2)", "164", "int"),
+            ("-164 >> 2",
+                $"{nullableOperatorType}.CompilerBuiltInRightShift(" +
+                    "-164, 2)", "-41", "int"),
+            ("-1 >>> 1",
+                $"{nullableOperatorType}.CompilerBuiltInUnsignedRightShift(" +
+                    "-1, 1)", "2147483647", "int")
         })
         {
             JsonElement direct = await ReadEvaluationAsync(

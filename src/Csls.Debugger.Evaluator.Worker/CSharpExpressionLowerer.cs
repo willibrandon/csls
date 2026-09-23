@@ -197,6 +197,9 @@ internal static class CSharpExpressionLowerer
             SyntaxKind.BitwiseAndExpression => DebugExpressionOperator.BitwiseAnd,
             SyntaxKind.BitwiseOrExpression => DebugExpressionOperator.BitwiseOr,
             SyntaxKind.ExclusiveOrExpression => DebugExpressionOperator.ExclusiveOr,
+            SyntaxKind.LeftShiftExpression => DebugExpressionOperator.LeftShift,
+            SyntaxKind.RightShiftExpression => DebugExpressionOperator.RightShift,
+            SyntaxKind.UnsignedRightShiftExpression => DebugExpressionOperator.UnsignedRightShift,
             _ => throw new NotSupportedException(
                 $"C# binary operator {kind} is not supported by safe evaluation.")
         };

@@ -138,5 +138,20 @@ public enum DebugExpressionOperator
     /// <summary>
     /// Computes integral or Boolean exclusive disjunction.
     /// </summary>
-    ExclusiveOr
+    ExclusiveOr,
+
+    /// <summary>
+    /// Shifts the left integral operand toward more significant bits.
+    /// </summary>
+    LeftShift,
+
+    /// <summary>
+    /// Shifts the left integral operand toward less significant bits.
+    /// </summary>
+    RightShift,
+
+    /// <summary>
+    /// Shifts the left integral operand right without sign extension.
+    /// </summary>
+    UnsignedRightShift
 }

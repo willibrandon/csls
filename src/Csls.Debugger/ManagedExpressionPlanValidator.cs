@@ -162,7 +162,10 @@ internal static class ManagedExpressionPlanValidator
                 DebugExpressionOperator.LogicalOr or
                 DebugExpressionOperator.BitwiseAnd or
                 DebugExpressionOperator.BitwiseOr or
-                DebugExpressionOperator.ExclusiveOr,
+                DebugExpressionOperator.ExclusiveOr or
+                DebugExpressionOperator.LeftShift or
+                DebugExpressionOperator.RightShift or
+                DebugExpressionOperator.UnsignedRightShift,
             DebugExpressionNodeKind.Conversion => node.Operator is
                 DebugExpressionOperator.None or
                 DebugExpressionOperator.CheckedConversion,

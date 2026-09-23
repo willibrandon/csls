@@ -8,7 +8,7 @@ public static class DebuggerEvaluatorProtocol
     /// <summary>
     /// Gets the exact expression-plan version understood by the runtime binder.
     /// </summary>
-    public const int CurrentPlanVersion = 9;
+    public const int CurrentPlanVersion = 10;
 
     /// <summary>
     /// Gets the exact evaluator protocol version implemented by this build.

@@ -103,6 +103,36 @@ internal readonly struct DebuggerNullableOperatorValue :
         long right) => checked((int)((left._number * 100) + right));
 
     /// <summary>
+    /// Applies an authored left-shift operator.
+    /// </summary>
+    /// <param name="left">The underlying authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>A marker derived from the operand and count.</returns>
+    public static int operator <<(
+        DebuggerNullableOperatorValue left,
+        int count) => 14000 + left._number + count;
+
+    /// <summary>
+    /// Applies an authored signed right-shift operator.
+    /// </summary>
+    /// <param name="left">The underlying authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>A marker derived from the operand and count.</returns>
+    public static int operator >>(
+        DebuggerNullableOperatorValue left,
+        int count) => 15000 + left._number + count;
+
+    /// <summary>
+    /// Applies an authored unsigned right-shift operator.
+    /// </summary>
+    /// <param name="left">The underlying authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>A marker derived from the operand and count.</returns>
+    public static int operator >>>(
+        DebuggerNullableOperatorValue left,
+        int count) => 16000 + left._number + count;
+
+    /// <summary>
     /// Runs compiler-selected binary nullable-parameter addition.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -186,6 +216,63 @@ internal readonly struct DebuggerNullableOperatorValue :
     internal static int? CompilerNumericRemainder(
         DebuggerNullableOperatorValue? left,
         int? right) => left % right;
+
+    /// <summary>
+    /// Runs compiler-selected lifted left shift.
+    /// </summary>
+    /// <param name="left">The optional authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerLeftShift(
+        DebuggerNullableOperatorValue? left,
+        int count) => left << count;
+
+    /// <summary>
+    /// Runs compiler-selected lifted signed right shift.
+    /// </summary>
+    /// <param name="left">The optional authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerRightShift(
+        DebuggerNullableOperatorValue? left,
+        int count) => left >> count;
+
+    /// <summary>
+    /// Runs compiler-selected lifted unsigned right shift.
+    /// </summary>
+    /// <param name="left">The optional authored operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerUnsignedRightShift(
+        DebuggerNullableOperatorValue? left,
+        int count) => left >>> count;
+
+    /// <summary>
+    /// Runs compiler-selected built-in left shift.
+    /// </summary>
+    /// <param name="left">The signed integral operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static int CompilerBuiltInLeftShift(int left, int count) =>
+        left << count;
+
+    /// <summary>
+    /// Runs compiler-selected built-in signed right shift.
+    /// </summary>
+    /// <param name="left">The signed integral operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static int CompilerBuiltInRightShift(int left, int count) =>
+        left >> count;
+
+    /// <summary>
+    /// Runs compiler-selected built-in unsigned right shift.
+    /// </summary>
+    /// <param name="left">The signed integral operand.</param>
+    /// <param name="count">The shift count.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static int CompilerBuiltInUnsignedRightShift(int left, int count) =>
+        left >>> count;
 
     /// <summary>
     /// Compares the underlying marker used by the test fixture.

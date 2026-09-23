@@ -88,6 +88,13 @@ internal static class ManagedPrimitiveOperatorEvaluator
 
         ManagedNumericValue leftNumeric = GetNumeric(leftValue, left.Type);
         ManagedNumericValue rightNumeric = GetNumeric(rightValue, right.Type);
+        if (operation is DebugExpressionOperator.LeftShift or
+            DebugExpressionOperator.RightShift or
+            DebugExpressionOperator.UnsignedRightShift)
+        {
+            return EvaluateShift(operation, leftNumeric, rightNumeric);
+        }
+
         ManagedNumericKind kind = Promote(leftNumeric.Kind, rightNumeric.Kind);
         if (operation is DebugExpressionOperator.LessThan or
             DebugExpressionOperator.LessThanOrEqual or
@@ -108,6 +115,50 @@ internal static class ManagedPrimitiveOperatorEvaluator
 
         object computed = ApplyNumeric(operation, leftNumeric, rightNumeric, kind);
         return ManagedExpressionValueFactory.FromScalar(computed, TypeName(kind));
+    }
+
+    private static ManagedExpressionValue EvaluateShift(
+        DebugExpressionOperator operation,
+        ManagedNumericValue left,
+        ManagedNumericValue right)
+    {
+        if (right.Kind != ManagedNumericKind.Int32)
+        {
+            throw new InvalidOperationException(
+                "A built-in shift count must be implicitly convertible to Int32.");
+        }
+
+        int count = Convert.ToInt32(right.Value, CultureInfo.InvariantCulture);
+        object result = (operation, left.Kind) switch
+        {
+            (DebugExpressionOperator.LeftShift, ManagedNumericKind.Int32) =>
+                Convert.ToInt32(left.Value, CultureInfo.InvariantCulture) << count,
+            (DebugExpressionOperator.LeftShift, ManagedNumericKind.UInt32) =>
+                Convert.ToUInt32(left.Value, CultureInfo.InvariantCulture) << count,
+            (DebugExpressionOperator.LeftShift, ManagedNumericKind.Int64) =>
+                Convert.ToInt64(left.Value, CultureInfo.InvariantCulture) << count,
+            (DebugExpressionOperator.LeftShift, ManagedNumericKind.UInt64) =>
+                Convert.ToUInt64(left.Value, CultureInfo.InvariantCulture) << count,
+            (DebugExpressionOperator.RightShift, ManagedNumericKind.Int32) =>
+                Convert.ToInt32(left.Value, CultureInfo.InvariantCulture) >> count,
+            (DebugExpressionOperator.RightShift, ManagedNumericKind.UInt32) =>
+                Convert.ToUInt32(left.Value, CultureInfo.InvariantCulture) >> count,
+            (DebugExpressionOperator.RightShift, ManagedNumericKind.Int64) =>
+                Convert.ToInt64(left.Value, CultureInfo.InvariantCulture) >> count,
+            (DebugExpressionOperator.RightShift, ManagedNumericKind.UInt64) =>
+                Convert.ToUInt64(left.Value, CultureInfo.InvariantCulture) >> count,
+            (DebugExpressionOperator.UnsignedRightShift, ManagedNumericKind.Int32) =>
+                Convert.ToInt32(left.Value, CultureInfo.InvariantCulture) >>> count,
+            (DebugExpressionOperator.UnsignedRightShift, ManagedNumericKind.UInt32) =>
+                Convert.ToUInt32(left.Value, CultureInfo.InvariantCulture) >> count,
+            (DebugExpressionOperator.UnsignedRightShift, ManagedNumericKind.Int64) =>
+                Convert.ToInt64(left.Value, CultureInfo.InvariantCulture) >>> count,
+            (DebugExpressionOperator.UnsignedRightShift, ManagedNumericKind.UInt64) =>
+                Convert.ToUInt64(left.Value, CultureInfo.InvariantCulture) >> count,
+            _ => throw new InvalidOperationException(
+                $"Shift is not defined for {TypeName(left.Kind)}.")
+        };
+        return ManagedExpressionValueFactory.FromScalar(result, TypeName(left.Kind));
     }
 
     private static bool Equal(
