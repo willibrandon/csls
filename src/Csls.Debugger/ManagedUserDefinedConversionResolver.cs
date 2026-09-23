@@ -336,9 +336,11 @@ internal sealed class ManagedUserDefinedConversionResolver
 
     private ManagedBoundType GetEffectiveSourceType(
         ManagedUserDefinedConversion conversion,
-        ManagedBoundType source) => conversion.IsLifted ||
-        HasSupportedExplicitNullableInputConversion(source, conversion.ParameterType)
-            ? source
+        ManagedBoundType source) =>
+        TryGetNullableUnderlying(source, out _) &&
+        (conversion.IsLifted ||
+            HasSupportedExplicitNullableInputConversion(source, conversion.ParameterType))
+            ? _types.MakeNullable(conversion.ParameterType, _thread)
             : conversion.ParameterType;
 
     private ManagedBoundType GetEffectiveTargetType(
@@ -422,6 +424,12 @@ internal sealed class ManagedUserDefinedConversionResolver
         if (source.IsSameType(destination))
         {
             return true;
+        }
+
+        if (TryGetNullableUnderlying(source, out ManagedBoundType sourceUnderlying) &&
+            TryGetNullableUnderlying(destination, out ManagedBoundType destinationUnderlying))
+        {
+            return HasStandardImplicitConversion(sourceUnderlying, destinationUnderlying);
         }
 
         return _referenceConversions.IsImplicit(source, destination, _thread) ||

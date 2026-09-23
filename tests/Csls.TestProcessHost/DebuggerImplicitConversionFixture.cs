@@ -299,6 +299,14 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerExplicitNumericResultSource? source) => (int?)source;
 
     /// <summary>
+    /// Runs the compiler's lifted explicit numeric overload selection.
+    /// </summary>
+    /// <param name="source">The nullable numeric conversion source.</param>
+    /// <returns>The selected overload marker and converted value.</returns>
+    internal static long CompilerExplicitLiftedNumericOverloadForDebugger(short? source) =>
+        ((DebuggerExplicitLiftedNumericOverloadDestination?)source)?.Number ?? -1;
+
+    /// <summary>
     /// Runs the compiler's runtime-checked reference conversion before an explicit operator.
     /// </summary>
     /// <param name="source">The base-declared reference source.</param>

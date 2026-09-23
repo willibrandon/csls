@@ -356,6 +356,26 @@ internal sealed class ManagedBoundTypeSystem
             CreateRuntimeSignature(type, depth: 0), [], [], thread);
 
     /// <summary>
+    /// Constructs the exact loaded nullable value type for an underlying value type.
+    /// </summary>
+    /// <param name="underlying">The exact loaded nullable type argument.</param>
+    /// <param name="thread">The borrowed thread identifying the target core library.</param>
+    /// <returns>The exact closed System.Nullable type.</returns>
+    internal ManagedBoundType MakeNullable(ManagedBoundType underlying, nint thread)
+    {
+        if (underlying.IsReference)
+        {
+            throw new InvalidOperationException(
+                $"Reference type '{underlying.DisplayName}' cannot be made nullable.");
+        }
+
+        ManagedMetadataTypeSignature signature = _coreLibrary.Resolve(new ManagedMetadataTypeSignature(
+            "System.Nullable`1", null, null, [], [], IsValueType: true), thread);
+        return CreateDefinition(
+            _coreLibrary.GetModule(thread), signature.DefinitionToken, 0x11, [underlying], thread);
+    }
+
+    /// <summary>
     /// Maps an intrinsic metadata name to its canonical element kind after core-library identity validation.
     /// </summary>
     /// <param name="name">The complete metadata name from the validated core-library module.</param>

@@ -433,6 +433,14 @@ public sealed partial class DapArrayPagingTests
             "41",
             "int?",
             expectExpandable: true).ConfigureAwait(false);
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitLiftedNumericOverloadDestination)" +
+                "liftedNumericOverloadSource",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitLiftedNumericOverloadForDebugger(liftedNumericOverloadSource)",
+            "1041").ConfigureAwait(false);
 
         JsonElement emptyLiftedNumericResultValue = await ReadEvaluationAsync(
             client,
@@ -605,7 +613,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("69", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("71", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {
