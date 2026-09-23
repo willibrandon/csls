@@ -607,6 +607,10 @@ public sealed partial class DapArrayPagingTests
             ("checked(checkedOperator + checkedOperatorObject)",
                 $"{checkedOperatorType}.CompilerCheckedFallback(" +
                     "checkedOperator, checkedOperatorObject)", "3041"),
+            ("checked(checkedOperator + 1)",
+                $"{checkedOperatorType}.CompilerConstantAdd(checkedOperator)", "8042"),
+            ("unchecked(checkedOperator + vector[0])",
+                $"{checkedOperatorType}.CompilerNumericAdd(checkedOperator, vector[0])", "10082"),
             ("unchecked(checkedOperator / checkedOperator)",
                 $"{checkedOperatorType}.CompilerDivide(checkedOperator)", "4082"),
             ("checked(checkedOperator / checkedOperator)",

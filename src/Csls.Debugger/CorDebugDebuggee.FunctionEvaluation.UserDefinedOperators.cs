@@ -29,6 +29,10 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedExpressionValue[] operands = [.. plan.Root.Children.Select(child =>
             EvaluateNode(frame, plan, child, generation))];
+        ManagedExpressionValue?[] constantOperands = [.. plan.Root.Children.Select((child, index) =>
+            child.Kind == DebugExpressionNodeKind.Literal && operands[index].Scalar is int or long
+                ? operands[index]
+                : null)];
         if (operands.All(static operand => operand.HasScalar))
         {
             return false;
@@ -41,7 +45,7 @@ internal sealed partial class CorDebugDebuggee
                 operands, plan.Language, thread);
             return new ManagedUserDefinedOperatorResolver(
                 _boundTypes, thread, plan.Language).Resolve(
-                    plan.Root.Operator, operandTypes) is not null;
+                    plan.Root.Operator, operandTypes, constantOperands) is not null;
         }
         finally
         {
@@ -52,11 +56,13 @@ internal sealed partial class CorDebugDebuggee
     private ManagedFunctionBinding ResolveUserDefinedOperator(
         DebugExpressionOperator operation,
         ManagedBoundType?[] operands,
+        IReadOnlyList<ManagedExpressionValue?> constantOperands,
         DebugExpressionLanguage language,
         nint thread)
     {
         ManagedUserDefinedOperator selected = new ManagedUserDefinedOperatorResolver(
-            _boundTypes, thread, language).Resolve(operation, operands) ??
+            _boundTypes, thread, language).Resolve(
+                operation, operands, constantOperands) ??
             throw new InvalidOperationException(
                 $"No loaded user-defined operator exists for '{operation}'.");
         CorDebugLoadedModule module = _boundTypes.GetModule(selected.DeclaringType);

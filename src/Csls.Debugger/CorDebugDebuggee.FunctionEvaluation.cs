@@ -234,6 +234,7 @@ internal sealed partial class CorDebugDebuggee
                     ? ResolveUserDefinedOperator(
                         operation.Operator,
                         argumentTypes,
+                        constantArguments,
                         plan.Language,
                         thread)
                     : constructsObject

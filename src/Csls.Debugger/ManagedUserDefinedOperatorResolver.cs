@@ -40,10 +40,12 @@ internal sealed class ManagedUserDefinedOperatorResolver
     /// </summary>
     /// <param name="operation">The normalized source-language operator.</param>
     /// <param name="operands">The exact loaded operand declarations.</param>
+    /// <param name="constantOperands">Literal values eligible for constant-expression conversions.</param>
     /// <returns>The selected operator, or null when no user-defined operator applies.</returns>
     internal ManagedUserDefinedOperator? Resolve(
         DebugExpressionOperator operation,
-        IReadOnlyList<ManagedBoundType?> operands)
+        IReadOnlyList<ManagedBoundType?> operands,
+        IReadOnlyList<ManagedExpressionValue?>? constantOperands = null)
     {
         (string primaryName, string? fallbackName) = GetMethodNames(operation);
         if (operands.Count is not (1 or 2))
@@ -63,7 +65,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
             participatingSources.Add(source);
             AddCandidatesFromHierarchy(
-                source, primaryName, fallbackName, operands, candidates);
+                source, primaryName, fallbackName, operands, constantOperands, candidates);
         }
 
         ManagedUserDefinedOperator[] distinct = [.. candidates.DistinctBy(candidate =>
@@ -90,6 +92,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
         string primaryName,
         string? fallbackName,
         IReadOnlyList<ManagedBoundType?> operands,
+        IReadOnlyList<ManagedExpressionValue?>? constantOperands,
         List<ManagedUserDefinedOperator> destination)
     {
         ManagedBoundType? current = source;
@@ -103,7 +106,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
             List<ManagedUserDefinedOperator> declared = ReadDeclared(
                 current, primaryName, fallbackName, operands.Count);
             ManagedUserDefinedOperator[] applicable = [.. declared.Where(candidate =>
-                IsApplicable(candidate, operands))];
+                IsApplicable(candidate, operands, constantOperands))];
             if (applicable.Length != 0)
             {
                 destination.AddRange(applicable);
@@ -208,10 +211,24 @@ internal sealed class ManagedUserDefinedOperatorResolver
 
     private bool IsApplicable(
         ManagedUserDefinedOperator candidate,
-        IReadOnlyList<ManagedBoundType?> operands) => operands.Zip(
-            candidate.ParameterTypes,
-            (operand, parameter) => HasStandardImplicitConversion(operand, parameter))
-            .All(static applicable => applicable);
+        IReadOnlyList<ManagedBoundType?> operands,
+        IReadOnlyList<ManagedExpressionValue?>? constantOperands)
+    {
+        for (int index = 0; index < operands.Count; index++)
+        {
+            ManagedBoundType? operand = operands[index];
+            ManagedBoundType parameter = candidate.ParameterTypes[index];
+            if (!HasStandardImplicitConversion(operand, parameter) &&
+                !(operand is not null && constantOperands?[index] is ManagedExpressionValue constant &&
+                    ManagedPrimitiveConversionEvaluator.IsImplicitConstantInvocationConversion(
+                        constant, operand, parameter, _language)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private bool IsBetter(
         ManagedUserDefinedOperator candidate,
