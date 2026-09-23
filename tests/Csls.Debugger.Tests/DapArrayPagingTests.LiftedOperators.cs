@@ -17,6 +17,12 @@ public sealed partial class DapArrayPagingTests
             ("nullableOperators[0] > nullableOperators[2]",
                 $"{nullableOperatorType}.CompilerGreaterThan(" +
                     "nullableOperators[0], nullableOperators[2])", "false", "bool"),
+            ("nullableOperators[0] == nullableOperators[2]",
+                $"{nullableOperatorType}.CompilerEquals(" +
+                    "nullableOperators[0], nullableOperators[2])", "true", "bool"),
+            ("nullableOperators[0] != nullableOperators[2]",
+                $"{nullableOperatorType}.CompilerNotEquals(" +
+                    "nullableOperators[0], nullableOperators[2])", "false", "bool"),
             ("nullableOperators[0] * nullableOperators[2]",
                 $"{nullableOperatorType}.CompilerMultiply(" +
                     "nullableOperators[0], nullableOperators[2])", "4109", "int?"),
@@ -63,6 +69,15 @@ public sealed partial class DapArrayPagingTests
             ("nullableOperators[1] > nullableOperators[2]",
                 $"{nullableOperatorType}.CompilerGreaterThan(" +
                     "nullableOperators[1], nullableOperators[2])", "false", "bool"),
+            ("nullableOperators[1] == nullableOperators[2]",
+                $"{nullableOperatorType}.CompilerEquals(" +
+                    "nullableOperators[1], nullableOperators[2])", "false", "bool"),
+            ("nullableOperators[1] != nullableOperators[2]",
+                $"{nullableOperatorType}.CompilerNotEquals(" +
+                    "nullableOperators[1], nullableOperators[2])", "true", "bool"),
+            ("nullableOperators[1] == null",
+                $"{nullableOperatorType}.CompilerEquals(" +
+                    "nullableOperators[1], null)", "true", "bool"),
             ("nullableOperators[0] * nullableOperators[1]",
                 $"{nullableOperatorType}.CompilerMultiply(" +
                     "nullableOperators[0], nullableOperators[1])", "null", "int?"),

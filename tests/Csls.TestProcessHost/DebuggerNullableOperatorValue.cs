@@ -3,7 +3,8 @@ namespace Csls.TestProcessHost;
 /// <summary>
 /// Exposes compiler-authored operators with exact nullable value-type parameters.
 /// </summary>
-internal readonly struct DebuggerNullableOperatorValue
+internal readonly struct DebuggerNullableOperatorValue :
+    IEquatable<DebuggerNullableOperatorValue>
 {
     private readonly int _number;
 
@@ -52,6 +53,26 @@ internal readonly struct DebuggerNullableOperatorValue
     public static bool operator <(
         DebuggerNullableOperatorValue left,
         DebuggerNullableOperatorValue right) => left._number > right._number;
+
+    /// <summary>
+    /// Applies a deliberately inverted equality operator.
+    /// </summary>
+    /// <param name="left">The underlying left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>True when the operand markers differ.</returns>
+    public static bool operator ==(
+        DebuggerNullableOperatorValue left,
+        DebuggerNullableOperatorValue right) => left._number != right._number;
+
+    /// <summary>
+    /// Applies the paired deliberately inverted inequality operator.
+    /// </summary>
+    /// <param name="left">The underlying left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>True when the operand markers match.</returns>
+    public static bool operator !=(
+        DebuggerNullableOperatorValue left,
+        DebuggerNullableOperatorValue right) => left._number == right._number;
 
     /// <summary>
     /// Applies an arithmetic operator that returns a liftable value type.
@@ -109,6 +130,26 @@ internal readonly struct DebuggerNullableOperatorValue
         DebuggerNullableOperatorValue? right) => left > right;
 
     /// <summary>
+    /// Runs compiler-selected lifted nullable equality.
+    /// </summary>
+    /// <param name="left">The optional left operand.</param>
+    /// <param name="right">The optional right operand.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static bool CompilerEquals(
+        DebuggerNullableOperatorValue? left,
+        DebuggerNullableOperatorValue? right) => left == right;
+
+    /// <summary>
+    /// Runs compiler-selected lifted nullable inequality.
+    /// </summary>
+    /// <param name="left">The optional left operand.</param>
+    /// <param name="right">The optional right operand.</param>
+    /// <returns>The compiler-selected result.</returns>
+    internal static bool CompilerNotEquals(
+        DebuggerNullableOperatorValue? left,
+        DebuggerNullableOperatorValue? right) => left != right;
+
+    /// <summary>
     /// Runs compiler-selected lifted nullable arithmetic.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -145,4 +186,19 @@ internal readonly struct DebuggerNullableOperatorValue
     internal static int? CompilerNumericRemainder(
         DebuggerNullableOperatorValue? left,
         int? right) => left % right;
+
+    /// <summary>
+    /// Compares the underlying marker used by the test fixture.
+    /// </summary>
+    /// <param name="other">The other authored value.</param>
+    /// <returns>True when both values carry the same marker.</returns>
+    public bool Equals(DebuggerNullableOperatorValue other) =>
+        _number == other._number;
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) =>
+        obj is DebuggerNullableOperatorValue other && Equals(other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => _number;
 }
