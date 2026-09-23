@@ -362,7 +362,8 @@ internal sealed class ManagedUserDefinedConversionResolver
 
         if (TryGetNullableUnderlying(destination, out ManagedBoundType destinationUnderlying))
         {
-            return result.IsSameType(destinationUnderlying);
+            return result.IsSameType(destination) ||
+                result.IsSameType(destinationUnderlying);
         }
 
         return result.IsReference && destination.IsReference &&

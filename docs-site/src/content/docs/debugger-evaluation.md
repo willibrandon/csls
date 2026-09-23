@@ -154,6 +154,8 @@ explicit casts to reference targets execute the underlying operator once for pop
 values and produce null directly for empty values. Lifted explicit casts to nullable value targets
 materialize exact `Nullable<T>` storage around the operator result. Explicit casts unwrap populated
 nullable inputs for non-nullable operators and wrap non-nullable operator results for nullable targets.
+Operators that declare nullable results preserve their exact returned storage and use lifted null
+propagation for nullable sources.
 Empty nullable inputs produce the standard nullable-value failure. These conversions use the same
 target-code authorization policy, and their results can be inspected directly or assigned through
 `setExpression`.

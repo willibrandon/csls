@@ -188,6 +188,8 @@ produce null directly for empty values. Lifted explicit casts to nullable value 
 exact `Nullable<T>` result storage after the underlying operator returns. Explicit casts also unwrap
 populated nullable inputs for non-nullable operators and wrap non-nullable operator results for
 nullable targets. Empty inputs to non-nullable targets produce the standard nullable-value failure.
+Operators that declare nullable results preserve their exact returned storage and participate in
+lifted null propagation.
 These casts require target-code authorization and can supply generation-safe direct assignment.
 Direct assignments update stopped target storage.
 

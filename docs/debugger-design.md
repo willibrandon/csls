@@ -622,6 +622,8 @@ conversions to reference targets read populated nullable storage before invoking
 operator and produce a null reference directly for empty nullable storage. Lifted explicit
 conversions to nullable value targets allocate the exact closed `Nullable<T>`, copy the underlying
 operator result into its runtime fields, and retain the complete value for inspection and assignment.
+Operators with a declared `Nullable<T>` result retain their returned physical storage and use lifted
+null propagation when their non-nullable parameter receives a nullable source.
 Normal explicit conversions unwrap populated nullable sources before invoking non-nullable operators,
 surface the standard nullable-value failure for empty sources, and wrap non-nullable results for
 nullable targets.
