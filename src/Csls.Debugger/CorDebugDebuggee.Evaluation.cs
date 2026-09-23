@@ -163,7 +163,11 @@ internal sealed partial class CorDebugDebuggee
             ? ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(node.TypeName!, plan.Language) : null;
         if (primitiveType is not (null or "string" or "object") && operand.DeclaredType is not { IsReference: true })
         {
-            return ManagedPrimitiveConversionEvaluator.EvaluateExplicit(operand, node.TypeName!, plan.Language);
+            return ManagedPrimitiveConversionEvaluator.EvaluateExplicit(
+                operand,
+                node.TypeName!,
+                plan.Language,
+                node.Operator == DebugExpressionOperator.CheckedConversion);
         }
 
         nint thread = GetThread(frame.ThreadId);
@@ -182,7 +186,13 @@ internal sealed partial class CorDebugDebuggee
             if (node.Kind == DebugExpressionNodeKind.Conversion &&
                 declared is not null &&
                 TryEvaluateEmptyLiftedExplicitConversion(
-                    operand, declared, target, plan.Language, thread, out ManagedExpressionValue emptyLifted))
+                    operand,
+                    declared,
+                    target,
+                    plan.Language,
+                    node.Operator == DebugExpressionOperator.CheckedConversion,
+                    thread,
+                    out ManagedExpressionValue emptyLifted))
             {
                 string valueTypeName = target.IsReference
                     ? ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(

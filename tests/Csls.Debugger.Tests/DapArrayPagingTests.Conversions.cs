@@ -458,6 +458,56 @@ public sealed partial class DapArrayPagingTests
             "1041",
             "int?",
             expectExpandable: true).ConfigureAwait(false);
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "checked((short)targetRankingSource)",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerCheckedExplicitTargetRankingForDebugger(targetRankingSource)",
+            "3041",
+            "short").ConfigureAwait(false);
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "checked((long)targetRankingSource)",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerCheckedExplicitUnpairedTargetForDebugger(targetRankingSource)",
+            "2041",
+            "long").ConfigureAwait(false);
+
+        JsonElement uncheckedBuiltIn = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "unchecked((byte)large[300])",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("144", uncheckedBuiltIn.GetProperty("result").GetString());
+        Assert.AreEqual("byte", uncheckedBuiltIn.GetProperty("type").GetString());
+        JsonElement checkedBuiltIn = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "checked((byte)large[300])",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("overflow", Assert.IsInstanceOfType<string>(
+            checkedBuiltIn.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
+        int checkedAssignment = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "explicitConversionResult");
+            writer.WriteString("value", "checked((byte)large[300])");
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, checkedAssignment, "setExpression", success: false);
+            Assert.Contains("overflow", Assert.IsInstanceOfType<string>(
+                response.RootElement.GetProperty("message").GetString()),
+                StringComparison.OrdinalIgnoreCase);
+        }
 
         JsonElement emptyLiftedNumericResultValue = await ReadEvaluationAsync(
             client,
@@ -630,7 +680,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("75", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("79", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {

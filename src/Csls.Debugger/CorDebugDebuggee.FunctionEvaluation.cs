@@ -224,6 +224,7 @@ internal sealed partial class CorDebugDebuggee
                             plan.Language,
                             thread),
                         plan.Language,
+                        operation.Operator == DebugExpressionOperator.CheckedConversion,
                         thread,
                         out explicitConversion)
                     : constructsObject

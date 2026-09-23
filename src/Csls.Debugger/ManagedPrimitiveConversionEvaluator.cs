@@ -14,11 +14,13 @@ internal static class ManagedPrimitiveConversionEvaluator
     /// <param name="value">The already evaluated primitive operand.</param>
     /// <param name="destinationType">The compiler-provided destination type spelling.</param>
     /// <param name="language">The expression language controlling conversion behavior.</param>
+    /// <param name="isChecked">Whether C# overflow checking applies.</param>
     /// <returns>The converted primitive value.</returns>
     internal static ManagedExpressionValue EvaluateExplicit(
         ManagedExpressionValue value,
         string destinationType,
-        DebugExpressionLanguage language)
+        DebugExpressionLanguage language,
+        bool isChecked)
     {
         ArgumentNullException.ThrowIfNull(value);
         string target = NormalizeTypeName(destinationType, language);
@@ -47,7 +49,7 @@ internal static class ManagedPrimitiveConversionEvaluator
         return ConvertNumeric(
             scalar,
             target,
-            checkedConversion: language == DebugExpressionLanguage.VisualBasic);
+            checkedConversion: isChecked || language == DebugExpressionLanguage.VisualBasic);
     }
 
     /// <summary>
@@ -147,7 +149,8 @@ internal static class ManagedPrimitiveConversionEvaluator
         ManagedExpressionValue value,
         ManagedBoundType source,
         ManagedBoundType target,
-        DebugExpressionLanguage language)
+        DebugExpressionLanguage language,
+        bool isChecked)
     {
         if (!IsStandardExplicitUserDefinedConversion(source, target, language))
         {
@@ -169,7 +172,7 @@ internal static class ManagedPrimitiveConversionEvaluator
         return ConvertNumeric(
             scalar,
             targetName,
-            checkedConversion: language == DebugExpressionLanguage.VisualBasic);
+            checkedConversion: isChecked || language == DebugExpressionLanguage.VisualBasic);
     }
 
     /// <summary>

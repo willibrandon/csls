@@ -25,6 +25,17 @@ internal readonly struct DebuggerExplicitTargetRankingSource
     }
 
     /// <summary>
+    /// Converts through the checked partner for the nearer result type.
+    /// </summary>
+    /// <param name="source">The authored source value.</param>
+    /// <returns>The checked integer result marker.</returns>
+    public static explicit operator checked int(DebuggerExplicitTargetRankingSource source)
+    {
+        DebuggerImplicitConversionFixture.RecordConversion();
+        return source._number + 3000;
+    }
+
+    /// <summary>
     /// Converts through the wider result type.
     /// </summary>
     /// <param name="source">The authored source value.</param>

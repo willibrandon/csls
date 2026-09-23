@@ -323,6 +323,22 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerExplicitNullableTargetRankingSource source) => (int?)source;
 
     /// <summary>
+    /// Runs the compiler's paired checked explicit target selection.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The selected checked narrowed result.</returns>
+    internal static short CompilerCheckedExplicitTargetRankingForDebugger(
+        DebuggerExplicitTargetRankingSource source) => checked((short)source);
+
+    /// <summary>
+    /// Runs the compiler's unpaired ordinary operator selection in a checked context.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The selected ordinary wide result.</returns>
+    internal static long CompilerCheckedExplicitUnpairedTargetForDebugger(
+        DebuggerExplicitTargetRankingSource source) => checked((long)source);
+
+    /// <summary>
     /// Runs the compiler's runtime-checked reference conversion before an explicit operator.
     /// </summary>
     /// <param name="source">The base-declared reference source.</param>

@@ -46,7 +46,10 @@ internal sealed partial class CorDebugDebuggee
             ManagedBoundType target = BindConversionTarget(
                 plan.Root.TypeName, plan.Language, thread);
             ManagedUserDefinedConversion? conversion = new ManagedUserDefinedConversionResolver(
-                _boundTypes, thread, plan.Language).ResolveExplicit(source, target);
+                _boundTypes, thread, plan.Language).ResolveExplicit(
+                    source,
+                    target,
+                    plan.Root.Operator == DebugExpressionOperator.CheckedConversion);
             return conversion is not null &&
                 (!conversion.IsLifted || !IsNullableBoxingEmpty(operand, source, thread));
         }
@@ -61,11 +64,12 @@ internal sealed partial class CorDebugDebuggee
         ManagedBoundType source,
         ManagedBoundType target,
         DebugExpressionLanguage language,
+        bool isChecked,
         nint thread,
         out ManagedExpressionValue result)
     {
         ManagedUserDefinedConversion? conversion = new ManagedUserDefinedConversionResolver(
-            _boundTypes, thread, language).ResolveExplicit(source, target);
+            _boundTypes, thread, language).ResolveExplicit(source, target, isChecked);
         if (conversion is { IsLifted: true } && IsNullableBoxingEmpty(operand, source, thread))
         {
             result = CreateEmptyLiftedConversionValue(target);
@@ -215,7 +219,11 @@ internal sealed partial class CorDebugDebuggee
             sourceType, conversion.ParameterType, conversion.Language))
         {
             return ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
-                value, sourceType, conversion.ParameterType, conversion.Language) with
+                value,
+                sourceType,
+                conversion.ParameterType,
+                conversion.Language,
+                conversion.IsChecked) with
             {
                 DeclaredType = conversion.ParameterType
             };
@@ -469,7 +477,8 @@ internal sealed partial class CorDebugDebuggee
                         extracted,
                         containedType,
                         conversion.ParameterType,
-                        conversion.Language) with
+                        conversion.Language,
+                        conversion.IsChecked) with
                     {
                         DeclaredType = conversion.ParameterType
                     };
@@ -572,7 +581,8 @@ internal sealed partial class CorDebugDebuggee
                     value,
                     conversion.ResultType,
                     underlying,
-                    conversion.Language) with
+                    conversion.Language,
+                    conversion.IsChecked) with
                 {
                     DeclaredType = underlying
                 };
@@ -611,7 +621,11 @@ internal sealed partial class CorDebugDebuggee
             conversion.ResultType, conversion.TargetType, conversion.Language))
         {
             return ManagedPrimitiveConversionEvaluator.ConvertStandardExplicitUserDefinedConversion(
-                value, conversion.ResultType, conversion.TargetType, conversion.Language) with
+                value,
+                conversion.ResultType,
+                conversion.TargetType,
+                conversion.Language,
+                conversion.IsChecked) with
             {
                 DeclaredType = conversion.TargetType
             };
@@ -868,12 +882,13 @@ internal sealed partial class CorDebugDebuggee
         ManagedBoundType source,
         ManagedBoundType target,
         DebugExpressionLanguage language,
+        bool isChecked,
         nint thread,
         out ManagedUserDefinedConversion conversion)
     {
         conversion =
             new ManagedUserDefinedConversionResolver(
-                _boundTypes, thread, language).ResolveExplicit(source, target) ??
+                _boundTypes, thread, language).ResolveExplicit(source, target, isChecked) ??
             throw new InvalidOperationException(
                 $"No loaded user-defined conversion exists from " +
                 $"'{source.DisplayName}' to '{target.DisplayName}'.");

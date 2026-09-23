@@ -158,6 +158,9 @@ internal static class ManagedExpressionPlanValidator
                 DebugExpressionOperator.BitwiseAnd or
                 DebugExpressionOperator.BitwiseOr or
                 DebugExpressionOperator.ExclusiveOr,
+            DebugExpressionNodeKind.Conversion => node.Operator is
+                DebugExpressionOperator.None or
+                DebugExpressionOperator.CheckedConversion,
             _ => node.Operator == DebugExpressionOperator.None
         };
         if (!valid)

@@ -88,10 +88,12 @@ internal sealed class ManagedUserDefinedConversionResolver
     /// </summary>
     /// <param name="source">The exact loaded cast source type.</param>
     /// <param name="destination">The exact loaded cast destination type.</param>
+    /// <param name="isChecked">Whether C# checked conversion operators participate.</param>
     /// <returns>The unique best conversion, or null when none exists.</returns>
     internal ManagedUserDefinedConversion? ResolveExplicit(
         ManagedBoundType source,
-        ManagedBoundType destination)
+        ManagedBoundType destination,
+        bool isChecked)
     {
         if (source.IsSameType(destination) || source.IsArray || destination.IsArray ||
             _referenceConversions.IsExplicit(source, destination, _thread) ||
@@ -108,7 +110,7 @@ internal sealed class ManagedUserDefinedConversionResolver
             StripNullable(destination),
             includeDestinationBaseTypes: true))
         {
-            AddExplicitMatches(declaringType, source, destination, matches);
+            AddExplicitMatches(declaringType, source, destination, isChecked, matches);
         }
 
         return SelectBest(matches, source, destination, explicitConversion: true);
@@ -118,6 +120,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType declaringType,
         ManagedBoundType source,
         ManagedBoundType destination,
+        bool isChecked,
         List<ManagedUserDefinedConversion> matches)
     {
         CorDebugLoadedModule module = _types.GetModule(declaringType);
@@ -135,6 +138,8 @@ internal sealed class ManagedUserDefinedConversionResolver
                 $"Runtime type token 0x{declaringType.DefinitionToken:X8} is not a TypeDef token.");
         }
 
+        var operators = new List<(MethodDefinitionHandle Handle, string Name,
+            ManagedBoundType ParameterType, ManagedBoundType ResultType)>();
         foreach (MethodDefinitionHandle handle in metadata.GetMethods((TypeDefinitionHandle)entity))
         {
             MethodDefinition method = metadata.GetMethodDefinition(handle);
@@ -144,7 +149,7 @@ internal sealed class ManagedUserDefinedConversionResolver
             if ((method.Attributes & required) != required ||
                 (method.Attributes & MethodAttributes.Abstract) != 0 ||
                 method.GetGenericParameters().Count != 0 ||
-                name is not ("op_Explicit" or "op_Implicit"))
+                name is not ("op_Explicit" or "op_CheckedExplicit" or "op_Implicit"))
             {
                 continue;
             }
@@ -162,6 +167,23 @@ internal sealed class ManagedUserDefinedConversionResolver
                 parameter, declaringType.TypeArguments, [], _thread);
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
+            operators.Add((handle, name, parameterType, resultType));
+        }
+
+        (ManagedBoundType ParameterType, ManagedBoundType ResultType)[] checkedPairs = [.. operators
+            .Where(static conversion => conversion.Name == "op_CheckedExplicit")
+            .Select(static conversion => (conversion.ParameterType, conversion.ResultType))];
+        foreach ((MethodDefinitionHandle handle, string name, ManagedBoundType parameterType,
+            ManagedBoundType resultType) in operators)
+        {
+            if (name == "op_CheckedExplicit" && !isChecked ||
+                name == "op_Explicit" && isChecked && checkedPairs.Any(pair =>
+                    pair.ParameterType.IsSameType(parameterType) &&
+                    pair.ResultType.IsSameType(resultType)))
+            {
+                continue;
+            }
+
             uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
             bool lifted = IsApplicableLiftedConversion(
                 source, destination, parameterType, resultType);
@@ -182,7 +204,8 @@ internal sealed class ManagedUserDefinedConversionResolver
                     resultType,
                     destination,
                     _language,
-                    lifted));
+                    lifted,
+                    isChecked));
             }
         }
     }
@@ -250,7 +273,8 @@ internal sealed class ManagedUserDefinedConversionResolver
                     resultType,
                     destination,
                     _language,
-                    lifted));
+                    lifted,
+                    IsChecked: false));
             }
         }
     }

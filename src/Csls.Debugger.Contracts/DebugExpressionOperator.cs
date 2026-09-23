@@ -11,6 +11,11 @@ public enum DebugExpressionOperator
     None,
 
     /// <summary>
+    /// Applies a conversion in a checked C# context.
+    /// </summary>
+    CheckedConversion,
+
+    /// <summary>
     /// Preserves a numeric operand.
     /// </summary>
     UnaryPlus,

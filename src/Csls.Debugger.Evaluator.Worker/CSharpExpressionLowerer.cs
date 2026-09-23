@@ -34,63 +34,82 @@ internal static class CSharpExpressionLowerer
             Lower(syntax));
     }
 
-    private static DebugExpressionNode Lower(ExpressionSyntax syntax) => syntax switch
-    {
-        IdentifierNameSyntax identifier => Node(
-            DebugExpressionNodeKind.Identifier,
-            identifier.Identifier.ValueText),
-        ThisExpressionSyntax => Node(DebugExpressionNodeKind.This),
-        LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.DefaultLiteralExpression) =>
-            Node(DebugExpressionNodeKind.DefaultLiteral),
-        DefaultExpressionSyntax typedDefault => ConversionNode(
-            typedDefault.Type.ToString(),
-            Node(DebugExpressionNodeKind.DefaultLiteral)),
-        LiteralExpressionSyntax literal => ExpressionLiteral.Create(literal.Token.Value),
-        ParenthesizedExpressionSyntax parenthesized => Lower(parenthesized.Expression),
-        CastExpressionSyntax conversion => ConversionNode(
-            conversion.Type.ToString(),
-            Lower(conversion.Expression)),
-        BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.IsExpression) ||
-            binary.IsKind(SyntaxKind.AsExpression) => new DebugExpressionNode(
-                binary.IsKind(SyntaxKind.IsExpression) ? DebugExpressionNodeKind.TypeTest : DebugExpressionNodeKind.TryCast,
-                DebugExpressionOperator.None, Text: null, binary.Right.ToString(), [Lower(binary.Left)]),
-        MemberAccessExpressionSyntax member
-            when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) => Node(
-                DebugExpressionNodeKind.MemberAccess,
-                member.Name.Identifier.ValueText,
-                Lower(member.Expression)),
-        ElementAccessExpressionSyntax element => Node(
-            DebugExpressionNodeKind.ElementAccess,
-            children:
-            [
-                Lower(element.Expression),
-                .. element.ArgumentList.Arguments.Select(argument => Lower(argument.Expression))
-            ]),
-        ObjectCreationExpressionSyntax creation => LowerObjectCreation(creation),
-        InvocationExpressionSyntax invocation => LowerInvocation(invocation),
-        PrefixUnaryExpressionSyntax unary => OperatorNode(
-            DebugExpressionNodeKind.Unary,
-            UnaryOperator(unary.Kind()),
-            Lower(unary.Operand)),
-        BinaryExpressionSyntax binary => OperatorNode(
-            DebugExpressionNodeKind.Binary,
-            BinaryOperator(binary.Kind()),
-            Lower(binary.Left),
-            Lower(binary.Right)),
-        ConditionalExpressionSyntax conditional => Node(
-            DebugExpressionNodeKind.Conditional,
-            children:
-            [
-                Lower(conditional.Condition),
-                Lower(conditional.WhenTrue),
-                Lower(conditional.WhenFalse)
-            ]),
-        _ => throw new NotSupportedException(
-            $"C# expression kind {syntax.Kind()} is not supported by safe evaluation.")
-    };
+    private static DebugExpressionNode Lower(
+        ExpressionSyntax syntax,
+        bool checkedContext = false) => syntax switch
+        {
+            IdentifierNameSyntax identifier => Node(
+                DebugExpressionNodeKind.Identifier,
+                identifier.Identifier.ValueText),
+            ThisExpressionSyntax => Node(DebugExpressionNodeKind.This),
+            LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.DefaultLiteralExpression) =>
+                Node(DebugExpressionNodeKind.DefaultLiteral),
+            DefaultExpressionSyntax typedDefault => ConversionNode(
+                typedDefault.Type.ToString(),
+                Node(DebugExpressionNodeKind.DefaultLiteral),
+                checkedContext),
+            LiteralExpressionSyntax literal => ExpressionLiteral.Create(literal.Token.Value),
+            ParenthesizedExpressionSyntax parenthesized => Lower(
+                parenthesized.Expression,
+                checkedContext),
+            CheckedExpressionSyntax checkedExpression => Lower(
+                checkedExpression.Expression,
+                checkedExpression.IsKind(SyntaxKind.CheckedExpression)),
+            CastExpressionSyntax conversion => ConversionNode(
+                conversion.Type.ToString(),
+                Lower(conversion.Expression, checkedContext),
+                checkedContext),
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.IsExpression) ||
+                binary.IsKind(SyntaxKind.AsExpression) => new DebugExpressionNode(
+                    binary.IsKind(SyntaxKind.IsExpression) ? DebugExpressionNodeKind.TypeTest : DebugExpressionNodeKind.TryCast,
+                    DebugExpressionOperator.None, Text: null, binary.Right.ToString(),
+                    [Lower(binary.Left, checkedContext)]),
+            MemberAccessExpressionSyntax member
+                when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) => Node(
+                    DebugExpressionNodeKind.MemberAccess,
+                    member.Name.Identifier.ValueText,
+                    Lower(member.Expression, checkedContext)),
+            ElementAccessExpressionSyntax element => Node(
+                DebugExpressionNodeKind.ElementAccess,
+                children:
+                [
+                    Lower(element.Expression, checkedContext),
+                .. element.ArgumentList.Arguments.Select(argument =>
+                    Lower(argument.Expression, checkedContext))
+                ]),
+            ObjectCreationExpressionSyntax creation => LowerObjectCreation(creation, checkedContext),
+            InvocationExpressionSyntax invocation => LowerInvocation(invocation, checkedContext),
+            PrefixUnaryExpressionSyntax unary when checkedContext &&
+                unary.IsKind(SyntaxKind.UnaryMinusExpression) => throw new NotSupportedException(
+                    "Checked C# arithmetic is not supported by safe evaluation."),
+            PrefixUnaryExpressionSyntax unary => OperatorNode(
+                DebugExpressionNodeKind.Unary,
+                UnaryOperator(unary.Kind()),
+                Lower(unary.Operand, checkedContext)),
+            BinaryExpressionSyntax binary when checkedContext &&
+                binary.Kind() is SyntaxKind.AddExpression or SyntaxKind.SubtractExpression or
+                    SyntaxKind.MultiplyExpression => throw new NotSupportedException(
+                        "Checked C# arithmetic is not supported by safe evaluation."),
+            BinaryExpressionSyntax binary => OperatorNode(
+                DebugExpressionNodeKind.Binary,
+                BinaryOperator(binary.Kind()),
+                Lower(binary.Left, checkedContext),
+                Lower(binary.Right, checkedContext)),
+            ConditionalExpressionSyntax conditional => Node(
+                DebugExpressionNodeKind.Conditional,
+                children:
+                [
+                    Lower(conditional.Condition, checkedContext),
+                Lower(conditional.WhenTrue, checkedContext),
+                Lower(conditional.WhenFalse, checkedContext)
+                ]),
+            _ => throw new NotSupportedException(
+                $"C# expression kind {syntax.Kind()} is not supported by safe evaluation.")
+        };
 
     private static DebugExpressionNode LowerObjectCreation(
-        ObjectCreationExpressionSyntax creation)
+        ObjectCreationExpressionSyntax creation,
+        bool checkedContext)
     {
         if (creation.Initializer is not null)
         {
@@ -108,11 +127,13 @@ internal static class CSharpExpressionLowerer
             DebugExpressionNodeKind.ObjectCreation,
             typeName,
             creation.ArgumentList?.Arguments
-                .Select(LowerArgument)
+                .Select(argument => LowerArgument(argument, checkedContext))
                 .ToArray() ?? []);
     }
 
-    private static DebugExpressionNode LowerInvocation(InvocationExpressionSyntax invocation)
+    private static DebugExpressionNode LowerInvocation(
+        InvocationExpressionSyntax invocation,
+        bool checkedContext)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax member ||
             !member.IsKind(SyntaxKind.SimpleMemberAccessExpression) ||
@@ -126,17 +147,20 @@ internal static class CSharpExpressionLowerer
             DebugExpressionNodeKind.Invocation,
             method.Identifier.ValueText,
             [
-                Lower(member.Expression),
-                .. invocation.ArgumentList.Arguments.Select(LowerArgument)
+                Lower(member.Expression, checkedContext),
+                .. invocation.ArgumentList.Arguments.Select(argument =>
+                    LowerArgument(argument, checkedContext))
             ]);
     }
 
-    private static DebugExpressionNode LowerArgument(ArgumentSyntax argument) =>
+    private static DebugExpressionNode LowerArgument(
+        ArgumentSyntax argument,
+        bool checkedContext) =>
         argument.NameColon is { } name
             ? Node(DebugExpressionNodeKind.NamedArgument,
                 name.Name.Identifier.ValueText,
-                Lower(argument.Expression))
-            : Lower(argument.Expression);
+                Lower(argument.Expression, checkedContext))
+            : Lower(argument.Expression, checkedContext);
 
     private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
     {
@@ -192,9 +216,12 @@ internal static class CSharpExpressionLowerer
 
     private static DebugExpressionNode ConversionNode(
         string typeName,
-        DebugExpressionNode operand) => new(
+        DebugExpressionNode operand,
+        bool checkedContext = false) => new(
             DebugExpressionNodeKind.Conversion,
-            DebugExpressionOperator.None,
+            checkedContext
+                ? DebugExpressionOperator.CheckedConversion
+                : DebugExpressionOperator.None,
             Text: null,
             typeName,
             [operand]);
