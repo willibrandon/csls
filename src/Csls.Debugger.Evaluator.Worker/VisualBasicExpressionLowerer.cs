@@ -53,6 +53,18 @@ internal static class VisualBasicExpressionLowerer
             ? OperatorNode(DebugExpressionNodeKind.Unary, DebugExpressionOperator.LogicalNot,
                 TypeOperation(DebugExpressionNodeKind.TypeTest, typeTest.Type, typeTest.Expression))
             : TypeOperation(DebugExpressionNodeKind.TypeTest, typeTest.Type, typeTest.Expression),
+        BinaryExpressionSyntax binary when
+            binary.IsKind(SyntaxKind.IsExpression) &&
+            binary.Right.IsKind(SyntaxKind.NothingLiteralExpression) => OperatorNode(
+                DebugExpressionNodeKind.Unary,
+                DebugExpressionOperator.IsNull,
+                Lower(binary.Left)),
+        BinaryExpressionSyntax binary when
+            binary.IsKind(SyntaxKind.IsNotExpression) &&
+            binary.Right.IsKind(SyntaxKind.NothingLiteralExpression) => OperatorNode(
+                DebugExpressionNodeKind.Unary,
+                DebugExpressionOperator.IsNotNull,
+                Lower(binary.Left)),
         PredefinedCastExpressionSyntax conversion => ConversionNode(
             conversion.Keyword.ValueText,
             Lower(conversion.Expression)),

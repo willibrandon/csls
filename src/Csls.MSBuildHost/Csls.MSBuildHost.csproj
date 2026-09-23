@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.MSBuildHost</AssemblyName>
+    <RootNamespace>Csls.MSBuildHost</RootNamespace>
+    <Description>Framework-dependent design-time MSBuild host for the workspace SDK.</Description>
+    <SelfContained>false</SelfContained>
+    <UseAppHost>false</UseAppHost>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Workspaces.MSBuild/Csls.Workspaces.MSBuild.csproj" />
+  </ItemGroup>
+</Project>

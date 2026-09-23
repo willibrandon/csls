@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Csls.TestProcessHost;
@@ -6,29 +5,8 @@ namespace Csls.TestProcessHost;
 /// <summary>
 /// Retains distinct CLR array layouts while an independent process captures its heap.
 /// </summary>
-internal static class DebuggerDumpArrayFixture
+internal static partial class DebuggerDumpArrayFixture
 {
-    /// <summary>
-    /// Ends the target while a debugger-owned function evaluation is running.
-    /// </summary>
-    internal static void ExitDuringDebuggerEvaluation()
-    {
-        Console.Error.WriteLine("csls-evaluation-exit-entered");
-        Console.Error.Flush();
-        Environment.Exit(37);
-    }
-
-    /// <summary>
-    /// Kills the target without a managed evaluation or process-exit callback.
-    /// </summary>
-    internal static void CrashDuringDebuggerEvaluation()
-    {
-        Console.Error.WriteLine("csls-evaluation-crash-entered");
-        Console.Error.Flush();
-        using var process = Process.GetCurrentProcess();
-        process.Kill();
-    }
-
     /// <summary>
     /// Selects the array's generic collection interface over System.Object.
     /// </summary>
@@ -895,6 +873,13 @@ internal static class DebuggerDumpArrayFixture
         object boxedNullableValue = 47;
         object? boxedNullableEmpty = null;
         object boxedNullableMismatch = "not an integer";
+        bool[] nullPatternOracle =
+        [
+            CompilerIsNull(boxedNullableEmpty),
+            !CompilerIsNull(boxedNullableValue),
+            CompilerIsNull(nullable[1]),
+            !CompilerIsNull(nullable[0])
+        ];
         object boxedNullableStruct = new DebuggerOptionalStructFixture();
         ValueType boxedIntegerValue = 47;
         ValueType boxedDecimalValue = 47m;
@@ -973,6 +958,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(boxedNullableValue);
         GC.KeepAlive(boxedNullableEmpty);
         GC.KeepAlive(boxedNullableMismatch);
+        GC.KeepAlive(nullPatternOracle);
         GC.KeepAlive(boxedNullableStruct);
         GC.KeepAlive(boxedIntegerValue);
         GC.KeepAlive(boxedDecimalValue);

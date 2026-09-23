@@ -141,7 +141,9 @@ internal static class ManagedExpressionPlanValidator
                 DebugExpressionOperator.Negate or
                 DebugExpressionOperator.CheckedNegate or
                 DebugExpressionOperator.LogicalNot or
-                DebugExpressionOperator.OnesComplement,
+                DebugExpressionOperator.OnesComplement or
+                DebugExpressionOperator.IsNull or
+                DebugExpressionOperator.IsNotNull,
             DebugExpressionNodeKind.Binary => node.Operator is
                 DebugExpressionOperator.Add or
                 DebugExpressionOperator.CheckedAdd or

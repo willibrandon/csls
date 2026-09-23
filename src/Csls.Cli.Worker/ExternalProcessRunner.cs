@@ -43,6 +43,24 @@ internal static class ExternalProcessRunner
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         startInfo.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
         startInfo.Environment["DOTNET_NOLOGO"] = "true";
+        startInfo.Environment.Remove("MSBUILD_EXE_PATH");
+        startInfo.Environment.Remove("MSBuildExtensionsPath");
+        startInfo.Environment.Remove("MSBuildSDKsPath");
+        foreach (string key in startInfo.Environment.Keys
+            .Where(static key => key.StartsWith(
+                "DOTNET_ROOT",
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray())
+        {
+            startInfo.Environment.Remove(key);
+        }
+
+        if (Path.IsPathFullyQualified(fileName))
+        {
+            startInfo.Environment["DOTNET_ROOT"] = Path.GetDirectoryName(fileName) ??
+                throw new InvalidOperationException(
+                    $"The .NET host path has no parent directory: {fileName}");
+        }
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"The {fileName} process did not start.");

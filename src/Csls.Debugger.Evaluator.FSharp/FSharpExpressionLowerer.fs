@@ -75,6 +75,7 @@ module FSharpExpressionLowerer =
         | "op_UnaryNegation" -> DebugExpressionOperator.Negate
         | "not" -> DebugExpressionOperator.LogicalNot
         | "op_LogicalNot" -> DebugExpressionOperator.OnesComplement
+        | "isNull" -> DebugExpressionOperator.IsNull
         | _ -> raise (unsupported $"operator '{name}'")
 
     let private binaryOperator name =

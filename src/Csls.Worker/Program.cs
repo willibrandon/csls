@@ -11,14 +11,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
-if (args is ["--msbuild-build-host"])
-{
-    using Stream input = Console.OpenStandardInput();
-    using Stream output = Console.OpenStandardOutput();
-    await MSBuildBuildHostServer.RunAsync(input, output).ConfigureAwait(false);
-    return 0;
-}
-
 // The editor owns workspace configuration; the protocol host owns its services and logging.
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {

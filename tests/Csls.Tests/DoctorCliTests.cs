@@ -75,6 +75,50 @@ public sealed class DoctorCliTests
     }
 
     /// <summary>
+    /// Loads a workspace using its SDK when the parent inherited another MSBuild toolset.
+    /// </summary>
+    [TestMethod]
+    public async Task DoctorIgnoresInheritedMSBuildToolsetForWorkspaceProcesses()
+    {
+        string fixturePath = CreateFixturePath();
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await WriteProjectAsync(
+                fixturePath,
+                "Console.WriteLine(\"workspace SDK\");").ConfigureAwait(false);
+            string otherSdkPath = Path.Join(fixturePath, "other-sdk");
+            string binlogPath = Path.Join(fixturePath, "doctor.binlog");
+            var inheritedEnvironment = new Dictionary<string, string>
+            {
+                ["MSBUILD_EXE_PATH"] = Path.Join(otherSdkPath, "MSBuild.dll"),
+                ["MSBuildExtensionsPath"] = otherSdkPath,
+                ["MSBuildSDKsPath"] = Path.Join(otherSdkPath, "Sdks"),
+                ["DOTNET_ROOT"] = otherSdkPath,
+                ["DOTNET_ROOT_X64"] = otherSdkPath
+            };
+
+            (int exitCode, string output, string error) = await RunDoctorAsync(
+                fixturePath,
+                ["doctor", fixturePath, "--binlog", binlogPath, "--json"],
+                inheritedEnvironment).ConfigureAwait(false);
+
+            Assert.AreEqual(0, exitCode, $"{error}{Environment.NewLine}{output}");
+            using var document = JsonDocument.Parse(output);
+            AssertSuccessfulEnvelope(document.RootElement);
+            JsonElement data = document.RootElement.GetProperty("data");
+            Assert.AreEqual(1, data.GetProperty("projects").GetArrayLength());
+            Assert.AreEqual(0, data.GetProperty("diagnostics").GetArrayLength());
+            Assert.IsTrue(data.GetProperty("isHealthy").GetBoolean());
+            Assert.IsTrue(File.Exists(binlogPath));
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Reports real compiler errors without treating valid server startup as unhealthy.
     /// </summary>
     [TestMethod]
@@ -194,7 +238,8 @@ public sealed class DoctorCliTests
 
     private async Task<(int ExitCode, string Output, string Error)> RunDoctorAsync(
         string workingDirectory,
-        IReadOnlyList<string> arguments)
+        IReadOnlyList<string> arguments,
+        IReadOnlyDictionary<string, string>? inheritedEnvironment = null)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
@@ -250,6 +295,14 @@ public sealed class DoctorCliTests
         startInfo.Environment["CSLS_CLI_WORKER_PATH"] = cliWorkerPath;
         startInfo.Environment["CSLS_SERVER_WORKER_PATH"] = serverWorkerPath;
         startInfo.Environment["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost();
+        if (inheritedEnvironment is not null)
+        {
+            foreach (KeyValuePair<string, string> variable in inheritedEnvironment)
+            {
+                startInfo.Environment[variable.Key] = variable.Value;
+            }
+        }
+
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls doctor process did not start.");
         Task<string> outputTask = process.StandardOutput.ReadToEndAsync(

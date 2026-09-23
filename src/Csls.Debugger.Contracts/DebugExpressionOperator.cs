@@ -116,6 +116,16 @@ public enum DebugExpressionOperator
     GreaterThanOrEqual,
 
     /// <summary>
+    /// Tests whether an operand has null reference or empty nullable identity.
+    /// </summary>
+    IsNull,
+
+    /// <summary>
+    /// Tests whether an operand has non-null reference or populated nullable identity.
+    /// </summary>
+    IsNotNull,
+
+    /// <summary>
     /// Computes conditional Boolean conjunction.
     /// </summary>
     LogicalAnd,

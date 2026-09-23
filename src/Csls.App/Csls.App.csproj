@@ -49,6 +49,9 @@
     <CslsBundledWorker Include="../Csls.Worker/Csls.Worker.csproj">
       <BundlePath>workers/server</BundlePath>
     </CslsBundledWorker>
+    <CslsBundledWorker Include="../Csls.MSBuildHost/Csls.MSBuildHost.csproj">
+      <BundlePath>workers/server/msbuild</BundlePath>
+    </CslsBundledWorker>
     <CslsBundledWorker Include="../Csls.Cli.Worker/Csls.Cli.Worker.csproj">
       <BundlePath>workers/cli</BundlePath>
     </CslsBundledWorker>

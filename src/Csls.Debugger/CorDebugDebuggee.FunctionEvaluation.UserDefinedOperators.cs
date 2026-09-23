@@ -28,6 +28,12 @@ internal sealed partial class CorDebugDebuggee
             return false;
         }
 
+        if (plan.Root.Operator is DebugExpressionOperator.IsNull or
+            DebugExpressionOperator.IsNotNull)
+        {
+            return false;
+        }
+
         ManagedExpressionValue[] operands = [.. plan.Root.Children.Select(child =>
             EvaluateNode(frame, plan, child, generation))];
         ManagedExpressionValue?[] constantOperands = [.. plan.Root.Children.Select((child, index) =>

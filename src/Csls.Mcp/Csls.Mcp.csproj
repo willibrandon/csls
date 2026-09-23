@@ -48,6 +48,9 @@
     <CslsBundledWorker Include="../Csls.Worker/Csls.Worker.csproj">
       <BundlePath>workers/server</BundlePath>
     </CslsBundledWorker>
+    <CslsBundledWorker Include="../Csls.MSBuildHost/Csls.MSBuildHost.csproj">
+      <BundlePath>workers/server/msbuild</BundlePath>
+    </CslsBundledWorker>
   </ItemGroup>
 
   <Import Project="../../build/Csls.BundledWorkers.targets" />

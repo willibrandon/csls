@@ -96,6 +96,13 @@ internal static class ToolPackageLayout
             RequireEntry(archive, $"{root}/{workerName}");
         }
 
+        if (workerPaths.Contains("workers/server/csls-worker", StringComparer.Ordinal))
+        {
+            RequireEntry(archive, $"{root}/workers/server/msbuild/Csls.MSBuildHost.dll");
+            RequireEntry(archive, $"{root}/workers/server/msbuild/Csls.MSBuildHost.deps.json");
+            RequireEntry(archive, $"{root}/workers/server/msbuild/Csls.MSBuildHost.runtimeconfig.json");
+        }
+
         if (native && !string.Equals(runtimeIdentifier, "win-x86", StringComparison.Ordinal))
         {
             ValidateNativeAotPayload(archive, root, commandName);

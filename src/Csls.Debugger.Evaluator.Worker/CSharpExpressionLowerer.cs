@@ -64,6 +64,10 @@ internal static class CSharpExpressionLowerer
                     binary.IsKind(SyntaxKind.IsExpression) ? DebugExpressionNodeKind.TypeTest : DebugExpressionNodeKind.TryCast,
                     DebugExpressionOperator.None, Text: null, binary.Right.ToString(),
                     [Lower(binary.Left, checkedContext)]),
+            IsPatternExpressionSyntax pattern => OperatorNode(
+                DebugExpressionNodeKind.Unary,
+                NullPatternOperator(pattern.Pattern),
+                Lower(pattern.Expression, checkedContext)),
             MemberAccessExpressionSyntax member
                 when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) => Node(
                     DebugExpressionNodeKind.MemberAccess,
@@ -168,6 +172,24 @@ internal static class CSharpExpressionLowerer
             _ => throw new NotSupportedException(
                 $"C# unary operator {kind} is not supported by safe evaluation.")
         };
+
+    private static DebugExpressionOperator NullPatternOperator(PatternSyntax pattern) => pattern switch
+    {
+        ConstantPatternSyntax
+        {
+            Expression: LiteralExpressionSyntax literal
+        } when literal.IsKind(SyntaxKind.NullLiteralExpression) => DebugExpressionOperator.IsNull,
+        UnaryPatternSyntax unary when unary.IsKind(SyntaxKind.NotPattern) =>
+            NullPatternOperator(unary.Pattern) switch
+            {
+                DebugExpressionOperator.IsNull => DebugExpressionOperator.IsNotNull,
+                DebugExpressionOperator.IsNotNull => DebugExpressionOperator.IsNull,
+                _ => throw new InvalidOperationException("A null pattern has an invalid operation.")
+            },
+        ParenthesizedPatternSyntax parenthesized => NullPatternOperator(parenthesized.Pattern),
+        _ => throw new NotSupportedException(
+            $"C# pattern {pattern.Kind()} is not supported by safe evaluation.")
+    };
 
     private static DebugExpressionOperator BinaryOperator(
         SyntaxKind kind,

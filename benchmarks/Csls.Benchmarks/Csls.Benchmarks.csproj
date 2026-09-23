@@ -28,5 +28,7 @@
     <ProjectReference Include="../../src/Csls.Workspaces.MSBuild/Csls.Workspaces.MSBuild.csproj" />
     <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.MSBuildHost/Csls.MSBuildHost.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

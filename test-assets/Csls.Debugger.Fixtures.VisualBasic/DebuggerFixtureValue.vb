@@ -46,6 +46,15 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         End Sub
 
         ''' <summary>
+        ''' Applies the target compiler's reference-null semantics to one value.
+        ''' </summary>
+        ''' <param name="value">The value tested by compiler-authored target code.</param>
+        ''' <returns>True when the value is Nothing.</returns>
+        Friend Shared Function CompilerIsNothing(value As Object) As Boolean
+            Return value Is Nothing
+        End Function
+
+        ''' <summary>
         ''' Computes a stable result by executing target code.
         ''' </summary>
         ''' <returns>The stored number incremented by one.</returns>

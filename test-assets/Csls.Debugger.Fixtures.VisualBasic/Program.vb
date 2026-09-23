@@ -22,6 +22,8 @@ Friend Module Program
         Dim nullableGenericValue = New DebuggerGenericFixture(Of Integer?)(answer)
         Dim referenceValue As Object = value
         Dim nullReference As Object = If(arguments.Length > 100, value, Nothing)
+        Dim nullOracle As Boolean() = {DebuggerFixtureValue.CompilerIsNothing(nullReference),
+            Not DebuggerFixtureValue.CompilerIsNothing(referenceValue)}
         Dim boxedNumber As Object = answer
         Dim typeOracle As Boolean() = {TypeOf referenceValue Is DebuggerFixtureValue,
             TypeOf referenceValue Is String, TypeOf nullReference Is Object, TypeOf boxedNumber Is Integer}
@@ -43,6 +45,7 @@ Friend Module Program
         GC.KeepAlive(nullableGenericValue)
         GC.KeepAlive(referenceValue)
         GC.KeepAlive(nullReference)
+        GC.KeepAlive(nullOracle)
         GC.KeepAlive(boxedNumber)
         GC.KeepAlive(typeOracle)
         GC.KeepAlive(pairs)

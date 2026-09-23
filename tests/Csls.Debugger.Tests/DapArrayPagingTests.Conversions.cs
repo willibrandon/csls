@@ -18,6 +18,7 @@ public sealed partial class DapArrayPagingTests
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
         int frameId = await StopAtInitializedArraysAsync(client).ConfigureAwait(false);
+        await AssertNullPatternsAsync(client, frameId).ConfigureAwait(false);
         const string receiver = "Csls.TestProcessHost.DebuggerDumpArrayFixture";
         foreach ((string expression, string result) in new[]
         {

@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -120,7 +119,6 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
                 })
         ];
 
-        RegisterMSBuild(loadPlans);
         WorkspaceLoadProgressReporter? progressReporter = progress is null
             ? null
             : new WorkspaceLoadProgressReporter(CountExpectedProjects(loadPlans), progress);
@@ -496,28 +494,6 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         return globalProperties;
     }
 
-    private void RegisterMSBuild(
-        IReadOnlyList<(string RootPath, IReadOnlyList<string> WorkspaceFiles)> loadPlans)
-    {
-        string? firstWorkspaceFile = loadPlans
-            .SelectMany(static plan => plan.WorkspaceFiles)
-            .FirstOrDefault();
-        if (firstWorkspaceFile is null)
-        {
-            return;
-        }
-
-        VisualStudioInstance? instance = MSBuildRegistration.EnsureRegistered(firstWorkspaceFile);
-        if (instance is not null)
-        {
-            LogMSBuildRegistered(
-                instance.Name,
-                instance.Version,
-                instance.MSBuildPath,
-                firstWorkspaceFile);
-        }
-    }
-
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -545,16 +521,6 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         Level = LogLevel.Information,
         Message = "Discovering C# workspace in {RootPath}")]
     private partial void LogWorkspaceDiscoveryStarted(string rootPath);
-
-    [LoggerMessage(
-        EventId = 4,
-        Level = LogLevel.Information,
-        Message = "Registered MSBuild {Name} {Version} from {Path} for {WorkspaceFile}")]
-    private partial void LogMSBuildRegistered(
-        string name,
-        Version version,
-        string path,
-        string workspaceFile);
 
     [LoggerMessage(
         EventId = 5,

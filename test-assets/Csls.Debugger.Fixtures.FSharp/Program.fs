@@ -21,8 +21,10 @@ let main arguments =
             System.Collections.Generic.List<int>())
     let arrayGenericValue = DebuggerGenericFixture<int[]>([||])
     let nullableGenericValue = DebuggerGenericFixture<Nullable<int>>(Nullable(answer))
-    let referenceValue: obj = value
+    let referenceValue: obj | null = value
     let nullReference: obj | null = if arguments.Length > 100 then value else null
+    let nullReferenceOracle = isNull nullReference
+    let nonNullReferenceOracle = not (isNull referenceValue)
     let boxedNumber: obj = answer
     let typeOracle = [| referenceValue :? DebuggerFixtureValue; referenceValue :? string;
                        nullReference :? string; boxedNumber :? int |]
@@ -43,6 +45,8 @@ let main arguments =
     GC.KeepAlive(nullableGenericValue)
     GC.KeepAlive(referenceValue)
     GC.KeepAlive(nullReference)
+    GC.KeepAlive(nullReferenceOracle)
+    GC.KeepAlive(nonNullReferenceOracle)
     GC.KeepAlive(boxedNumber)
     GC.KeepAlive(typeOracle)
     GC.KeepAlive(pairs)

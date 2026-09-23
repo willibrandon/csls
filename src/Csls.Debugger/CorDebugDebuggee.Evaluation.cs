@@ -132,6 +132,15 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedExpressionValue operand = EvaluateNode(
             frame, plan, node.Children[0], generation);
+        if (node.Operator is DebugExpressionOperator.IsNull or
+            DebugExpressionOperator.IsNotNull)
+        {
+            bool isNull = IsNullExpressionValue(frame, operand);
+            return ManagedExpressionValueFactory.FromScalar(
+                node.Operator == DebugExpressionOperator.IsNull ? isNull : !isNull,
+                "bool");
+        }
+
         return TryEvaluateEmptyLiftedOperator(
             frame,
             node.Operator,
@@ -140,6 +149,32 @@ internal sealed partial class CorDebugDebuggee
             out ManagedExpressionValue lifted)
                 ? lifted
                 : ManagedPrimitiveOperatorEvaluator.EvaluateUnary(node.Operator, operand);
+    }
+
+    private bool IsNullExpressionValue(
+        ManagedFrameHandle frame,
+        ManagedExpressionValue operand)
+    {
+        if (operand.HasScalar)
+        {
+            return operand.Scalar is null;
+        }
+
+        if (operand.DeclaredType is not ManagedBoundType declared)
+        {
+            return false;
+        }
+
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            return _boundTypes.IsCoreType(declared, "System.Nullable`1", thread) &&
+                IsNullableBoxingEmpty(operand, declared, thread);
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(thread);
+        }
     }
 
     private ManagedExpressionValue EvaluateTypeOperation(

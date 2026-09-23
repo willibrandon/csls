@@ -68,6 +68,24 @@ public sealed class DapVisualBasicNamedArgumentTests : DapTestContext
 
             foreach ((string expression, string expected) in new[]
             {
+                ("nullReference Is Nothing", "true"),
+                ("referenceValue IsNot Nothing", "true"),
+                ("nullOracle(0)", "true"),
+                ("nullOracle(1)", "true")
+            })
+            {
+                JsonElement result = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    expression,
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(expected, result.GetProperty("result").GetString());
+                Assert.AreEqual("bool", result.GetProperty("type").GetString());
+            }
+
+            foreach ((string expression, string expected) in new[]
+            {
                 ("value.CombineNamed(SeCoNd:=answer, FIRST:=41)", "4183"),
                 ("DebuggerFixtureValue.CombineNamedStatic(SeCoNd:=answer, FIRST:=41)", "4142"),
                 ("DebuggerFixtureValue.CombineOptionalStatic(FIRST:=41)", "4142"),
