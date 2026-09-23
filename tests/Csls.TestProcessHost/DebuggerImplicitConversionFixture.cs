@@ -157,6 +157,14 @@ internal static class DebuggerImplicitConversionFixture
         DebuggerImplicitConversionSource? source) => (string?)source;
 
     /// <summary>
+    /// Runs the compiler's lifted explicit conversion to a nullable value.
+    /// </summary>
+    /// <param name="source">The nullable authored source value.</param>
+    /// <returns>The compiler-produced nullable value result.</returns>
+    internal static double? CompilerExplicitLiftedDoubleForDebugger(
+        DebuggerImplicitConversionSource? source) => (double?)source;
+
+    /// <summary>
     /// Runs the compiler's numeric widening after an implicit operator selected by an explicit cast.
     /// </summary>
     /// <param name="source">The authored source value.</param>

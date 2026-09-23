@@ -28,7 +28,7 @@ internal sealed partial class CorDebugDebuggee
 
         if (ManagedRuntimeValueIdentity.GetElementType(destination) == 0x11)
         {
-            if (source.IsTypedDefault)
+            if (source.IsTypedDefault || source.IsZeroValueTypeDefault)
             {
                 nint thread = GetThread(threadId);
                 try
@@ -36,8 +36,11 @@ internal sealed partial class CorDebugDebuggee
                     ManagedBoundType actual = _boundTypes.CaptureValue(destination, thread);
                     if (source.DeclaredType?.IsSameType(actual) != true)
                     {
+                        string sourceKind = source.IsTypedDefault
+                            ? "A typed default"
+                            : "A zero value";
                         throw new InvalidOperationException(
-                            $"A typed default of '{source.DeclaredType?.DisplayName}' cannot be assigned " +
+                            $"{sourceKind} of '{source.DeclaredType?.DisplayName}' cannot be assigned " +
                             $"to value-type storage of '{actual.DisplayName}'.");
                     }
                 }
@@ -61,15 +64,31 @@ internal sealed partial class CorDebugDebuggee
             if (source.RuntimeValueReference <= 0)
             {
                 throw new InvalidOperationException(
-                    "Whole-value assignment requires existing unboxed value types; " +
-                    "implicit boxing and unboxing are not supported.");
+                    $"Whole-value assignment from '{source.Type}' to " +
+                    $"'{declaredType?.DisplayName ?? storageType?.DisplayName ?? "value-type storage"}' " +
+                    "requires an existing unboxed value.");
             }
 
-            using var assignment = ManagedValueTypeAssignment.Prepare(
-                destination, GetRuntimeValue(source), OpenRuntimeModule);
-            BeginVariableMutation(mutations);
-            assignment.Write();
-            return;
+            nint unboxedSource = 0;
+            try
+            {
+                if (!TryDereferenceAndUnboxValue(
+                    GetRuntimeValue(source), out unboxedSource))
+                {
+                    throw new InvalidOperationException(
+                        "Whole-value assignment cannot read a null boxed value.");
+                }
+
+                using var assignment = ManagedValueTypeAssignment.Prepare(
+                    destination, unboxedSource, OpenRuntimeModule);
+                BeginVariableMutation(mutations);
+                assignment.Write();
+                return;
+            }
+            finally
+            {
+                ReleaseFunctionEvaluationPointer(unboxedSource);
+            }
         }
 
         if (ComAbi.TryQueryInterface(

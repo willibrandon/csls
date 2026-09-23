@@ -184,8 +184,10 @@ internal sealed partial class CorDebugDebuggee
                 TryEvaluateEmptyLiftedExplicitConversion(
                     operand, declared, target, plan.Language, thread, out ManagedExpressionValue emptyLifted))
             {
-                string valueTypeName = ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(
-                    target.Name, DebugExpressionLanguage.CSharp) ?? target.DisplayName;
+                string valueTypeName = target.IsReference
+                    ? ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(
+                        target.Name, DebugExpressionLanguage.CSharp) ?? target.DisplayName
+                    : displayName;
                 return emptyLifted with
                 {
                     Display = emptyLifted.Display with

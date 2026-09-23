@@ -158,7 +158,7 @@ internal sealed class ManagedUserDefinedConversionResolver
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
             uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
-            bool lifted = destination.IsReference && IsApplicableLiftedConversion(
+            bool lifted = IsApplicableLiftedConversion(
                 source, destination, parameterType, resultType);
             bool normal = !lifted &&
                 HasSupportedStandardExplicitInputConversion(source, parameterType) &&

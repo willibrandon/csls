@@ -150,8 +150,9 @@ execute the operator once for populated values and propagate null directly for e
 Explicit casts resolve loaded explicit or implicit conversion operators, apply standard numeric and
 reference conversions around the operator, and box or unbox operator inputs when required. Lifted
 explicit casts to reference targets execute the underlying operator once for populated nullable
-values and produce null directly for empty values. They run under the same target-code authorization
-policy, and their results can be inspected directly or assigned through `setExpression`.
+values and produce null directly for empty values. Lifted explicit casts to nullable value targets
+materialize exact `Nullable<T>` storage around the operator result. They run under the same target-code
+authorization policy, and their results can be inspected directly or assigned through `setExpression`.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

@@ -137,6 +137,11 @@ internal sealed class ManagedFunctionEvaluation
     internal bool PendingStructuredReceiver { get; set; }
 
     /// <summary>
+    /// Gets or sets whether an exact nullable result allocation awaits its completion callback.
+    /// </summary>
+    internal bool PendingLiftedExplicitResult { get; set; }
+
+    /// <summary>
     /// Gets or sets the argument whose implicit conversion operator is executing.
     /// </summary>
     internal int PendingUserDefinedConversionArgumentIndex { get; set; } = -1;
@@ -163,7 +168,9 @@ internal sealed class ManagedFunctionEvaluation
     {
         get
         {
-            string operation = PendingStringArgumentIndex >= 0
+            string operation = PendingLiftedExplicitResult
+                ? "materializing a lifted conversion result"
+                : PendingStringArgumentIndex >= 0
                 ? $"allocating string argument {PendingStringArgumentIndex + 1}"
                 : PendingStructuredReceiver
                     ? "allocating a value-type receiver"

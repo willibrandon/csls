@@ -70,8 +70,7 @@ internal sealed class ManagedValueTypeAssignment : IDisposable
             ManagedRuntimeValueIdentity.GetElementType(source) != 0x11)
         {
             throw new InvalidOperationException(
-                "Whole-value assignment requires existing unboxed value types; " +
-                "implicit boxing and unboxing are not supported.");
+                "Whole-value assignment requires existing unboxed values of the same value type.");
         }
 
         if (!ManagedRuntimeValueIdentity.HaveSameRuntimeType(destination, source))

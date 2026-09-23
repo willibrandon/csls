@@ -337,55 +337,8 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugEval.GetResult");
             value = RequirePointer(Volatile.Read(ref *valueAddress), "ICorDebugEval.GetResult");
 
-            ManagedExpressionValue converted;
-            if (conversion.ResultType.IsReference)
-            {
-                if (TryDereferenceValue(value, out nint dereferenced))
-                {
-                    _ = ComAbi.Release(dereferenced);
-                    retained = CreateFunctionEvaluationHandle(value);
-                    retainedIsHeapHandle = true;
-                    converted = CreateMaterializedUserDefinedConversionValue(
-                        conversion.ResultType);
-                }
-                else
-                {
-                    converted = ManagedExpressionValueFactory.FromScalar(
-                        value: null, conversion.ResultType.DisplayName) with
-                    {
-                        DeclaredType = conversion.ResultType
-                    };
-                }
-            }
-            else if (conversion.ResultType.ElementType == 0x11)
-            {
-                _ = ComAbi.AddRef(value);
-                retained = value;
-                converted = CreateMaterializedUserDefinedConversionValue(
-                    conversion.ResultType);
-            }
-            else
-            {
-                ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
-                converted = ManagedExpressionValueFactory.FromVariable(
-                    new DebugVariableInfo(
-                        "$conversion",
-                        display.Value,
-                        display.Type,
-                        VariablesReference: 0,
-                        MemoryReference: null,
-                        EvaluateName: null),
-                    runtimeValueReference: 0,
-                    display) with
-                {
-                    DeclaredType = conversion.ResultType
-                };
-                if (!converted.HasScalar)
-                {
-                    throw new InvalidOperationException(
-                        $"The conversion result '{conversion.ResultType.DisplayName}' cannot be materialized.");
-                }
-            }
+            ManagedExpressionValue converted = CaptureUserDefinedConversionResult(
+                value, conversion, out retained, out retainedIsHeapHandle);
 
             converted = ApplyUserDefinedConversionTarget(
                 converted, conversion, active.Thread);
@@ -517,6 +470,58 @@ internal sealed partial class CorDebugDebuggee
             DeclaredType: type,
             IsMaterializedFunctionArgument: true);
 
+    private ManagedExpressionValue CaptureUserDefinedConversionResult(
+        nint value,
+        ManagedUserDefinedConversion conversion,
+        out nint retained,
+        out bool retainedIsHeapHandle)
+    {
+        retained = 0;
+        retainedIsHeapHandle = false;
+        if (conversion.ResultType.IsReference)
+        {
+            if (!TryDereferenceValue(value, out nint dereferenced))
+            {
+                return ManagedExpressionValueFactory.FromScalar(
+                    value: null, conversion.ResultType.DisplayName) with
+                {
+                    DeclaredType = conversion.ResultType
+                };
+            }
+
+            _ = ComAbi.Release(dereferenced);
+            retained = CreateFunctionEvaluationHandle(value);
+            retainedIsHeapHandle = true;
+            return CreateMaterializedUserDefinedConversionValue(conversion.ResultType);
+        }
+
+        if (conversion.ResultType.ElementType == 0x11)
+        {
+            _ = ComAbi.AddRef(value);
+            retained = value;
+            return CreateMaterializedUserDefinedConversionValue(conversion.ResultType);
+        }
+
+        ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+        ManagedExpressionValue converted = ManagedExpressionValueFactory.FromVariable(
+            new DebugVariableInfo(
+                "$conversion",
+                display.Value,
+                display.Type,
+                VariablesReference: 0,
+                MemoryReference: null,
+                EvaluateName: null),
+            runtimeValueReference: 0,
+            display) with
+        {
+            DeclaredType = conversion.ResultType
+        };
+        return converted.HasScalar
+            ? converted
+            : throw new InvalidOperationException(
+                $"The conversion result '{conversion.ResultType.DisplayName}' cannot be materialized.");
+    }
+
     private ManagedExpressionValue ApplyUserDefinedConversionTarget(
         ManagedExpressionValue value,
         ManagedUserDefinedConversion conversion,
@@ -590,6 +595,114 @@ internal sealed partial class CorDebugDebuggee
             Display = empty.Display with { Value = "null" },
             IsNullableValue = true
         };
+    }
+
+    private unsafe bool TryContinueWithLiftedExplicitResultMaterialization(
+        ManagedFunctionEvaluation active)
+    {
+        ManagedUserDefinedConversion? conversion = active.ExplicitUserDefinedConversion;
+        if (active.PendingLiftedExplicitResult ||
+            conversion is not { IsLifted: true } ||
+            !_boundTypes.IsCoreType(conversion.TargetType, "System.Nullable`1", active.Thread))
+        {
+            return false;
+        }
+
+        if (active.Arguments.Length != 1 || active.RuntimeArguments.Length != 1)
+        {
+            throw new InvalidOperationException(
+                "A lifted explicit conversion has an invalid argument state.");
+        }
+
+        nint completedEvaluation = active.Pointer;
+        nint value = 0;
+        nint retained = 0;
+        bool retainedIsHeapHandle = false;
+        nint nextEvaluation = 0;
+        nint oldArgument = active.RuntimeArguments[0];
+        bool oldArgumentIsHeapHandle = active.RuntimeArgumentIsHeapHandle[0];
+        try
+        {
+            nint* valueAddress = &value;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugEvalAbi(completedEvaluation).GetResult((nint)valueAddress),
+                "ICorDebugEval.GetResult");
+            value = RequirePointer(
+                Volatile.Read(ref *valueAddress), "ICorDebugEval.GetResult");
+            ManagedExpressionValue converted = CaptureUserDefinedConversionResult(
+                value, conversion, out retained, out retainedIsHeapHandle);
+            converted = ApplyUserDefinedConversionTarget(
+                converted, conversion, active.Thread);
+            if (!converted.RequiresNullableMaterialization)
+            {
+                throw new InvalidOperationException(
+                    "A lifted explicit result did not select nullable materialization.");
+            }
+
+            nextEvaluation = CreateEvaluation(active.Thread);
+            active.Arguments[0] = converted;
+            active.RuntimeArguments[0] = retained;
+            active.RuntimeArgumentIsHeapHandle[0] = retainedIsHeapHandle;
+            retained = 0;
+            ReleaseFunctionEvaluationArgument(oldArgument, oldArgumentIsHeapHandle);
+            active.Pointer = nextEvaluation;
+            nextEvaluation = 0;
+            active.PendingLiftedExplicitResult = true;
+            _ = ComAbi.Release(completedEvaluation);
+            completedEvaluation = 0;
+
+            ScheduleStructuredValueAllocation(active, conversion.TargetType);
+            ContinueFunctionEvaluation(
+                "The debugger could not resume the target after scheduling a lifted " +
+                "conversion result. The target's evaluation state is uncertain; this " +
+                "debugger session must be disconnected.");
+            return true;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationArgument(retained, retainedIsHeapHandle);
+            ReleaseFunctionEvaluationPointer(nextEvaluation);
+            ReleaseFunctionEvaluationPointer(completedEvaluation);
+            ReleaseFunctionEvaluationPointer(value);
+        }
+    }
+
+    private void PopulateLiftedExplicitResult(
+        nint value,
+        ManagedFunctionEvaluation active)
+    {
+        if (!active.PendingLiftedExplicitResult)
+        {
+            return;
+        }
+
+        ManagedUserDefinedConversion conversion = active.ExplicitUserDefinedConversion ??
+            throw new InvalidOperationException(
+                "A pending lifted result has no selected conversion.");
+        nint unboxed = 0;
+        nint runtimeType = 0;
+        try
+        {
+            if (!TryDereferenceAndUnboxValue(value, out unboxed))
+            {
+                throw new InvalidOperationException(
+                    "CoreCLR did not allocate the lifted nullable result.");
+            }
+
+            runtimeType = _boundTypes.ResolveRuntimeType(
+                conversion.TargetType, active.Thread);
+            SetNullableArgument(
+                unboxed,
+                runtimeType,
+                active.Arguments[0],
+                active.RuntimeArguments[0]);
+            active.PendingLiftedExplicitResult = false;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(runtimeType);
+            ReleaseFunctionEvaluationPointer(unboxed);
+        }
     }
 
     private bool TryCreateExplicitUserDefinedConversionResult(

@@ -536,7 +536,30 @@ internal sealed partial class CorDebugDebuggee
         }
 
         Exception? stageFailure = null;
-        if (!active.MethodCallScheduled && !active.AbortRequested && !isException)
+        if (active.MethodCallScheduled && !active.AbortRequested && !isException)
+        {
+            try
+            {
+                if (TryContinueWithLiftedExplicitResultMaterialization(active))
+                {
+                    return true;
+                }
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or InvalidOperationException or IOException or
+                UnauthorizedAccessException or BadImageFormatException)
+            {
+                stageFailure = new InvalidOperationException(
+                    "Managed function evaluation failed while materializing a lifted result: " +
+                    exception.Message,
+                    exception);
+            }
+        }
+
+        if (stageFailure is null &&
+            !active.MethodCallScheduled &&
+            !active.AbortRequested &&
+            !isException)
         {
             try
             {
@@ -604,6 +627,11 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else
                 {
+                    if (!isException)
+                    {
+                        PopulateLiftedExplicitResult(value, active);
+                    }
+
                     ManagedValueDisplay display = FormatRuntimeValue(value, isException ? null : active.ResultTupleCustomTypeInfo);
                     if (isException)
                     {
