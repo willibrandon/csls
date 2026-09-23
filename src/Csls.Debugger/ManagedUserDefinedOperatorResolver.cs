@@ -289,7 +289,8 @@ internal sealed class ManagedUserDefinedOperatorResolver
     {
         if (source is null)
         {
-            return destination.IsReference;
+            return destination.IsReference ||
+                _types.IsCoreType(destination, "System.Nullable`1", _thread);
         }
 
         if (_types.IsCoreType(destination, "System.Nullable`1", _thread) &&

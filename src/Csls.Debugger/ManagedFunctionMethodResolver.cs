@@ -185,7 +185,8 @@ internal static class ManagedFunctionMethodResolver
             ManagedExpressionValue?[] OptionalArguments, ManagedBoundType[] MethodTypeArguments)[] bestMatches =
             [.. matches.Where(candidate => !matches.Any(other =>
                 other.Handle != candidate.Handle &&
-                (IsBetter(other.Parameters, candidate.Parameters, arguments, language, conversions, thread) ||
+                (IsBetter(other.Parameters, candidate.Parameters, arguments, language,
+                    conversions, types, thread) ||
                  HasEqualParameterPreference(other.Parameters, candidate.Parameters,
                      other.OptionalArguments, candidate.OptionalArguments,
                      other.MethodTypeArguments, candidate.MethodTypeArguments))))];
@@ -228,7 +229,8 @@ internal static class ManagedFunctionMethodResolver
 
             if (argument is null)
             {
-                if (!parameter.IsReference)
+                if (!parameter.IsReference &&
+                    !types.IsCoreType(parameter, "System.Nullable`1", thread))
                 {
                     return false;
                 }
@@ -279,6 +281,7 @@ internal static class ManagedFunctionMethodResolver
         IReadOnlyList<ManagedBoundType?> arguments,
         DebugExpressionLanguage language,
         ManagedReferenceConversion conversions,
+        ManagedBoundTypeSystem types,
         nint thread)
     {
         bool strictlyBetter = false;
@@ -300,9 +303,13 @@ internal static class ManagedFunctionMethodResolver
 
             bool preferredToAlternative = conversions.IsImplicit(preferred, alternative, thread) ||
                 conversions.IsImplicitBoxing(preferred, alternative, thread) ||
+                IsImplicitNullableParameterConversion(
+                    preferred, alternative, language, conversions, types, thread) ||
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(preferred, alternative, language);
             bool alternativeToPreferred = conversions.IsImplicit(alternative, preferred, thread) ||
                 conversions.IsImplicitBoxing(alternative, preferred, thread) ||
+                IsImplicitNullableParameterConversion(
+                    alternative, preferred, language, conversions, types, thread) ||
                 ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(alternative, preferred, language);
             bool preferredSignedTarget = ManagedPrimitiveConversionEvaluator.IsPreferredSignedInvocationTarget(
                 preferred, alternative, language);
@@ -316,5 +323,30 @@ internal static class ManagedFunctionMethodResolver
         }
 
         return strictlyBetter;
+    }
+
+    private static bool IsImplicitNullableParameterConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination,
+        DebugExpressionLanguage language,
+        ManagedReferenceConversion conversions,
+        ManagedBoundTypeSystem types,
+        nint thread)
+    {
+        if (!types.IsCoreType(destination, "System.Nullable`1", thread) ||
+            destination.TypeArguments is not [ManagedBoundType destinationUnderlying])
+        {
+            return false;
+        }
+
+        ManagedBoundType sourceUnderlying =
+            types.IsCoreType(source, "System.Nullable`1", thread) &&
+            source.TypeArguments is [ManagedBoundType nullableUnderlying]
+                ? nullableUnderlying
+                : source;
+        return sourceUnderlying.IsSameType(destinationUnderlying) ||
+            conversions.IsImplicit(sourceUnderlying, destinationUnderlying, thread) ||
+            ManagedPrimitiveConversionEvaluator.IsImplicitInvocationConversion(
+                sourceUnderlying, destinationUnderlying, language);
     }
 }

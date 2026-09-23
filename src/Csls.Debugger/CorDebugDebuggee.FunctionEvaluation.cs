@@ -308,6 +308,12 @@ internal sealed partial class CorDebugDebuggee
                             plan.Language,
                             thread);
                     }
+                    else if (sourceType is null && _boundTypes.IsCoreType(
+                        parameterType, "System.Nullable`1", thread))
+                    {
+                        suppliedArguments[index] =
+                            ManagedExpressionValueFactory.FromZeroValueTypeDefault(parameterType);
+                    }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {
                         suppliedArguments[index] = ManagedFunctionImplicitDefaults.TryCreateContextual(

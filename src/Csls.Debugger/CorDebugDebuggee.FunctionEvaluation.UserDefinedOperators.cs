@@ -46,8 +46,7 @@ internal sealed partial class CorDebugDebuggee
                 (!selected.IsLifted || !operands.Select((operand, index) =>
                     IsEmptyLiftedOperatorOperand(
                         operand,
-                        operandTypes[index] ?? throw new InvalidOperationException(
-                            "A lifted operator has no exact nullable operand type."),
+                        operandTypes[index],
                         thread)).Any(static empty => empty));
         }
         finally
@@ -121,8 +120,7 @@ internal sealed partial class CorDebugDebuggee
             bool[] empty = [.. operands.Select((operand, index) =>
                 IsEmptyLiftedOperatorOperand(
                     operand,
-                    operandTypes[index] ?? throw new InvalidOperationException(
-                        "A lifted operator has no exact nullable operand type."),
+                    operandTypes[index],
                     thread))];
             if (!empty.Any(static value => value))
             {
@@ -170,10 +168,22 @@ internal sealed partial class CorDebugDebuggee
 
     private bool IsEmptyLiftedOperatorOperand(
         ManagedExpressionValue operand,
-        ManagedBoundType operandType,
-        nint thread) =>
-        _boundTypes.IsCoreType(operandType, "System.Nullable`1", thread) &&
-        IsNullableBoxingEmpty(operand, operandType, thread);
+        ManagedBoundType? operandType,
+        nint thread)
+    {
+        if (operandType is null)
+        {
+            return operand is
+            {
+                HasScalar: true,
+                Scalar: null,
+                RuntimeValueReference: 0
+            };
+        }
+
+        return _boundTypes.IsCoreType(operandType, "System.Nullable`1", thread) &&
+            IsNullableBoxingEmpty(operand, operandType, thread);
+    }
 
     private ManagedExpressionValue PrepareLiftedOperatorArgument(
         ManagedExpressionValue argument,
