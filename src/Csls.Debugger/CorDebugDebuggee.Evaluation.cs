@@ -179,6 +179,25 @@ internal sealed partial class CorDebugDebuggee
                 ? _boundTypes.CaptureValue(GetRuntimeValue(operand), thread)
                 : _boundTypes.BindName(operand.Type, DebugExpressionLanguage.CSharp, thread);
             string displayName = ManagedRuntimeTypeNameParser.Parse(typeName, typeLanguage).DebuggerTypeName;
+            if (node.Kind == DebugExpressionNodeKind.Conversion &&
+                declared is not null &&
+                TryEvaluateEmptyLiftedExplicitConversion(
+                    operand, declared, target, plan.Language, thread, out ManagedExpressionValue emptyLifted))
+            {
+                string valueTypeName = ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(
+                    target.Name, DebugExpressionLanguage.CSharp) ?? target.DisplayName;
+                return emptyLifted with
+                {
+                    Display = emptyLifted.Display with
+                    {
+                        Type = valueTypeName,
+                        EvaluateName = ManagedExpressionName.CreateTypeOperation(
+                            operand.Display.EvaluateName, displayName, node.Kind, plan.Language)
+                    },
+                    ExplicitReceiverType = target
+                };
+            }
+
             if (node.Kind == DebugExpressionNodeKind.TryCast &&
                 _boundTypes.IsCoreType(target, "System.Nullable`1", thread))
             {

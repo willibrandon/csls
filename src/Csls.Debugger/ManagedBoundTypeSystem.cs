@@ -249,6 +249,22 @@ internal sealed class ManagedBoundTypeSystem
     private ManagedBoundType BindNamedType(
         ManagedRuntimeTypeReference reference, DebugExpressionLanguage language, nint thread)
     {
+        ManagedBoundType[]? boundArguments = null;
+        if (reference is
+            {
+                MetadataName: "System.Nullable`1",
+                TypeArguments: [ManagedRuntimeTypeReference annotated]
+            })
+        {
+            ManagedBoundType annotatedType = BindNamedType(annotated, language, thread);
+            if (annotatedType.IsReference)
+            {
+                return ApplyArrayRanks(annotatedType, reference.ArrayRanks);
+            }
+
+            boundArguments = [annotatedType];
+        }
+
         CorDebugLoadedModule module;
         uint token;
         if (ManagedRuntimeTypeAliases.TryNormalize(reference.MetadataName, language, out _, out _))
@@ -270,13 +286,22 @@ internal sealed class ManagedBoundTypeSystem
             throw new InvalidOperationException($"Runtime type '{reference.DebuggerTypeName}' has incompatible generic arity.");
         }
 
-        ManagedBoundType[] arguments = [.. reference.TypeArguments.Select(argument => BindNamedType(argument, language, thread))];
+        ManagedBoundType[] arguments = boundArguments ??
+            [.. reference.TypeArguments.Select(argument => BindNamedType(argument, language, thread))];
         ManagedBoundType? parent = definition.BaseType.IsNil ? null : Bind(
             DecodeType(new ManagedMetadataTypeSignatureProvider(module.Pointer), reader, definition.BaseType), arguments, [], thread);
         bool isValueType = parent is not null &&
             (IsCoreType(parent, "System.ValueType", thread) || IsCoreType(parent, "System.Enum", thread));
         ManagedBoundType result = CreateDefinition(module, token, isValueType ? 0x11U : 0x12U, arguments, thread);
-        foreach (int rank in reference.ArrayRanks)
+        return ApplyArrayRanks(result, reference.ArrayRanks);
+    }
+
+    private static ManagedBoundType ApplyArrayRanks(
+        ManagedBoundType type,
+        IReadOnlyList<int> arrayRanks)
+    {
+        ManagedBoundType result = type;
+        foreach (int rank in arrayRanks)
         {
             result = CreateArray(result, rank == 1 ? 0x1dU : 0x14U, rank);
         }

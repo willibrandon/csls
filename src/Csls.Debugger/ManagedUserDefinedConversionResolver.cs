@@ -158,11 +158,12 @@ internal sealed class ManagedUserDefinedConversionResolver
             ManagedBoundType resultType = _types.Bind(
                 signature.ReturnType, declaringType.TypeArguments, [], _thread);
             uint methodToken = checked((uint)MetadataTokens.GetToken(handle));
-            bool hasInputConversion = HasSupportedStandardExplicitInputConversion(
-                source, parameterType);
-            bool hasResultConversion = HasSupportedStandardExplicitResultConversion(
-                resultType, destination);
-            if (hasInputConversion && hasResultConversion &&
+            bool lifted = destination.IsReference && IsApplicableLiftedConversion(
+                source, destination, parameterType, resultType);
+            bool normal = !lifted &&
+                HasSupportedStandardExplicitInputConversion(source, parameterType) &&
+                HasSupportedStandardExplicitResultConversion(resultType, destination);
+            if ((normal || lifted) &&
                 !matches.Any(match =>
                     match.DeclaringType.ModuleId == declaringType.ModuleId &&
                     match.MethodToken == methodToken))
@@ -174,7 +175,7 @@ internal sealed class ManagedUserDefinedConversionResolver
                     resultType,
                     destination,
                     _language,
-                    IsLifted: false));
+                    lifted));
             }
         }
     }

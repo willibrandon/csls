@@ -244,6 +244,48 @@ public sealed partial class DapArrayPagingTests
             AssertEvent(invalidated.RootElement, "invalidated");
         }
 
+        await AssertScalarExplicitConversionAsync(
+            client,
+            frameId,
+            "(string?)populatedLiftedImplicitConversion",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitLiftedStringForDebugger(populatedLiftedImplicitConversion)",
+            "\"41\"",
+            "string").ConfigureAwait(false);
+
+        JsonElement emptyLifted = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(string?)emptyLiftedImplicitConversion",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("null", emptyLifted.GetProperty("result").GetString());
+        Assert.AreEqual("string", emptyLifted.GetProperty("type").GetString());
+        JsonElement compilerEmptyLifted = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitLiftedStringForDebugger(emptyLiftedImplicitConversion)",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("null", compilerEmptyLifted.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        await AssignAndAssertLiftedStringAsync(
+            client,
+            frameId,
+            "(string?)populatedLiftedImplicitConversion",
+            "\"41\"").ConfigureAwait(false);
+        await AssignAndAssertLiftedStringAsync(
+            client,
+            frameId,
+            "(string?)emptyLiftedImplicitConversion",
+            "null").ConfigureAwait(false);
+
         JsonElement nonStandardNumericBridge = await ReadEvaluationAsync(
             client,
             frameId,
@@ -295,7 +337,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("41", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("44", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {
@@ -392,5 +434,32 @@ public sealed partial class DapArrayPagingTests
         using JsonDocument compilerInvalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         AssertEvent(compilerInvalidated.RootElement, "invalidated");
+    }
+
+    private async Task AssignAndAssertLiftedStringAsync(
+        DapTestClient client,
+        int frameId,
+        string valueExpression,
+        string expected)
+    {
+        int sequence = await client.SendRequestAsync("setExpression", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frameId);
+            writer.WriteString("expression", "explicitLiftedConversionResult");
+            writer.WriteString("value", valueExpression);
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, sequence, "setExpression", success: true);
+            Assert.AreEqual(expected, response.RootElement.GetProperty("body")
+                .GetProperty("value").GetString());
+        }
+
+        using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(invalidated.RootElement, "invalidated");
     }
 }

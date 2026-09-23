@@ -616,7 +616,9 @@ execute the underlying operator once for populated values, materialize exact nul
 storage for value-type targets, and propagate null without target execution.
 Explicit conversion expressions resolve exact loaded `op_Explicit` and `op_Implicit` methods,
 execute them through the supervised evaluator only when target code is authorized, and retain
-their declared result type for inspection and generation-safe assignment.
+their declared result type for inspection and generation-safe assignment. Lifted explicit
+conversions to reference targets read populated nullable storage before invoking the underlying
+operator and produce a null reference directly for empty nullable storage.
 Generic method inference uses the loaded argument declarations, including array
 elements and constructed generic arguments. The selected method's inferred
 runtime type pointers follow declaring-type pointers in `CallParameterizedFunction`;

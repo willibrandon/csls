@@ -915,6 +915,7 @@ internal static class DebuggerDumpArrayFixture
         DebuggerExplicitReferenceResultSource explicitReferenceResultSource = new(41);
         DebuggerExplicitReferenceResultSource invalidExplicitReferenceResultSource = new(-1);
         double explicitConversionResult = 0;
+        string? explicitLiftedConversionResult = "initial";
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
         cycleObject.Value = cycleObject;
@@ -975,6 +976,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(explicitReferenceResultSource);
         GC.KeepAlive(invalidExplicitReferenceResultSource);
         GC.KeepAlive(explicitConversionResult);
+        GC.KeepAlive(explicitLiftedConversionResult);
         GC.KeepAlive(implicitReferenceConversion);
         GC.KeepAlive(chain);
         GC.KeepAlive(cycleObject);

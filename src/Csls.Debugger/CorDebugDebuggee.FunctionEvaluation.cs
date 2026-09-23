@@ -254,14 +254,19 @@ internal sealed partial class CorDebugDebuggee
                     ManagedBoundType parameterType = binding.ParameterTypes[index];
                     if (convertsValue)
                     {
-                        suppliedArguments[index] = PrepareUserDefinedConversionInput(
-                            suppliedArguments[index],
-                            sourceType ?? throw new InvalidOperationException(
-                                "A null literal has no user-defined conversion source type."),
-                            explicitConversion ?? throw new InvalidOperationException(
-                                "An explicit conversion has no selected loaded operator."),
-                            referenceConversions,
-                            thread);
+                        ManagedBoundType exactSource = sourceType ?? throw new InvalidOperationException(
+                            "A null literal has no user-defined conversion source type.");
+                        ManagedUserDefinedConversion selected = explicitConversion ??
+                            throw new InvalidOperationException(
+                                "An explicit conversion has no selected loaded operator.");
+                        suppliedArguments[index] = selected.IsLifted
+                            ? suppliedArguments[index] with { DeclaredType = exactSource }
+                            : PrepareUserDefinedConversionInput(
+                                suppliedArguments[index],
+                                exactSource,
+                                selected,
+                                referenceConversions,
+                                thread);
                     }
                     else if (suppliedArguments[index].IsContextualDefault)
                     {

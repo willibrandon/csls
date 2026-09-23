@@ -142,11 +142,21 @@ internal sealed partial class CorDebugDebuggee
 
             for (int index = 0; index < evaluation.Arguments.Length; index++)
             {
-                arguments[index + receiverCount] = CreateFunctionArgument(
-                    evaluation.Pointer,
-                    evaluation.Arguments[index],
-                    evaluation.RuntimeArguments[index],
-                    temporaryArguments);
+                ManagedUserDefinedConversion? explicitConversion =
+                    evaluation.ExplicitUserDefinedConversion;
+                arguments[index + receiverCount] = index == 0 &&
+                    explicitConversion is { IsLifted: true }
+                        ? CreateLiftedUserDefinedConversionArgument(
+                            evaluation.Arguments[index],
+                            explicitConversion,
+                            evaluation.RuntimeArguments[index],
+                            evaluation.Thread,
+                            temporaryArguments)
+                        : CreateFunctionArgument(
+                            evaluation.Pointer,
+                            evaluation.Arguments[index],
+                            evaluation.RuntimeArguments[index],
+                            temporaryArguments);
             }
 
             int callResult;

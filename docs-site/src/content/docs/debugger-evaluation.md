@@ -148,9 +148,10 @@ cancellation, thread isolation, and exception recovery as the final call, then p
 primitive, reference, null, or value-type result to that call. Lifted nullable conversions
 execute the operator once for populated values and propagate null directly for empty values.
 Explicit casts resolve loaded explicit or implicit conversion operators, apply standard numeric and
-reference conversions around the operator, and box or unbox operator inputs when required. They run
-under the same target-code authorization policy, and their results can be inspected directly or
-assigned through `setExpression`.
+reference conversions around the operator, and box or unbox operator inputs when required. Lifted
+explicit casts to reference targets execute the underlying operator once for populated nullable
+values and produce null directly for empty values. They run under the same target-code authorization
+policy, and their results can be inspected directly or assigned through `setExpression`.
 Calls to generic methods infer exact loaded type arguments from
 values, arrays, and constructed collection arguments. The inferred types bind
 the selected method's parameters and result and are passed to CoreCLR.

@@ -181,9 +181,10 @@ reference conversions around the operator and boxing into constructed generic op
 parameters, then execute as supervised target-code stages before the selected call. Lifted
 nullable conversions invoke the operator for populated values and propagate null directly.
 Explicit casts select loaded explicit or implicit conversion operators, apply standard numeric and
-reference conversions around the operator, and box or unbox operator inputs when required. They require
-target-code authorization and can supply generation-safe direct assignment. Direct assignments update
-stopped target storage.
+reference conversions around the operator, and box or unbox operator inputs when required. Lifted
+explicit casts to reference targets invoke the underlying operator for populated nullable values and
+produce null directly for empty values. They require target-code authorization and can supply
+generation-safe direct assignment. Direct assignments update stopped target storage.
 
 Use an explicit cast to inspect an exactly matching boxed struct. Assign the
 result to a local, field, or array element of the same runtime type to copy its

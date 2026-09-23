@@ -45,13 +45,35 @@ internal sealed partial class CorDebugDebuggee
 
             ManagedBoundType target = BindConversionTarget(
                 plan.Root.TypeName, plan.Language, thread);
-            return new ManagedUserDefinedConversionResolver(
-                _boundTypes, thread, plan.Language).ResolveExplicit(source, target) is not null;
+            ManagedUserDefinedConversion? conversion = new ManagedUserDefinedConversionResolver(
+                _boundTypes, thread, plan.Language).ResolveExplicit(source, target);
+            return conversion is not null &&
+                (!conversion.IsLifted || !IsNullableBoxingEmpty(operand, source, thread));
         }
         finally
         {
             ReleaseFunctionEvaluationPointer(thread);
         }
+    }
+
+    private bool TryEvaluateEmptyLiftedExplicitConversion(
+        ManagedExpressionValue operand,
+        ManagedBoundType source,
+        ManagedBoundType target,
+        DebugExpressionLanguage language,
+        nint thread,
+        out ManagedExpressionValue result)
+    {
+        ManagedUserDefinedConversion? conversion = new ManagedUserDefinedConversionResolver(
+            _boundTypes, thread, language).ResolveExplicit(source, target);
+        if (conversion is { IsLifted: true } && IsNullableBoxingEmpty(operand, source, thread))
+        {
+            result = CreateEmptyLiftedConversionValue(target);
+            return true;
+        }
+
+        result = null!;
+        return false;
     }
 
     private ManagedExpressionValue PrepareUserDefinedConversionArgument(
