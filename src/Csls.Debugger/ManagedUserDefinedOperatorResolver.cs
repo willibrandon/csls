@@ -219,7 +219,7 @@ internal sealed class ManagedUserDefinedOperatorResolver
                 HasPairedSignature(@checked, ordinary))));
         }
 
-        AddLiftedBooleanCandidates(operation, primary);
+        AddLiftedCandidates(operation, primary);
         return primary;
     }
 
@@ -307,39 +307,61 @@ internal sealed class ManagedUserDefinedOperatorResolver
         _types.IsCoreType(type, "System.MulticastDelegate", _thread) ||
         _types.IsCoreType(type, "System.ValueType", _thread);
 
-    private void AddLiftedBooleanCandidates(
+    private void AddLiftedCandidates(
         DebugExpressionOperator operation,
         List<ManagedUserDefinedOperator> candidates)
     {
-        if (operation is not (DebugExpressionOperator.Equal or
-            DebugExpressionOperator.NotEqual or
-            DebugExpressionOperator.LessThan or
-            DebugExpressionOperator.LessThanOrEqual or
-            DebugExpressionOperator.GreaterThan or
-            DebugExpressionOperator.GreaterThanOrEqual))
-        {
-            return;
-        }
-
         foreach (ManagedUserDefinedOperator candidate in candidates.ToArray())
         {
-            if (candidate.ParameterTypes is not [ManagedBoundType left, ManagedBoundType right] ||
-                candidate.ResultType.ElementType != 0x02 ||
-                !CanLift(left) ||
-                !CanLift(right) ||
-                (operation is DebugExpressionOperator.Equal or DebugExpressionOperator.NotEqual) &&
-                    !left.IsSameType(right))
+            if (candidate.ParameterTypes.Any(parameter => !CanLift(parameter)))
+            {
+                continue;
+            }
+
+            bool liftedBoolean = operation is DebugExpressionOperator.Equal or
+                DebugExpressionOperator.NotEqual or
+                DebugExpressionOperator.LessThan or
+                DebugExpressionOperator.LessThanOrEqual or
+                DebugExpressionOperator.GreaterThan or
+                DebugExpressionOperator.GreaterThanOrEqual;
+            if (liftedBoolean &&
+                (candidate.ParameterTypes is not [ManagedBoundType left, ManagedBoundType right] ||
+                 candidate.ResultType.ElementType != 0x02 ||
+                 (operation is DebugExpressionOperator.Equal or DebugExpressionOperator.NotEqual) &&
+                    !left.IsSameType(right)))
+            {
+                continue;
+            }
+
+            bool liftedNullable = operation is DebugExpressionOperator.UnaryPlus or
+                DebugExpressionOperator.Negate or
+                DebugExpressionOperator.CheckedNegate or
+                DebugExpressionOperator.LogicalNot or
+                DebugExpressionOperator.OnesComplement or
+                DebugExpressionOperator.Add or
+                DebugExpressionOperator.CheckedAdd or
+                DebugExpressionOperator.Subtract or
+                DebugExpressionOperator.CheckedSubtract or
+                DebugExpressionOperator.Multiply or
+                DebugExpressionOperator.CheckedMultiply or
+                DebugExpressionOperator.Divide or
+                DebugExpressionOperator.CheckedDivide or
+                DebugExpressionOperator.Remainder or
+                DebugExpressionOperator.BitwiseAnd or
+                DebugExpressionOperator.BitwiseOr or
+                DebugExpressionOperator.ExclusiveOr;
+            if (!liftedBoolean && (!liftedNullable || !CanLift(candidate.ResultType)))
             {
                 continue;
             }
 
             candidates.Add(candidate with
             {
-                OperandTypes =
-                [
-                    _types.MakeNullable(left, _thread),
-                    _types.MakeNullable(right, _thread)
-                ],
+                OperandTypes = [.. candidate.ParameterTypes.Select(parameter =>
+                    _types.MakeNullable(parameter, _thread))],
+                ExpressionResultType = liftedBoolean
+                    ? candidate.ResultType
+                    : _types.MakeNullable(candidate.ResultType, _thread),
                 IsLifted = true
             });
         }

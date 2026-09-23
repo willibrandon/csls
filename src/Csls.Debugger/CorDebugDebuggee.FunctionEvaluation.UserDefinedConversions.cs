@@ -347,8 +347,12 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugEval.GetResult");
             value = RequirePointer(Volatile.Read(ref *valueAddress), "ICorDebugEval.GetResult");
 
-            ManagedExpressionValue converted = CaptureUserDefinedConversionResult(
-                value, conversion, out retained, out retainedIsHeapHandle);
+            ManagedExpressionValue converted = CaptureManagedFunctionResult(
+                value,
+                conversion.ResultType,
+                "$conversion",
+                out retained,
+                out retainedIsHeapHandle);
 
             converted = ApplyUserDefinedConversionTarget(
                 converted, conversion, active.Thread);
@@ -499,10 +503,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static ManagedExpressionValue CreateMaterializedUserDefinedConversionValue(
-        ManagedBoundType type) => new(
+    private static ManagedExpressionValue CreateMaterializedFunctionValue(
+        ManagedBoundType type,
+        string name) => new(
             new DebugVariableInfo(
-                "$conversion",
+                name,
                 "{...}",
                 type.DisplayName,
                 VariablesReference: 0,
@@ -515,42 +520,43 @@ internal sealed partial class CorDebugDebuggee
             DeclaredType: type,
             IsMaterializedFunctionArgument: true);
 
-    private ManagedExpressionValue CaptureUserDefinedConversionResult(
+    private ManagedExpressionValue CaptureManagedFunctionResult(
         nint value,
-        ManagedUserDefinedConversion conversion,
+        ManagedBoundType resultType,
+        string name,
         out nint retained,
         out bool retainedIsHeapHandle)
     {
         retained = 0;
         retainedIsHeapHandle = false;
-        if (conversion.ResultType.IsReference)
+        if (resultType.IsReference)
         {
             if (!TryDereferenceValue(value, out nint dereferenced))
             {
                 return ManagedExpressionValueFactory.FromScalar(
-                    value: null, conversion.ResultType.DisplayName) with
+                    value: null, resultType.DisplayName) with
                 {
-                    DeclaredType = conversion.ResultType
+                    DeclaredType = resultType
                 };
             }
 
             _ = ComAbi.Release(dereferenced);
             retained = CreateFunctionEvaluationHandle(value);
             retainedIsHeapHandle = true;
-            return CreateMaterializedUserDefinedConversionValue(conversion.ResultType);
+            return CreateMaterializedFunctionValue(resultType, name);
         }
 
-        if (conversion.ResultType.ElementType == 0x11)
+        if (resultType.ElementType == 0x11)
         {
             _ = ComAbi.AddRef(value);
             retained = value;
-            return CreateMaterializedUserDefinedConversionValue(conversion.ResultType);
+            return CreateMaterializedFunctionValue(resultType, name);
         }
 
         ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
         ManagedExpressionValue converted = ManagedExpressionValueFactory.FromVariable(
             new DebugVariableInfo(
-                "$conversion",
+                name,
                 display.Value,
                 display.Type,
                 VariablesReference: 0,
@@ -559,12 +565,12 @@ internal sealed partial class CorDebugDebuggee
             runtimeValueReference: 0,
             display) with
         {
-            DeclaredType = conversion.ResultType
+            DeclaredType = resultType
         };
         return converted.HasScalar
             ? converted
             : throw new InvalidOperationException(
-                $"The conversion result '{conversion.ResultType.DisplayName}' cannot be materialized.");
+                $"The function result '{resultType.DisplayName}' cannot be materialized.");
     }
 
     private ManagedExpressionValue ApplyUserDefinedConversionTarget(
@@ -714,8 +720,12 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugEval.GetResult");
             value = RequirePointer(
                 Volatile.Read(ref *valueAddress), "ICorDebugEval.GetResult");
-            ManagedExpressionValue converted = CaptureUserDefinedConversionResult(
-                value, conversion, out retained, out retainedIsHeapHandle);
+            ManagedExpressionValue converted = CaptureManagedFunctionResult(
+                value,
+                conversion.ResultType,
+                "$conversion",
+                out retained,
+                out retainedIsHeapHandle);
             converted = ApplyUserDefinedConversionTarget(
                 converted, conversion, active.Thread);
             if (!converted.RequiresNullableMaterialization)

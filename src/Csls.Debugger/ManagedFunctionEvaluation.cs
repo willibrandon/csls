@@ -147,6 +147,11 @@ internal sealed class ManagedFunctionEvaluation
     internal bool PendingNullableExplicitResult { get; set; }
 
     /// <summary>
+    /// Gets or sets whether an exact nullable operator result allocation awaits completion.
+    /// </summary>
+    internal bool PendingNullableOperatorResult { get; set; }
+
+    /// <summary>
     /// Gets or sets the argument whose implicit conversion operator is executing.
     /// </summary>
     internal int PendingUserDefinedConversionArgumentIndex { get; set; } = -1;
@@ -173,7 +178,9 @@ internal sealed class ManagedFunctionEvaluation
     {
         get
         {
-            string operation = PendingNullableExplicitResult
+            string operation = PendingNullableOperatorResult
+                ? "materializing a nullable operator result"
+                : PendingNullableExplicitResult
                 ? "materializing a nullable conversion result"
                 : PendingStringArgumentIndex >= 0
                 ? $"allocating string argument {PendingStringArgumentIndex + 1}"

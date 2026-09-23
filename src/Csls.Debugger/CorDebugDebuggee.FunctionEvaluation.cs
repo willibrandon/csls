@@ -578,7 +578,8 @@ internal sealed partial class CorDebugDebuggee
         {
             try
             {
-                if (TryContinueWithNullableExplicitResultMaterialization(active))
+                if (TryContinueWithNullableOperatorResultMaterialization(active) ||
+                    TryContinueWithNullableExplicitResultMaterialization(active))
                 {
                     return true;
                 }
@@ -667,6 +668,7 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (!isException)
                     {
+                        PopulateNullableOperatorResult(value, active);
                         PopulateNullableExplicitResult(value, active);
                     }
 

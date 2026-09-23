@@ -130,6 +130,24 @@ internal sealed partial class CorDebugDebuggee
                 return false;
             }
 
+            if (_boundTypes.IsCoreType(
+                selected.ExpressionResultType, "System.Nullable`1", thread))
+            {
+                ManagedExpressionValue emptyResult =
+                    ManagedExpressionValueFactory.FromZeroValueTypeDefault(
+                        selected.ExpressionResultType);
+                result = emptyResult with
+                {
+                    Display = emptyResult.Display with
+                    {
+                        Value = "null",
+                        Type = FormatBoundType(selected.ExpressionResultType, thread)
+                    },
+                    IsNullableValue = true
+                };
+                return true;
+            }
+
             bool value = operation switch
             {
                 DebugExpressionOperator.Equal => empty.All(static item => item),
@@ -147,6 +165,137 @@ internal sealed partial class CorDebugDebuggee
         finally
         {
             ReleaseFunctionEvaluationPointer(thread);
+        }
+    }
+
+    private string FormatBoundType(ManagedBoundType type, nint thread)
+    {
+        nint runtimeType = 0;
+        try
+        {
+            runtimeType = _boundTypes.ResolveRuntimeType(type, thread);
+            return RuntimeTypes.Format(
+                runtimeType,
+                depth: 0,
+                tupleCustomTypeInfo: null,
+                out _,
+                out _);
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(runtimeType);
+        }
+    }
+
+    private unsafe bool TryContinueWithNullableOperatorResultMaterialization(
+        ManagedFunctionEvaluation active)
+    {
+        ManagedUserDefinedOperator? selected = active.UserDefinedOperator;
+        if (active.PendingNullableOperatorResult ||
+            selected is not { IsLifted: true } ||
+            !_boundTypes.IsCoreType(
+                selected.ExpressionResultType, "System.Nullable`1", active.Thread))
+        {
+            return false;
+        }
+
+        if (active.Arguments.Length == 0 || active.RuntimeArguments.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "A lifted operator has no result-materialization slot.");
+        }
+
+        nint completedEvaluation = active.Pointer;
+        nint value = 0;
+        nint retained = 0;
+        bool retainedIsHeapHandle = false;
+        nint nextEvaluation = 0;
+        nint oldArgument = active.RuntimeArguments[0];
+        bool oldArgumentIsHeapHandle = active.RuntimeArgumentIsHeapHandle[0];
+        try
+        {
+            nint* valueAddress = &value;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugEvalAbi(completedEvaluation).GetResult((nint)valueAddress),
+                "ICorDebugEval.GetResult");
+            value = RequirePointer(
+                Volatile.Read(ref *valueAddress), "ICorDebugEval.GetResult");
+            ManagedExpressionValue operatorResult = CaptureManagedFunctionResult(
+                value,
+                selected.ResultType,
+                "$operator",
+                out retained,
+                out retainedIsHeapHandle) with
+            {
+                DeclaredType = selected.ExpressionResultType,
+                IsNullableValue = true,
+                RequiresNullableMaterialization = true,
+                IsMaterializedFunctionArgument = false
+            };
+
+            nextEvaluation = CreateEvaluation(active.Thread);
+            active.Arguments[0] = operatorResult;
+            active.RuntimeArguments[0] = retained;
+            active.RuntimeArgumentIsHeapHandle[0] = retainedIsHeapHandle;
+            retained = 0;
+            ReleaseFunctionEvaluationArgument(oldArgument, oldArgumentIsHeapHandle);
+            active.Pointer = nextEvaluation;
+            nextEvaluation = 0;
+            active.PendingNullableOperatorResult = true;
+            _ = ComAbi.Release(completedEvaluation);
+            completedEvaluation = 0;
+
+            ScheduleStructuredValueAllocation(active, selected.ExpressionResultType);
+            ContinueFunctionEvaluation(
+                "The debugger could not resume the target after scheduling a lifted " +
+                "operator result. The target's evaluation state is uncertain; this " +
+                "debugger session must be disconnected.");
+            return true;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationArgument(retained, retainedIsHeapHandle);
+            ReleaseFunctionEvaluationPointer(nextEvaluation);
+            ReleaseFunctionEvaluationPointer(completedEvaluation);
+            ReleaseFunctionEvaluationPointer(value);
+        }
+    }
+
+    private void PopulateNullableOperatorResult(
+        nint value,
+        ManagedFunctionEvaluation active)
+    {
+        if (!active.PendingNullableOperatorResult)
+        {
+            return;
+        }
+
+        ManagedUserDefinedOperator selected = active.UserDefinedOperator ??
+            throw new InvalidOperationException(
+                "A pending lifted result has no selected operator.");
+        nint unboxed = 0;
+        nint runtimeType = 0;
+        try
+        {
+            if (!TryDereferenceAndUnboxValue(value, out unboxed))
+            {
+                throw new InvalidOperationException(
+                    "CoreCLR did not allocate the lifted nullable operator result.");
+            }
+
+            runtimeType = _boundTypes.ResolveRuntimeType(
+                selected.ExpressionResultType, active.Thread);
+            SetNullableArgument(
+                unboxed,
+                runtimeType,
+                active.Arguments[0],
+                active.RuntimeArguments[0]);
+            active.PendingNullableOperatorResult = false;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(runtimeType);
+            ReleaseFunctionEvaluationPointer(unboxed);
         }
     }
 

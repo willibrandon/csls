@@ -54,6 +54,16 @@ internal readonly struct DebuggerNullableOperatorValue
         DebuggerNullableOperatorValue right) => left._number > right._number;
 
     /// <summary>
+    /// Applies an arithmetic operator that returns a liftable value type.
+    /// </summary>
+    /// <param name="left">The underlying left operand.</param>
+    /// <param name="right">The underlying right operand.</param>
+    /// <returns>A marker derived from both operands.</returns>
+    public static int operator *(
+        DebuggerNullableOperatorValue left,
+        DebuggerNullableOperatorValue right) => (left._number * 100) + right._number;
+
+    /// <summary>
     /// Runs compiler-selected binary nullable-parameter addition.
     /// </summary>
     /// <param name="left">The optional left operand.</param>
@@ -79,4 +89,14 @@ internal readonly struct DebuggerNullableOperatorValue
     internal static bool CompilerGreaterThan(
         DebuggerNullableOperatorValue? left,
         DebuggerNullableOperatorValue? right) => left > right;
+
+    /// <summary>
+    /// Runs compiler-selected lifted nullable arithmetic.
+    /// </summary>
+    /// <param name="left">The optional left operand.</param>
+    /// <param name="right">The optional right operand.</param>
+    /// <returns>The compiler-selected nullable result.</returns>
+    internal static int? CompilerMultiply(
+        DebuggerNullableOperatorValue? left,
+        DebuggerNullableOperatorValue? right) => left * right;
 }

@@ -626,9 +626,6 @@ public sealed partial class DapArrayPagingTests
                 "11241"),
             ("-nullableOperators[1]",
                 $"{nullableOperatorType}.CompilerNegate(nullableOperators[1])", "12300"),
-            ("nullableOperators[0] > nullableOperators[2]",
-                $"{nullableOperatorType}.CompilerGreaterThan(" +
-                    "nullableOperators[0], nullableOperators[2])", "false")
         })
         {
             foreach (string selectedExpression in new[] { expression, compilerExpression })
@@ -643,26 +640,8 @@ public sealed partial class DapArrayPagingTests
             }
         }
 
-        JsonElement emptyLiftedOperator = await ReadEvaluationAsync(
-            client,
-            frameId,
-            "nullableOperators[1] > nullableOperators[2]",
-            success: true,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("false", emptyLiftedOperator.GetProperty("result").GetString());
-        JsonElement compilerEmptyLiftedOperator = await ReadEvaluationAsync(
-            client,
-            frameId,
-            $"{nullableOperatorType}.CompilerGreaterThan(" +
-                "nullableOperators[1], nullableOperators[2])",
-            success: true,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("false", compilerEmptyLiftedOperator.GetProperty("result").GetString());
-        using (JsonDocument invalidated = await client.ReadMessageAsync(
-            TestContext.CancellationToken).ConfigureAwait(false))
-        {
-            AssertEvent(invalidated.RootElement, "invalidated");
-        }
+        await AssertLiftedOperatorsAsync(
+            client, frameId, nullableOperatorType).ConfigureAwait(false);
 
         int operatorAssignment = await client.SendRequestAsync("setExpression", writer =>
         {

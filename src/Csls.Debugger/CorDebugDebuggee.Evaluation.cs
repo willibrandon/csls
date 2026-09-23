@@ -105,9 +105,11 @@ internal sealed partial class CorDebugDebuggee
                 plan,
                 node,
                 generation),
-            DebugExpressionNodeKind.Unary => ManagedPrimitiveOperatorEvaluator.EvaluateUnary(
-                node.Operator,
-                EvaluateNode(frame, plan, node.Children[0], generation)),
+            DebugExpressionNodeKind.Unary => EvaluateUnary(
+                frame,
+                plan,
+                node,
+                generation),
             DebugExpressionNodeKind.Binary => EvaluateBinary(
                 frame,
                 plan,
@@ -121,6 +123,24 @@ internal sealed partial class CorDebugDebuggee
             _ => throw new InvalidDataException(
                 $"Expression node kind {node.Kind} is not supported.")
         };
+
+    private ManagedExpressionValue EvaluateUnary(
+        ManagedFrameHandle frame,
+        DebugExpressionPlan plan,
+        DebugExpressionNode node,
+        DebugStopGeneration generation)
+    {
+        ManagedExpressionValue operand = EvaluateNode(
+            frame, plan, node.Children[0], generation);
+        return TryEvaluateEmptyLiftedOperator(
+            frame,
+            node.Operator,
+            [operand],
+            plan.Language,
+            out ManagedExpressionValue lifted)
+                ? lifted
+                : ManagedPrimitiveOperatorEvaluator.EvaluateUnary(node.Operator, operand);
+    }
 
     private ManagedExpressionValue EvaluateTypeOperation(
         ManagedFrameHandle frame, DebugExpressionPlan plan, DebugExpressionNode node, DebugStopGeneration generation)

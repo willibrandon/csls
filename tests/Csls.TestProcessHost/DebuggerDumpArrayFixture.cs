@@ -826,7 +826,6 @@ internal static class DebuggerDumpArrayFixture
     /// <param name="value">The target-typed integer value.</param>
     /// <returns>The supplied value.</returns>
     internal static int AmbiguousContextualDefaultForDebugger(int value) => value;
-
     /// <summary>
     /// Supplies a reference-type candidate for an ambiguous contextual default.
     /// </summary>
@@ -928,6 +927,7 @@ internal static class DebuggerDumpArrayFixture
         double explicitConversionResult = 0;
         string? explicitLiftedConversionResult = "initial";
         double? explicitLiftedValueResult = null;
+        int? liftedOperatorResult = null;
         StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
         StrongBox<object?> cycleObject = new();
         cycleObject.Value = cycleObject;
@@ -989,7 +989,7 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive((explicitReferenceResultSource, invalidExplicitReferenceResultSource));
         GC.KeepAlive(explicitConversionResult);
         GC.KeepAlive(explicitLiftedConversionResult);
-        GC.KeepAlive(explicitLiftedValueResult);
+        GC.KeepAlive((explicitLiftedValueResult, liftedOperatorResult));
         GC.KeepAlive(implicitReferenceConversion);
         GC.KeepAlive(chain);
         GC.KeepAlive(cycleObject);
