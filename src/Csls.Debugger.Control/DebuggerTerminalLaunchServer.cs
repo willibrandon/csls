@@ -1,0 +1,196 @@
+using System.Diagnostics;
+using System.IO.Pipes;
+using System.Security.Cryptography;
+
+namespace Csls.Debugger.Control;
+
+/// <summary>
+/// Authenticates one terminal launcher and retains its reported target process.
+/// </summary>
+public sealed class DebuggerTerminalLaunchServer : IAsyncDisposable
+{
+    private readonly NamedPipeServerStream _pipe;
+    private readonly byte[] _secret = RandomNumberGenerator.GetBytes(DebuggerTerminalLaunchProtocol.SecretBytes);
+    private Process? _target;
+    private int _targetProcessId;
+    private int _accepted;
+    private int _released;
+    private int _disposed;
+
+    /// <summary>
+    /// Creates a private, same-user launch endpoint before the terminal is opened.
+    /// </summary>
+    public DebuggerTerminalLaunchServer()
+    {
+        PipeName = $"{DebuggerTerminalLaunchProtocol.PipePrefix}{Guid.NewGuid():N}";
+        _pipe = new NamedPipeServerStream(PipeName, PipeDirection.InOut, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+    }
+
+    /// <summary>
+    /// Gets the unique local pipe name passed only to the terminal launcher.
+    /// </summary>
+    public string PipeName { get; }
+
+    /// <summary>
+    /// Gets the one-use secret passed only to the terminal launcher.
+    /// </summary>
+    public string LaunchSecret => Convert.ToBase64String(_secret);
+
+    /// <summary>
+    /// Gets the retained target identity after the launcher reports its child.
+    /// </summary>
+    public int? TargetProcessId => _targetProcessId == 0 ? null : _targetProcessId;
+
+    /// <summary>
+    /// Authenticates the launcher, sends its invocation, and receives the actual child PID.
+    /// </summary>
+    /// <param name="instruction">The exact target invocation built by the debugger worker.</param>
+    /// <param name="cancellationToken">Cancels launch and closes the pending connection.</param>
+    /// <returns>The retained target process identifier.</returns>
+    public async Task<int> AcceptAsync(
+        DebuggerTerminalLaunchInstruction instruction, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(instruction);
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        if (Interlocked.Exchange(ref _accepted, 1) != 0)
+        {
+            throw new InvalidOperationException("The terminal launch endpoint already accepted a launcher.");
+        }
+
+        await _pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+        byte[] received = await DebuggerTerminalLaunchProtocol.ReadSecretAsync(_pipe, cancellationToken)
+            .ConfigureAwait(false);
+        if (!CryptographicOperations.FixedTimeEquals(received, _secret))
+        {
+            throw new UnauthorizedAccessException("The terminal launcher could not authenticate.");
+        }
+
+        await DebuggerTerminalLaunchProtocol.WriteInstructionAsync(_pipe, instruction, cancellationToken)
+            .ConfigureAwait(false);
+        int processId = await DebuggerTerminalLaunchProtocol.ReadIntegerAsync(_pipe, cancellationToken)
+            .ConfigureAwait(false);
+        if (processId <= 0)
+        {
+            throw new InvalidDataException("The terminal launcher did not report a valid target PID.");
+        }
+
+        _targetProcessId = processId;
+        try
+        {
+            _target = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException) when (!instruction.SuspendForDebugging)
+        {
+            _target = null;
+        }
+        if (instruction.SuspendForDebugging && (_target is null || _target.HasExited))
+        {
+            throw new InvalidOperationException("The terminal target exited during startup.");
+        }
+
+        return processId;
+    }
+
+    /// <summary>
+    /// Receives the target exit code or reports an interrupted terminal as minus one.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation of the terminal session.</param>
+    /// <returns>The target exit code reported by its direct parent.</returns>
+    public async Task<int> ReadExitCodeAsync(CancellationToken cancellationToken)
+    {
+        if (_targetProcessId == 0)
+        {
+            throw new InvalidOperationException("The terminal target has not started.");
+        }
+
+        try
+        {
+            return await DebuggerTerminalLaunchProtocol.ReadIntegerAsync(_pipe, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (EndOfStreamException)
+        {
+            if (Volatile.Read(ref _released) != 0)
+            {
+                return -1;
+            }
+
+            if (_target is not null && !_target.HasExited)
+            {
+                _target.Kill(entireProcessTree: false);
+            }
+
+            if (_target is not null)
+            {
+                await _target.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return -1;
+        }
+        catch (IOException) when (Volatile.Read(ref _released) != 0)
+        {
+            return -1;
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _released) != 0)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Lets the terminal launcher keep its target alive after debugger detachment.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the release request.</param>
+    /// <returns>A task that completes after the launcher receives the release signal.</returns>
+    public async Task ReleaseTargetAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        if (_targetProcessId == 0)
+        {
+            throw new InvalidOperationException("The terminal target has not started.");
+        }
+
+        if (Interlocked.Exchange(ref _released, 1) != 0)
+        {
+            return;
+        }
+
+        byte[] release = [DebuggerTerminalLaunchProtocol.ReleaseTarget];
+        await _pipe.WriteAsync(release, cancellationToken)
+            .ConfigureAwait(false);
+        await _pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_target is Process target)
+            {
+                using (target)
+                {
+                    if (Volatile.Read(ref _released) == 0)
+                    {
+                        if (!target.HasExited)
+                        {
+                            target.Kill(entireProcessTree: false);
+                        }
+
+                        await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            await _pipe.DisposeAsync().ConfigureAwait(false);
+            CryptographicOperations.ZeroMemory(_secret);
+        }
+    }
+}

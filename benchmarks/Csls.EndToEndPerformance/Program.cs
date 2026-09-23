@@ -77,7 +77,7 @@ Option<int> processCountBudgetOption = CreatePositiveOption(
     DefaultProcessCountBudget);
 
 var rootCommand = new RootCommand(
-    "Measure published csls LSP, MCP, CLI, dashboard, and process resources.")
+    "Measure published csls language-server and debugger operations and process resources.")
 {
     serverArgument,
     mcpServerArgument,
@@ -93,6 +93,8 @@ var rootCommand = new RootCommand(
     privateMemoryBudgetOption,
     processCountBudgetOption
 };
+rootCommand.Subcommands.Add(DebuggerPerformanceCommand.Create());
+rootCommand.Subcommands.Add(DebuggerPerformanceCommand.CreateTarget());
 rootCommand.SetAction((parseResult, cancellationToken) =>
 {
     string serverPath = Path.GetFullPath(parseResult.GetRequiredValue(serverArgument));

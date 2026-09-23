@@ -1,0 +1,390 @@
+using Csls.Debugger.Interop;
+using Microsoft.Diagnostics.NETCore.Client;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Activates launched and attached CoreCLR debugger targets.
+/// </summary>
+internal sealed partial class CorDebugDebuggee
+{
+    /// <summary>
+    /// Launches a target suspended and activates its CoreCLR debugging interface.
+    /// </summary>
+    /// <param name="options">The validated target invocation.</param>
+    /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
+    /// <param name="observer">Receives debugger diagnostics through the session output channel.</param>
+    /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
+    /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
+    /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
+    /// <param name="entryBreakpoint">The session one-shot entry breakpoint owner.</param>
+    /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
+    /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
+    /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
+    /// <param name="breakRequested">The ordered explicit managed-break callback.</param>
+    /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
+    /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
+    /// <param name="cancellationToken">Cancels runtime activation and cleans up the target.</param>
+    /// <returns>The live debugger-owned target.</returns>
+    internal static async Task<CorDebugDebuggee> LaunchAsync(
+        DebuggeeLaunchOptions options,
+        DebuggerSessionActor actor,
+        IDebuggerSessionObserver observer,
+        SourceBreakpointManager sourceBreakpoints,
+        FunctionBreakpointManager functionBreakpoints,
+        InstructionBreakpointManager instructionBreakpoints,
+        EntryPointBreakpointManager entryBreakpoint,
+        Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
+        Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
+            targetBreakpointReached,
+        Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, CancellationToken, ValueTask<bool>> breakRequested,
+        Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
+        Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(observer);
+        ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(functionBreakpoints);
+        ArgumentNullException.ThrowIfNull(instructionBreakpoints);
+        ArgumentNullException.ThrowIfNull(entryBreakpoint);
+        ArgumentNullException.ThrowIfNull(breakpointReached);
+        ArgumentNullException.ThrowIfNull(targetBreakpointReached);
+        ArgumentNullException.ThrowIfNull(stepCompleted);
+        ArgumentNullException.ThrowIfNull(breakRequested);
+        ArgumentNullException.ThrowIfNull(exceptionRaised);
+        ArgumentNullException.ThrowIfNull(evaluationCompleted);
+        ValidateOptions(options);
+        Dictionary<string, string> targetEnvironment = await DebuggeeLaunchEnvironment.CreateAsync(options, cancellationToken)
+            .ConfigureAwait(false);
+        DbgShimLibrary.VerifyPlatformSupport();
+
+        using CorDebugRuntimeActivationLease activationLease = await CorDebugRuntimeActivationLease
+            .AcquireAsync(cancellationToken).ConfigureAwait(false);
+        string commandLine = DbgShimCommandLineBuilder.Build(options);
+        using var environment = DbgShimEnvironmentBlock.Create(targetEnvironment);
+        var standardStreamsOwner = new DbgShimStandardStreamsOwner();
+        await using ConfiguredAsyncDisposable standardStreamsOwnerScope =
+            standardStreamsOwner.ConfigureAwait(false);
+        DbgShimStandardStreams standardStreams = standardStreamsOwner.Value;
+        using var processOwner = new DisposableOwner<Process>();
+        using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
+        using var registrationOwner =
+            new DisposableOwner<CorDebugRuntimeStartupRegistration>();
+        Task<CorDebugActivationResult>? startup = null;
+        UnixChildExitMonitor? unixExitMonitor = null;
+        nint corDebug = 0;
+        nint debugProcess = 0;
+        try
+        {
+            (uint processId, nint rawResumeHandle) = await standardStreams.CreateSuspendedAsync(
+                commandLine,
+                environment.Pointer,
+                options.WorkingDirectory,
+                cancellationToken).ConfigureAwait(false);
+            if (processId == 0 || rawResumeHandle == 0)
+            {
+                throw new InvalidOperationException(
+                    "CreateProcessForLaunch succeeded without returning target ownership.");
+            }
+
+            using var resumeHandle = new DbgShimResumeHandle(rawResumeHandle);
+            processOwner.Acquire(() => Process.GetProcessById(checked((int)processId)));
+            Process process = processOwner.Value
+                ?? throw new InvalidOperationException("The debuggee process was not acquired.");
+            if (!OperatingSystem.IsWindows())
+            {
+                unixExitMonitor = UnixChildExitMonitor.Start(processId);
+            }
+
+            var processExit = new CorDebugStartupProcessObservation(process, unixExitMonitor, cancellationToken);
+            await using ConfiguredAsyncDisposable processExitScope = processExit.ConfigureAwait(false);
+
+            managedCallbackOwner.Acquire(() =>
+                new CorDebugManagedCallback(
+                actor,
+                observer,
+                sourceBreakpoints,
+                functionBreakpoints,
+                instructionBreakpoints,
+                entryBreakpoint,
+                breakpointReached,
+                targetBreakpointReached,
+                stepCompleted,
+                breakRequested,
+                exceptionRaised,
+                evaluationCompleted));
+            CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
+                ?? throw new InvalidOperationException("The managed callback was not created.");
+            registrationOwner.Acquire(() =>
+                new CorDebugRuntimeStartupRegistration(
+                    processId,
+                    actor,
+                    managedCallback,
+                    sourceBreakpoints));
+            CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
+                ?? throw new InvalidOperationException(
+                    "The runtime-startup registration was not created.");
+            startup = registration.WaitAsync(CancellationToken.None);
+            int registerResult = DbgShimNativeMethods.RegisterForRuntimeStartup(
+                processId,
+                CorDebugRuntimeStartupRegistration.Callback,
+                registration.Context,
+                out nint unregisterToken);
+            CorDebugHResult.ThrowIfFailed(registerResult, "RegisterForRuntimeStartup");
+            registration.SetUnregisterToken(unregisterToken);
+
+            int resumeResult = DbgShimNativeMethods.ResumeProcess(
+                resumeHandle.DangerousGetHandle());
+            CorDebugHResult.ThrowIfFailed(resumeResult, "ResumeProcess");
+            CorDebugHResult.ThrowIfFailed(
+                DbgShimNativeMethods.CloseResumeHandle(rawResumeHandle),
+                "CloseResumeHandle");
+            resumeHandle.SetHandleAsInvalid();
+
+            CorDebugActivationResult activation = await WaitForRuntimeStartupAsync(
+                startup, processExit.Completion, process.Id, cancellationToken).ConfigureAwait(false);
+            corDebug = activation.CorDebug;
+            debugProcess = activation.Process;
+            await managedCallback.WaitForInitializationAsync(cancellationToken)
+                .ConfigureAwait(false);
+            managedCallback.ThrowIfRuntimeFailed();
+
+            var result = new CorDebugDebuggee(
+                actor,
+                sourceBreakpoints,
+                functionBreakpoints,
+                instructionBreakpoints,
+                entryBreakpoint,
+                managedCallbackOwner,
+                registrationOwner,
+                standardStreamsOwner,
+                processOwner,
+                unixExitMonitor,
+                ownsProcess: true,
+                terminateChildProcesses: options.TerminateChildProcesses,
+                ownsRuntimeLease: true,
+                activation);
+            activationLease.Transfer();
+            unixExitMonitor = null;
+            corDebug = 0;
+            debugProcess = 0;
+            return result;
+        }
+        finally
+        {
+            if (processOwner.Value is Process process)
+            {
+                await TerminateProcessAsync(
+                    process,
+                    unixExitMonitor,
+                    managedCallbackOwner.Value,
+                    options.TerminateChildProcesses,
+                    CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            if (await DrainRuntimeStartupAsync(registrationOwner.Value, startup).ConfigureAwait(false)
+                is CorDebugActivationResult abandoned)
+            {
+                corDebug = abandoned.CorDebug;
+                debugProcess = abandoned.Process;
+            }
+
+            if (corDebug != 0 && managedCallbackOwner.Value is CorDebugManagedCallback callback)
+            {
+                await callback.WaitForExitProcessAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            await ReleaseRuntimeAsync(actor, corDebug, debugProcess, managedCallbackOwner.Value)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Attaches to a launcher-owned terminal child before its managed entry code runs.
+    /// </summary>
+    /// <param name="options">The validated target launch policy.</param>
+    /// <param name="processId">The authenticated child identifier reported by its launcher.</param>
+    /// <param name="terminalExitCode">Reads the child's final exit code from its direct parent.</param>
+    /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
+    /// <param name="observer">Receives debugger diagnostics.</param>
+    /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
+    /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
+    /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
+    /// <param name="entryBreakpoint">The session one-shot entry breakpoint owner.</param>
+    /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
+    /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
+    /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
+    /// <param name="breakRequested">The ordered explicit managed-break callback.</param>
+    /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
+    /// <param name="evaluationCompleted">The ordered function-evaluation callback.</param>
+    /// <param name="cancellationToken">Cancels activation and terminates the owned child.</param>
+    /// <returns>The live debugger-owned terminal target.</returns>
+    internal static async Task<CorDebugDebuggee> LaunchTerminalAsync(
+        DebuggeeLaunchOptions options,
+        int processId,
+        Func<CancellationToken, Task<int>> terminalExitCode,
+        DebuggerSessionActor actor,
+        IDebuggerSessionObserver observer,
+        SourceBreakpointManager sourceBreakpoints,
+        FunctionBreakpointManager functionBreakpoints,
+        InstructionBreakpointManager instructionBreakpoints,
+        EntryPointBreakpointManager entryBreakpoint,
+        Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
+        Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
+            targetBreakpointReached,
+        Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, CancellationToken, ValueTask<bool>> breakRequested,
+        Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
+        Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
+        ArgumentNullException.ThrowIfNull(terminalExitCode);
+        ValidateOptions(options);
+        DbgShimLibrary.VerifyPlatformSupport();
+
+        using CorDebugRuntimeActivationLease activationLease = await CorDebugRuntimeActivationLease
+            .AcquireAsync(cancellationToken).ConfigureAwait(false);
+        using var processOwner = new DisposableOwner<Process>();
+        using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
+        using var registrationOwner = new DisposableOwner<CorDebugRuntimeStartupRegistration>();
+        Task<CorDebugActivationResult>? startup = null;
+        nint corDebug = 0;
+        nint debugProcess = 0;
+        try
+        {
+            processOwner.Acquire(() => Process.GetProcessById(processId));
+            Process process = processOwner.Value
+                ?? throw new InvalidOperationException("The terminal target process was not acquired.");
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException("The terminal target exited before runtime activation.");
+            }
+
+            var processExit = new CorDebugStartupProcessObservation(
+                process, unixExitMonitor: null, cancellationToken);
+            await using ConfiguredAsyncDisposable processExitScope = processExit.ConfigureAwait(false);
+            await WaitForDiagnosticPortAsync(process, cancellationToken).ConfigureAwait(false);
+
+            managedCallbackOwner.Acquire(() => new CorDebugManagedCallback(
+                actor,
+                observer,
+                sourceBreakpoints,
+                functionBreakpoints,
+                instructionBreakpoints,
+                entryBreakpoint,
+                breakpointReached,
+                targetBreakpointReached,
+                stepCompleted,
+                breakRequested,
+                exceptionRaised,
+                evaluationCompleted));
+            CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
+                ?? throw new InvalidOperationException("The managed callback was not created.");
+            registrationOwner.Acquire(() => new CorDebugRuntimeStartupRegistration(
+                checked((uint)processId), actor, managedCallback, sourceBreakpoints));
+            CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
+                ?? throw new InvalidOperationException("The runtime-startup registration was not created.");
+            startup = registration.WaitAsync(CancellationToken.None);
+            int registerResult = DbgShimNativeMethods.RegisterForRuntimeStartup(
+                checked((uint)processId),
+                CorDebugRuntimeStartupRegistration.Callback,
+                registration.Context,
+                out nint unregisterToken);
+            CorDebugHResult.ThrowIfFailed(registerResult, "RegisterForRuntimeStartup");
+            registration.SetUnregisterToken(unregisterToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            new DiagnosticsClient(processId).ResumeRuntime();
+            CorDebugActivationResult activation = await WaitForRuntimeStartupAsync(
+                startup, processExit.Completion, processId, cancellationToken).ConfigureAwait(false);
+            corDebug = activation.CorDebug;
+            debugProcess = activation.Process;
+            await managedCallback.WaitForInitializationAsync(cancellationToken)
+                .ConfigureAwait(false);
+            managedCallback.ThrowIfRuntimeFailed();
+
+            var result = new CorDebugDebuggee(
+                actor,
+                sourceBreakpoints,
+                functionBreakpoints,
+                instructionBreakpoints,
+                entryBreakpoint,
+                managedCallbackOwner,
+                registrationOwner,
+                standardStreamsOwner: null,
+                processOwner,
+                unixExitMonitor: null,
+                ownsProcess: true,
+                terminateChildProcesses: options.TerminateChildProcesses,
+                ownsRuntimeLease: true,
+                activation,
+                terminalExitCode);
+            activationLease.Transfer();
+            corDebug = 0;
+            debugProcess = 0;
+            return result;
+        }
+        finally
+        {
+            if (processOwner.Value is Process process)
+            {
+                await TerminateProcessAsync(
+                    process,
+                    unixExitMonitor: null,
+                    managedCallbackOwner.Value,
+                    options.TerminateChildProcesses,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+
+            if (await DrainRuntimeStartupAsync(registrationOwner.Value, startup).ConfigureAwait(false)
+                is CorDebugActivationResult abandoned)
+            {
+                corDebug = abandoned.CorDebug;
+                debugProcess = abandoned.Process;
+            }
+
+            if (corDebug != 0 && managedCallbackOwner.Value is CorDebugManagedCallback callback)
+            {
+                await callback.WaitForExitProcessAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            await ReleaseRuntimeAsync(actor, corDebug, debugProcess, managedCallbackOwner.Value)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static async Task WaitForDiagnosticPortAsync(Process process, CancellationToken cancellationToken)
+    {
+        using var startupTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        startupTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (!DiagnosticsClient.GetPublishedProcesses().Contains(process.Id))
+            {
+                if (process.HasExited)
+                {
+                    throw new InvalidOperationException(
+                        "The terminal target exited before its diagnostic port opened.");
+                }
+
+                await Task.Delay(50, startupTimeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (
+            startupTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("The terminal target did not open a diagnostic port in time.");
+        }
+    }
+
+}

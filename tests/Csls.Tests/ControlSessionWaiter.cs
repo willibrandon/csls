@@ -93,6 +93,15 @@ internal static class ControlSessionWaiter
                         .Append(session.LifecycleState)
                         .Append(" workspace ")
                         .Append(session.WorkspacePhase);
+                    if (string.Equals(session.LifecycleState, "Running", StringComparison.Ordinal) &&
+                        string.Equals(session.WorkspacePhase, "Uninitialized", StringComparison.Ordinal))
+                    {
+                        string logs = await ReadInitializationLogsAsync(socketPath, timeoutSource.Token).ConfigureAwait(false);
+                        throw new InvalidOperationException(
+                            $"The csls session for {expectedWorkspacePath} failed during initialization. " +
+                            logs);
+                    }
+
                     if (string.Equals(
                         session.LifecycleState,
                         "Running",
@@ -120,6 +129,15 @@ internal static class ControlSessionWaiter
     private static StringComparer PathComparer => OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
+
+    private static async Task<string> ReadInitializationLogsAsync(string socketPath, CancellationToken cancellationToken)
+    {
+        var client = new ControlRpcClient(socketPath);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        ControlDashboardSnapshot snapshot = await client.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest(), cancellationToken).ConfigureAwait(false);
+        return string.Join(Environment.NewLine, snapshot.Logs.Select(log => $"{log.Level}: {log.Message}"));
+    }
 
     private static string NormalizePath(string path)
     {

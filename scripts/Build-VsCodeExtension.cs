@@ -94,7 +94,13 @@ try
         ?? throw new InvalidOperationException($"The output path has no parent: {outputPath}");
     Directory.CreateDirectory(outputDirectory);
     await RunNpmAsync(
-        ["ci", "--ignore-scripts"],
+        [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--prefer-offline"
+        ],
         extensionSource).ConfigureAwait(false);
     await RunNpmAsync(
         ["run", "check"],
@@ -429,6 +435,10 @@ static async Task VerifyPackageAsync(
         RequireArchiveEntry(archive, "extension/dist/extension.cjs");
         RequireArchiveMatch(archive, "extension/server/", "csls");
         RequireArchiveEntry(archive, "extension/server/workers/server/csls-worker.dll");
+        RequireArchiveEntry(archive,
+            "extension/server/workers/server/msbuild/Csls.MSBuildHost.dll");
+        RequireArchiveEntry(archive,
+            "extension/server/workers/server/msbuild/Csls.MSBuildHost.runtimeconfig.json");
         RejectArchiveEntry(archive, "extension/dist/browserExtension.cjs");
         RejectArchivePrefix(archive, "extension/dist/browserServer/");
     }

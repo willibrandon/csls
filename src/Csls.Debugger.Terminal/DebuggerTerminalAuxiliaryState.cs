@@ -1,0 +1,356 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Control;
+using System.Globalization;
+
+namespace Csls.Debugger.Terminal;
+
+/// <summary>
+/// Owns bounded output, module, breakpoint, and exception terminal projections.
+/// </summary>
+internal sealed class DebuggerTerminalAuxiliaryState
+{
+    private const int MaximumItems = 200;
+    private const int MaximumExpressionLength = 4096;
+    private const int MaximumWatchCount = 64;
+    private readonly DebuggerRpcClient _client;
+    private readonly List<string> _watchExpressions = [];
+    private IReadOnlyList<string> _breakpointLines = ["No breakpoints configured."];
+    private IReadOnlyList<string> _exceptionLines = ["No current managed exception."];
+    private IReadOnlyList<string> _moduleLines = ["No managed modules loaded."];
+    private IReadOnlyList<string> _outputLines = ["No target output."];
+    private IReadOnlyList<string> _watchLines = ["No watches configured."];
+
+    /// <summary>
+    /// Creates auxiliary state backed by the private debugger RPC client.
+    /// </summary>
+    /// <param name="client">The connected debugger RPC client.</param>
+    internal DebuggerTerminalAuxiliaryState(DebuggerRpcClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        _client = client;
+    }
+
+    /// <summary>
+    /// Gets the currently selected auxiliary debugger pane.
+    /// </summary>
+    internal DebuggerTerminalAuxiliaryPane Pane { get; private set; }
+
+    /// <summary>
+    /// Gets the authoritative breakpoint state used by source rendering.
+    /// </summary>
+    internal DebugBreakpointSnapshot Breakpoints { get; private set; } =
+        new([], [], [], []);
+
+    /// <summary>
+    /// Gets the managed-module and symbol summary shown in the header.
+    /// </summary>
+    internal string ModuleSummary { get; private set; } = "0 modules";
+
+    /// <summary>
+    /// Gets the current managed-exception summary shown in the header.
+    /// </summary>
+    internal string? ExceptionSummary { get; private set; }
+
+    /// <summary>
+    /// Gets the title for the selected auxiliary debugger pane.
+    /// </summary>
+    internal string Title => Pane switch
+    {
+        DebuggerTerminalAuxiliaryPane.Output => "Target Output",
+        DebuggerTerminalAuxiliaryPane.Modules => "Modules",
+        DebuggerTerminalAuxiliaryPane.Breakpoints => "Breakpoints",
+        DebuggerTerminalAuxiliaryPane.Watches => "Watches",
+        DebuggerTerminalAuxiliaryPane.Exception => "Exception",
+        _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
+    };
+
+    /// <summary>
+    /// Gets the bounded rows for the selected auxiliary debugger pane.
+    /// </summary>
+    internal IReadOnlyList<string> Lines => Pane switch
+    {
+        DebuggerTerminalAuxiliaryPane.Output => _outputLines,
+        DebuggerTerminalAuxiliaryPane.Modules => _moduleLines,
+        DebuggerTerminalAuxiliaryPane.Breakpoints => _breakpointLines,
+        DebuggerTerminalAuxiliaryPane.Watches => _watchLines,
+        DebuggerTerminalAuxiliaryPane.Exception => _exceptionLines,
+        _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
+    };
+
+    /// <summary>
+    /// Loads every bounded auxiliary projection for one stopped generation.
+    /// </summary>
+    /// <param name="snapshot">The exact stopped debugger-session snapshot.</param>
+    /// <param name="cancellationToken">Cancels private RPC inspection.</param>
+    internal async Task LoadAsync(
+        DebugSessionSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        await RefreshOutputAsync(cancellationToken).ConfigureAwait(false);
+        DebugModulePage modules = await _client.GetModulesAsync(
+            new DebugModulesRequest(0, MaximumItems),
+            cancellationToken).ConfigureAwait(false);
+        await RefreshBreakpointsAsync(cancellationToken).ConfigureAwait(false);
+
+        List<string> moduleLines = [.. modules.Modules.Select(FormatModule)];
+        if (modules.TotalModules > modules.Modules.Count)
+        {
+            moduleLines.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"… {modules.TotalModules - modules.Modules.Count} more modules"));
+        }
+
+        _moduleLines = moduleLines.Count == 0 ? ["No managed modules loaded."] : moduleLines;
+        int symbolCount = modules.Modules.Count(static module =>
+            module.SymbolKind != DebugModuleSymbolKind.None);
+        ModuleSummary = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{modules.TotalModules} modules, {symbolCount} with symbols");
+
+        ExceptionSummary = null;
+        _exceptionLines = ["No current managed exception."];
+        if (string.Equals(
+                snapshot.StopReason,
+                "exception",
+                StringComparison.OrdinalIgnoreCase) &&
+            snapshot.StoppedThreadId is int threadId)
+        {
+            DebugExceptionInfo exception = await _client.GetExceptionInfoAsync(
+                new DebugExceptionInfoRequest(threadId),
+                cancellationToken).ConfigureAwait(false);
+            ExceptionSummary = $"{exception.ExceptionId}: {exception.Description}";
+            _exceptionLines =
+            [
+                $"Type: {exception.ExceptionId}",
+                $"Stage: {exception.BreakMode}",
+                $"Description: {exception.Description}"
+            ];
+        }
+    }
+
+    /// <summary>
+    /// Reloads retained target output while the target is stopped or running.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels private RPC inspection.</param>
+    internal async Task RefreshOutputAsync(CancellationToken cancellationToken)
+    {
+        DebugOutputPage output = await _client.GetOutputAsync(
+            new DebugOutputRequest(0, MaximumItems),
+            cancellationToken).ConfigureAwait(false);
+        List<string> outputLines =
+        [
+            .. output.Entries.SelectMany(static entry => entry.Output
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => $"{FormatOutputCategory(entry.Category)} {line}"))
+        ];
+        if (output.DroppedBeforeStart > 0)
+        {
+            outputLines.Insert(
+                0,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"… {output.DroppedBeforeStart} older output segments were dropped"));
+        }
+
+        if (output.HasMore)
+        {
+            outputLines.Add("… more retained output is available");
+        }
+
+        _outputLines = outputLines.Count == 0 ? ["No target output."] : outputLines;
+    }
+
+    /// <summary>
+    /// Reloads authoritative breakpoint state after an interactive mutation.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels private RPC inspection.</param>
+    internal async Task RefreshBreakpointsAsync(CancellationToken cancellationToken)
+    {
+        Breakpoints = await _client.GetBreakpointsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        List<string> lines =
+        [
+            .. Breakpoints.SourceBreakpoints.Select(FormatSourceBreakpoint),
+            .. Breakpoints.FunctionBreakpoints.Select(FormatFunctionBreakpoint),
+            .. Breakpoints.InstructionBreakpoints.Select(FormatInstructionBreakpoint),
+            .. Breakpoints.ExceptionBreakpoints.Select(FormatExceptionBreakpoint)
+        ];
+        _breakpointLines = lines.Count == 0 ? ["No breakpoints configured."] : lines;
+    }
+
+    /// <summary>
+    /// Adds one unique bounded watch and evaluates the complete set in the selected frame.
+    /// </summary>
+    /// <param name="frameId">The generation-bound selected managed frame.</param>
+    /// <param name="expression">The side-effect-free expression to add.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    internal async Task AddWatchAsync(
+        int frameId,
+        string expression,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frameId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expression);
+        string normalized = expression.Trim();
+        if (normalized.Length > MaximumExpressionLength)
+        {
+            throw new ArgumentException(
+                $"Watch expressions cannot exceed {MaximumExpressionLength} characters.",
+                nameof(expression));
+        }
+
+        if (!_watchExpressions.Contains(normalized, StringComparer.Ordinal))
+        {
+            if (_watchExpressions.Count == MaximumWatchCount)
+            {
+                throw new InvalidOperationException(
+                    $"The terminal supports at most {MaximumWatchCount} watches.");
+            }
+
+            _watchExpressions.Add(normalized);
+        }
+
+        Pane = DebuggerTerminalAuxiliaryPane.Watches;
+        await LoadWatchesAsync(frameId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes every configured watch expression.
+    /// </summary>
+    internal void ClearWatches()
+    {
+        _watchExpressions.Clear();
+        _watchLines = ["No watches configured."];
+        Pane = DebuggerTerminalAuxiliaryPane.Watches;
+    }
+
+    /// <summary>
+    /// Evaluates every watch independently in the selected stopped frame.
+    /// </summary>
+    /// <param name="frameId">The generation-bound selected managed frame.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    internal async Task LoadWatchesAsync(int frameId, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frameId);
+        if (_watchExpressions.Count == 0)
+        {
+            _watchLines = ["No watches configured."];
+            return;
+        }
+
+        var lines = new List<string>(_watchExpressions.Count);
+        foreach (string expression in _watchExpressions)
+        {
+            try
+            {
+                DebugEvaluateResult result = await _client.EvaluateAsync(
+                    new DebugEvaluateRequest(frameId, expression),
+                    cancellationToken).ConfigureAwait(false);
+                lines.Add($"{expression} = {result.Result}  {result.Type}");
+            }
+            catch (StreamJsonRpc.RemoteInvocationException exception)
+            {
+                lines.Add($"! {expression}: {exception.Message}");
+            }
+        }
+
+        _watchLines = lines;
+    }
+
+    /// <summary>
+    /// Advances to the next auxiliary debugger pane.
+    /// </summary>
+    internal void Cycle()
+    {
+        Pane = Pane switch
+        {
+            DebuggerTerminalAuxiliaryPane.Output => DebuggerTerminalAuxiliaryPane.Modules,
+            DebuggerTerminalAuxiliaryPane.Modules => DebuggerTerminalAuxiliaryPane.Breakpoints,
+            DebuggerTerminalAuxiliaryPane.Breakpoints => DebuggerTerminalAuxiliaryPane.Watches,
+            DebuggerTerminalAuxiliaryPane.Watches => DebuggerTerminalAuxiliaryPane.Exception,
+            DebuggerTerminalAuxiliaryPane.Exception => DebuggerTerminalAuxiliaryPane.Output,
+            _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
+        };
+    }
+
+    /// <summary>
+    /// Clears only generation-bound auxiliary state when the target resumes.
+    /// </summary>
+    /// <param name="message">The current inspection availability shown for configured watches.</param>
+    internal void ClearStoppedState(string message)
+    {
+        _exceptionLines = ["No current managed exception."];
+        ExceptionSummary = null;
+        ClearWatchValues(message);
+    }
+
+    /// <summary>
+    /// Marks watch values unavailable while preserving configured expressions and other auxiliary state.
+    /// </summary>
+    /// <param name="message">The reason the selected frame cannot provide watch values.</param>
+    internal void ClearWatchValues(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        _watchLines = _watchExpressions.Count == 0
+            ? ["No watches configured."]
+            : [message];
+    }
+
+    private static string FormatModule(DebugModuleInfo module) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{module.Id,4}  {module.Name}  {module.SymbolKind}  " +
+        $"{FormatUserCode(module.IsUserCode)}  {FormatOptimization(module.IsOptimized)}  " +
+        $"Hot Reload {module.HotReloadGeneration}" +
+        $"{(module.IsHotReloadEnabled == true ? " enabled" : string.Empty)}");
+
+    private static string FormatSourceBreakpoint(DebugSourceBreakpointInfo breakpoint) =>
+        $"{FormatBreakpointState(breakpoint.Verified)} #{breakpoint.Id} source " +
+        $"{Path.GetFileName(breakpoint.SourcePath)}:{breakpoint.Line}" +
+        FormatBreakpointOptions(breakpoint.Condition, breakpoint.HitCondition);
+
+    private static string FormatFunctionBreakpoint(DebugFunctionBreakpointInfo breakpoint) =>
+        $"{FormatBreakpointState(breakpoint.Verified)} #{breakpoint.Id} function " +
+        breakpoint.Name + FormatBreakpointOptions(
+            breakpoint.Condition,
+            breakpoint.HitCondition);
+
+    private static string FormatInstructionBreakpoint(
+        DebugInstructionBreakpointInfo breakpoint) =>
+        $"{FormatBreakpointState(breakpoint.Verified)} #{breakpoint.Id} instruction " +
+        breakpoint.InstructionReference +
+        (breakpoint.Offset == 0
+            ? string.Empty
+            : string.Create(CultureInfo.InvariantCulture, $" {breakpoint.Offset:+#;-#}")) +
+        FormatBreakpointOptions(breakpoint.Condition, breakpoint.HitCondition);
+
+    private static string FormatExceptionBreakpoint(
+        DebugExceptionBreakpointRequest breakpoint) =>
+        $"● exception {breakpoint.BreakMode}: " +
+        (breakpoint.ExceptionTypeNames.Count == 0
+            ? "all managed exceptions"
+            : string.Join(", ", breakpoint.ExceptionTypeNames));
+
+    private static string FormatBreakpointState(bool verified) => verified ? "●" : "○";
+
+    private static string FormatUserCode(bool? isUserCode) => !isUserCode.HasValue
+        ? "classification unknown"
+        : isUserCode.GetValueOrDefault() ? "user" : "framework";
+
+    private static string FormatOptimization(bool? isOptimized) => !isOptimized.HasValue
+        ? "optimization unknown"
+        : isOptimized.GetValueOrDefault() ? "optimized" : "unoptimized";
+
+    private static string FormatBreakpointOptions(string? condition, string? hitCondition) =>
+        (condition is null ? string.Empty : $"  when {condition}") +
+        (hitCondition is null ? string.Empty : $"  hit {hitCondition}");
+
+    private static string FormatOutputCategory(DebugOutputCategory category) => category switch
+    {
+        DebugOutputCategory.StandardOutput => "out>",
+        DebugOutputCategory.StandardError => "err>",
+        _ => "dbg>"
+    };
+}

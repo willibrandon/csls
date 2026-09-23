@@ -4,21 +4,21 @@ description: Connect one MCP client to any csls workspace or live session.
 ---
 
 `csls-mcp` exposes language intelligence and guarded edit operations through the
-official Model Context Protocol C# SDK. The server starts without choosing a
-workspace, so one MCP connection can work across several repositories and editor
-sessions. Standard output is reserved exclusively for MCP messages; server and
+official Model Context Protocol C# SDK. One MCP connection can work across several
+repositories and editor sessions by selecting a target in each call.
+Standard output is reserved exclusively for MCP messages; server and
 language-service diagnostics are written to standard error.
 
-Install the tool and configure the MCP client to run only this command:
+Install the tool:
 
 ```console
 dotnet tool install --global csls-mcp
-csls-mcp
 ```
 
-Do not put a workspace, process identifier, or socket in the MCP server
-registration. Except for `list_sessions`, every tool call accepts three optional
-flat fields and requires exactly one of them:
+Configure the MCP client to run `csls-mcp`.
+
+Use `list_sessions` to discover live targets. Target-dependent language-service
+tools select exactly one of these flat fields:
 
 - `workspace`: a directory, solution, project, or document path. csls reuses one
   unambiguous live session containing the path, or starts one transient language
@@ -27,45 +27,60 @@ flat fields and requires exactly one of them:
   `csls sessions list`.
 - `socket`: an absolute csls control-socket path.
 
-Missing, multiple, invalid, and ambiguous selectors return MCP tool or resource
-errors without changing another target. Run `csls agent init` to create a reusable
+Selectors are validated for each request. Run `csls agent init` to create a reusable
 `SKILL.md` that documents the supported CLI and MCP operations.
 
 Target connections remain cached for the MCP connection lifetime, up to 32
-MCP-owned transient sessions and 256 total sessions. New acquisitions are rejected
-at those limits without evicting active work. If a selected process disconnects,
-only that target is evicted: the failed call is never retried or silently sent to a
-different session, while a later workspace-selected call can resolve current state.
+MCP-owned transient sessions and 256 total sessions. At capacity, existing sessions
+remain active and a new acquisition returns a capacity error. A process disconnect
+evicts that target's cached connection. A later workspace-selected call resolves
+the current live session or starts a transient one.
 
 The server provides tools for diagnostics, completion, hover, navigation, symbol
 search, signature help, rename, formatting, code actions, workspace inspection,
 restore, reload, build-host restart, cache clearing, live request inspection,
 request cancellation, and bounded request tracing.
 
+The installed package also supervises up to eight independent debugger sessions
+per MCP connection. Debugger lifecycle calls return an opaque `debugSession`;
+debugger tools select the target with that identifier.
+Read-only tools inspect generation-bound threads, stacks, scopes, variables, and
+bounded module, source, memory, managed-IL, and cursor-addressable target-output
+pages. Resource templates expose the same selected session, output, thread,
+stack, scope, variable, module, exception, source, memory, and managed-IL state to
+resource-oriented clients. Breakpoint replacement, restart, pause, continue,
+step, and go-to require a separate time-bounded grant created by
+`debug_agent_control_set` and current stopped-state handles. See the
+[.NET debugger guide](../debugger/#mcp-integration) for the complete ownership
+and error contract. Debugger prompts inspect session state to diagnose failures,
+plan breakpoints, and explain a stop.
+`subscriptions/listen` streams notify clients when selected debugger resources
+change, including breakpoint updates.
+
 `get_workspace_state` returns a fixed-size overview, including lifecycle, workspace,
-project, document, request, build-host, cache, and retained-log counts. It does not
-run workspace-wide diagnostic analysis, so agent inspection cannot starve interactive
-editor requests. Its MCP content includes a `resource_link` to the complete
-`csls://workspace/?session=<processId>` snapshot. Read that resource only when the
-high-cardinality project, document, diagnostic, request, cache, or log collections
-are needed. Use `get_diagnostics` or the `csls://diagnostic/` resource for diagnostics
-from a specific document.
+project, document, request, build-host, cache, and retained-log counts. Its MCP
+content includes a `resource_link` to the complete
+`csls://workspace/?session=<processId>` snapshot. Follow that link for complete
+project, document, diagnostic, request, cache, and log details. Use `get_diagnostics`
+or the `csls://diagnostic/` resource for diagnostics from a specific document.
 
 `list_requests` returns active correlation identifiers and the current trace
 state. `cancel_request` delivers cancellation to one live request. `start_trace`
 begins a new in-memory trace, and `stop_trace` returns its retained lifecycle
-entries. Tool annotations mark cancellation as destructive and all state-changing
-tools as non-read-only.
+entries. Tool annotations identify operations that change state and mark cancellation
+as destructive.
 
 Resource templates expose a selected session or workspace plus individual
 projects, documents, and document diagnostics. They use the same selector fields
 as tools. Prompts cover C# diagnosis, explanations, review, refactoring, and csls
 troubleshooting.
 
-The [MCP reference](../mcp-reference/) is generated by listing the tools,
-resources, templates, and prompts from a bare server.
+The [language-service MCP reference](../mcp-reference/) is generated by listing
+the tools, resources, templates, and prompts from the packaged workers. It includes
+both language-service and debugger operations.
 
-Edit tools preview changes unless the caller explicitly requests an apply step.
+Edit tools return a preview for review. Explicitly request an apply step to make the
+changes.
 Code-action requests accept an exact zero-based UTF-16 range, including
 missing-using and interface implementation quick fixes that return guarded edit
 plans.

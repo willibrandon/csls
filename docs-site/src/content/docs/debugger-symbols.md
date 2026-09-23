@@ -1,0 +1,121 @@
+---
+title: Debugger symbols and source
+description: Configure Portable PDB, Windows PDB, Source Link, source mapping, and symbol servers.
+---
+
+Source breakpoints, source stack locations, local names, and source stepping require
+symbols whose identity matches the loaded module.
+
+## Supported symbol forms
+
+Portable PDBs work on Windows, Linux, and macOS. The debugger resolves adjacent files,
+embedded Portable PDBs, runtime-provided in-memory symbols, trusted local stores, and
+HTTP(S) symbol stores. On Windows, identity-matched Windows PDBs use Microsoft's public
+DiaSymReader component for x86, x64, and ARM64.
+
+Dump inspection resolves local names from Portable PDBs and, on Windows, Windows
+PDBs matched against the captured module's identity. Keep the original PDB beside
+the application assembly, or place it in a directory listed in `binarySearchPaths`
+when opening the dump. Parameters use the metadata captured with the application.
+
+In-memory PE and Portable PDB snapshots receive the same breakpoints, stacks, locals,
+stepping, goto, disassembly, and instruction-breakpoint behavior as files on disk. The
+debugger consumes runtime symbol updates during launch and recovers available snapshots
+during attach directly from memory.
+
+## Source mapping
+
+Use `sourceFileMap` when a PDB records paths from another build machine:
+
+```json
+{
+  "sourceFileMap": {
+    "C:\\agent\\_work\\app": "/workspaces/app",
+    "/build/shared": "/src/shared"
+  }
+}
+```
+
+Both keys and values are absolute paths. Mapping understands POSIX paths, Windows drive
+letters, and UNC paths regardless of the adapter host. The most specific matching prefix
+wins. By default, the debugger validates mapped source content against the checksum in the PDB.
+Local source files have a 32 MiB limit and are verified in bounded chunks.
+
+## Source verification
+
+`requireExactSource` defaults to `true` for launch and attach. A source breakpoint
+binds when the readable local file matches the PDB checksum. After editing a source
+file, rebuild the target or apply its compiler-produced Hot Reload update to bind
+against the updated symbols.
+
+Set `requireExactSource` to `false` to use edited local files with the loaded
+symbols. Source views label these files as `unverified local source`, and breakpoint
+locations follow the executable statements recorded by the PDB. Source Link content
+is checksum-validated under both settings.
+
+## Symbol search and caching
+
+Configure trusted local directories and anonymous HTTP(S) stores with `symbolOptions`:
+
+```json
+{
+  "symbolOptions": {
+    "searchPaths": [
+      "/srv/symbols",
+      "https://symbols.example.com/"
+    ],
+    "searchMicrosoftSymbolServer": true,
+    "searchNuGetOrgSymbolServer": false,
+    "cachePath": "/home/me/.cache/csls/symbols",
+    "moduleFilter": {
+      "mode": "loadOnlyIncluded",
+      "includedModules": ["MyCompany.*.dll"],
+      "includeSymbolsNextToModules": true
+    }
+  }
+}
+```
+
+The Microsoft and NuGet.org stores are opt-in. `moduleFilter.mode` is either
+`loadAllButExcluded`, paired with `excludedModules`, or `loadOnlyIncluded`, paired with
+`includedModules`. Patterns are case-insensitive and support `*` wildcards.
+`includeSymbolsNextToModules` defaults to `true`, so adjacent and embedded lookup can
+remain available even when configured stores are filtered.
+
+Downloaded PDBs must match the module CodeView identity before use. Cache writes are
+bounded, atomic, and keyed by identity. The default cache is `%TEMP%\SymbolCache` on
+Windows and `~/.dotnet/symbolcache` on Linux and macOS.
+
+## Source Link
+
+Source Link retrieval is lazy, session-cached, bounded, and checksum-validated. Public
+HTTPS endpoints are enabled by default. HTTP, localhost, and private-network hosts
+require an exact enabled URL rule.
+
+```json
+{
+  "sourceLinkOptions": {
+    "http://127.0.0.1:8080/source/*": { "enabled": true },
+    "https://untrusted.example/*": { "enabled": false }
+  }
+}
+```
+
+Rules are matched against the Source Link URL pattern. The debugger uses anonymous
+requests, bounds redirects and response sizes, and validates source checksums.
+Redirects stay within the configured authority and preserve HTTPS transport.
+
+## Diagnosing missing source
+
+Inspect the editor's `modules` response or module view first. `symbolStatus` reports
+whether symbols were absent, filtered, unreadable, identity-mismatched, or rejected by a
+server or cache policy. Confirm that:
+
+1. the target module and PDB come from the same build;
+2. the recorded document maps to an existing absolute path;
+3. the source content matches the PDB checksum;
+4. each anonymous symbol-server URL consists of a scheme, authority, and base path; and
+5. the debugger process can read the module, cache, and mapped source as its current user.
+
+Remote-store failures appear in the affected module's `symbolStatus`. Target launch
+continues with the symbols resolved from the other configured sources.

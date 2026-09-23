@@ -5,20 +5,19 @@ using Csls.Protocol;
 using Csls.Rpc;
 using Csls.Server;
 using Csls.Workspaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
-if (args is ["--msbuild-build-host"])
+// The editor owns workspace configuration; the protocol host owns its services and logging.
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
-    using Stream input = Console.OpenStandardInput();
-    using Stream output = Console.OpenStandardOutput();
-    await MSBuildBuildHostServer.RunAsync(input, output).ConfigureAwait(false);
-    return 0;
-}
-
-HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+    DisableDefaults = true,
+    ContentRootPath = AppContext.BaseDirectory
+});
+builder.Configuration.AddEnvironmentVariables();
 var logFilter = new LanguageServerLogFilter();
 builder.Logging.ClearProviders();
 builder.Logging.AddFilter((_, level) => logFilter.IsEnabled(level));
@@ -66,6 +65,7 @@ catch (OperationCanceledException) when (
     applicationLifetime.ApplicationStopping.IsCancellationRequested)
 {
     // The Generic Host translates SIGINT and SIGTERM into application stopping.
+    return 0;
 }
 finally
 {

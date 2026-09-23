@@ -22,6 +22,9 @@
     <ProjectReference Include="../Csls.Client/Csls.Client.csproj" />
     <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
     <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Debugger/Csls.Debugger.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
     <ProjectReference Include="../Csls.Rpc/Csls.Rpc.csproj" />
   </ItemGroup>
 </Project>

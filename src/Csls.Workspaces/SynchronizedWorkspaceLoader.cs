@@ -72,6 +72,7 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
         ArgumentNullException.ThrowIfNull(rootPaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(buildConfiguration);
         var snapshots = new List<WorkspaceFolderSnapshot>();
+        PortableExecutableReference[]? metadataReferences = null;
         try
         {
             foreach (string requestedRoot in rootPaths.Distinct(PathComparer))
@@ -94,9 +95,24 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
                 foreach (string workspaceFile in workspaceFiles)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    metadataReferences ??=
+                    [
+                        .. _referencePaths.Select(static path =>
+                            MetadataReferenceImageCache.GetReference(
+                                path,
+                                MetadataReferenceProperties.Assembly))
+                    ];
                     snapshots.Add(IsFileBasedApp(workspaceFile)
-                        ? LoadFileBasedApp(rootPath, workspaceFile, cancellationToken)
-                        : LoadProjectWorkspace(rootPath, workspaceFile, cancellationToken));
+                        ? LoadFileBasedApp(
+                            rootPath,
+                            workspaceFile,
+                            metadataReferences,
+                            cancellationToken)
+                        : LoadProjectWorkspace(
+                            rootPath,
+                            workspaceFile,
+                            metadataReferences,
+                            cancellationToken));
                 }
             }
 
@@ -110,9 +126,10 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
         }
     }
 
-    private WorkspaceFolderSnapshot LoadFileBasedApp(
+    private static WorkspaceFolderSnapshot LoadFileBasedApp(
         string rootPath,
         string entryPointPath,
+        IReadOnlyList<PortableExecutableReference> metadataReferences,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -129,7 +146,7 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
                 filePath: entryPointPath,
                 parseOptions: CreateParseOptions(fileBasedApp: true),
                 compilationOptions: CreateCompilationOptions(OutputKind.ConsoleApplication),
-                metadataReferences: GetMetadataReferences());
+                metadataReferences: metadataReferences);
             Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
             solution = AddImplicitUsings(solution, projectId);
             solution = AddDocument(solution, projectId, entryPointPath);
@@ -142,9 +159,10 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
         }
     }
 
-    private WorkspaceFolderSnapshot LoadProjectWorkspace(
+    private static WorkspaceFolderSnapshot LoadProjectWorkspace(
         string rootPath,
         string workspaceFile,
+        IReadOnlyList<PortableExecutableReference> metadataReferences,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<string> initialProjectPaths = workspaceFile.EndsWith(
@@ -184,7 +202,7 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
                     compilationOptions: CreateCompilationOptions(ReadOutputKind(project)),
                     parseOptions: CreateParseOptions(fileBasedApp: false),
                     projectReferences: projectReferences,
-                    metadataReferences: GetMetadataReferences());
+                    metadataReferences: metadataReferences);
                 solution = solution.AddProject(projectInfo);
                 if (IsImplicitUsingsEnabled(project))
                 {
@@ -526,9 +544,6 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
 
     private static CSharpCompilationOptions CreateCompilationOptions(OutputKind outputKind) =>
         new(outputKind, nullableContextOptions: NullableContextOptions.Enable);
-
-    private IEnumerable<MetadataReference> GetMetadataReferences() =>
-        _referencePaths.Select(static path => MetadataReference.CreateFromFile(path));
 
     private static Solution AddImplicitUsings(Solution solution, ProjectId projectId) =>
         solution.AddDocument(

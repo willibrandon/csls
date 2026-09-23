@@ -90,14 +90,14 @@ internal static partial class LanguageServerLogger
         Exception exception);
 
     /// <summary>
-    /// Reports a workspace load failure while progress is active.
+    /// Reports a workspace initialization failure with its underlying exception.
     /// </summary>
     /// <param name="logger">The language-server logger.</param>
     /// <param name="exception">The workspace load failure.</param>
     [LoggerMessage(
         EventId = 14,
         Level = LogLevel.Error,
-        Message = "Workspace loading failed while reporting progress")]
+        Message = "Workspace initialization failed")]
     internal static partial void LogWorkspaceLoadFailure(
         ILogger logger,
         Exception exception);

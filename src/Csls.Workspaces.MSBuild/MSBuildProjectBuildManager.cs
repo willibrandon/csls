@@ -113,9 +113,10 @@ internal sealed class MSBuildProjectBuildManager
                     process.Kill(entireProcessTree: true);
                 }
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException) when (process.HasExited)
             {
                 // The worker exited between the state check and termination request.
+                continue;
             }
         }
 

@@ -1,0 +1,103 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Interop;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Resolves explicitly qualified static calls from loaded managed modules.
+/// </summary>
+internal sealed partial class CorDebugDebuggee
+{
+    private ManagedFunctionBinding ResolveStaticFunction(
+        DebugExpressionNode receiver,
+        string methodName,
+        DebugExpressionLanguage language,
+        ManagedBoundType?[] arguments,
+        IReadOnlyList<ManagedExpressionValue?> constantArguments,
+        IReadOnlyList<string?> argumentNames,
+        nint thread)
+    {
+        if (!TryGetQualifiedTypeName(receiver, out string typeName))
+        {
+            throw new InvalidOperationException(
+                "A static method call requires an explicitly qualified type receiver.");
+        }
+
+        (CorDebugLoadedModule resolvedModule, uint typeToken) = ResolveLoadedRuntimeType(
+            typeName,
+            language,
+            "static call");
+        (uint Token, ManagedBoundType[] Parameters, int[] ParameterSourceIndices,
+            ManagedExpressionValue?[] OptionalArguments,
+            ManagedBoundType[] MethodTypeArguments)? method =
+            ManagedFunctionMethodResolver.ResolveCall(
+            resolvedModule,
+            typeToken,
+            methodName,
+            language,
+            arguments,
+            staticMethod: true,
+            _boundTypes,
+            thread,
+            constantArguments: constantArguments,
+            argumentNames: argumentNames);
+        if (method is null)
+        {
+            throw new InvalidOperationException(
+                $"No static method named '{methodName}' with {arguments.Length} argument(s) " +
+                $"is available on runtime type '{typeName}'.");
+        }
+
+        ManagedBoundType? resultType = _boundTypes.BindMethodResult(
+            resolvedModule.Pointer, method.Value.Token, [], thread,
+            methodArguments: method.Value.MethodTypeArguments);
+        nint[] typeArguments = ManagedRuntimeTypeArguments.ResolveBound(
+            method.Value.MethodTypeArguments, _boundTypes, thread);
+        try
+        {
+            return new ManagedFunctionBinding(
+                GetModuleFunction(resolvedModule.Pointer, method.Value.Token), typeArguments, resultType,
+                method.Value.Parameters, method.Value.ParameterSourceIndices,
+                method.Value.OptionalArguments);
+        }
+        catch
+        {
+            foreach (nint argument in typeArguments)
+            {
+                _ = ComAbi.Release(argument);
+            }
+
+            throw;
+        }
+    }
+
+    private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(
+        string typeName,
+        DebugExpressionLanguage language,
+        string operation) => _typeNames.Resolve(typeName, language, operation);
+
+    private static bool TryGetQualifiedTypeName(
+        DebugExpressionNode node,
+        out string typeName)
+    {
+        if (node.Kind == DebugExpressionNodeKind.Identifier &&
+            !string.IsNullOrWhiteSpace(node.Text))
+        {
+            typeName = node.Text;
+            return true;
+        }
+
+        if (node.Kind == DebugExpressionNodeKind.MemberAccess &&
+            node.Children.Count == 1 &&
+            !string.IsNullOrWhiteSpace(node.Text) &&
+            TryGetQualifiedTypeName(node.Children[0], out string containingName))
+        {
+            typeName = $"{containingName}.{node.Text}";
+            return true;
+        }
+
+        typeName = string.Empty;
+        return false;
+    }
+
+}

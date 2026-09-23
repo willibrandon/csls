@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
+import { assert, delay, languageFeatureTimeoutMilliseconds, step, waitUntil, withTimeout } from "./contract-support";
 
-const languageFeatureTimeoutMilliseconds = 30_000;
 const frameworkTypeDocumentText = `using System;
 using System.Reflection;
 
@@ -124,12 +124,12 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
     "The csls extension must enable semantic highlighting for C# without user configuration.",
   );
 
-  const api: unknown = await extension.activate();
+  const api: unknown = await step("Activate csls", () => extension.activate());
   assert(extension.isActive, "The csls extension must be active.");
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
-  await assertProjectDiscovery(api, workspaceFolder);
+  await step("Discover projects", () => assertProjectDiscovery(api, workspaceFolder));
   if (options.expectedHost !== "browser") {
     const expectedServerPath = vscode.Uri.joinPath(
       extension.extensionUri,
@@ -148,28 +148,28 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
       typeof api.sdkPath === "string" && api.sdkPath.length > 0,
       "The .NET Install Tool must resolve an SDK.",
     );
-    await assertSolutionExperience(api, workspaceFolder, documentUri);
+    await step("Solution, testing, and debugging", () => assertSolutionExperience(api, workspaceFolder, documentUri));
   }
-  await assertConsoleHover(documentUri);
-  await assertConsoleCompletion(documentUri);
-  await assertDefinition(document);
-  await assertFrameworkDefinitionOpens(document);
+  await step("Hover", () => assertConsoleHover(documentUri));
+  await step("Completion", () => assertConsoleCompletion(documentUri));
+  await step("Definition", () => assertDefinition(document));
+  await step("Framework definition", () => assertFrameworkDefinitionOpens(document));
   if (options.expectedHost !== "browser") {
-    await assertLazyFrameworkDefinitionOpens(document);
+    await step("Lazy framework definition", () => assertLazyFrameworkDefinitionOpens(document));
   }
-  await assertExtensionMethodDefinitionOpens(document);
-  await assertSemanticTokens(document);
-  await assertReferenceCodeLens(document);
-  await assertConfigurableInlayHints(document);
-  await assertDiagnosticsTrackEdits(document);
-  await assertFormatting(document);
-  await assertRename(document);
-  await assertCodeAction(document);
-  await assertCreatedFileIsLoaded(workspaceFolder);
+  await step("Extension method definition", () => assertExtensionMethodDefinitionOpens(document));
+  await step("Semantic tokens", () => assertSemanticTokens(document));
+  await step("Reference CodeLens", () => assertReferenceCodeLens(document));
+  await step("Inlay hints", () => assertConfigurableInlayHints(document));
+  await step("Diagnostics", () => assertDiagnosticsTrackEdits(document));
+  await step("Formatting", () => assertFormatting(document));
+  await step("Rename", () => assertRename(document));
+  await step("Code actions", () => assertCodeAction(document));
+  await step("Load a created file", () => assertCreatedFileIsLoaded(workspaceFolder));
 
   await replaceDocumentText(document, 'Console.WriteLine("hello");\n');
-  await vscode.commands.executeCommand("csls.restartServer");
-  await assertConsoleHover(documentUri);
+  await step("Restart server", () => vscode.commands.executeCommand("csls.restartServer"));
+  await step("Hover after restart", () => assertConsoleHover(documentUri));
 }
 
 async function assertProjectDiscovery(api: {
@@ -210,7 +210,7 @@ async function assertSolutionExperience(
   assert(project !== undefined, "The Solution view must contain the Roslyn-loaded Fixture project.");
   assert(typeof api.refreshTests === "function", "The desktop extension must expose test refresh.");
   assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
-  await api.refreshTests();
+  await step("Discover tests", api.refreshTests.bind(api));
   const testErrors = api.testErrors?.() ?? [];
   assert(
     testErrors.length === 0,
@@ -236,19 +236,19 @@ async function assertSolutionExperience(
     projectPath: project.path,
     workspaceRoot: workspaceFolder.uri.fsPath,
   };
-  await Promise.all([
+  await step("Concurrent builds", () => Promise.all([
     vscode.commands.executeCommand("csls.build", buildTarget),
     vscode.commands.executeCommand("csls.build", buildTarget),
-  ]);
-  await Promise.all([
+  ]));
+  await step("Concurrent test runs", () => Promise.all([
     vscode.commands.executeCommand("csls.test"),
     vscode.commands.executeCommand("csls.test"),
-  ]);
+  ]));
   assert(
     api.tests().includes("RunsFromVsCode"),
     "The Testing view must discover the real Microsoft Testing Platform test.",
   );
-  await assertDebugging(project.path, workspaceFolder, documentUri);
+  await step("Debugging", () => assertDebugging(project.path, workspaceFolder, documentUri));
 }
 
 async function exists(uri: vscode.Uri): Promise<boolean> {
@@ -290,10 +290,10 @@ async function assertDebugging(
     });
   });
   try {
-    await vscode.commands.executeCommand("csls.debug", {
+    await step("Launch debugger", () => vscode.commands.executeCommand("csls.debug", {
       projectPath,
       workspaceRoot: workspaceFolder.uri.fsPath,
-    });
+    }));
     session = await withTimeout(
       started,
       languageFeatureTimeoutMilliseconds,
@@ -558,16 +558,16 @@ async function assertReferenceCodeLens(document: vscode.TextDocument): Promise<v
 }
 
 async function assertConfigurableInlayHints(document: vscode.TextDocument): Promise<void> {
-  await replaceDocumentText(
-    document,
-    "class Example { static void Print(string message) {} void Run() { Print(\"hello\"); var count = 1; } }\n",
-  );
+  await step("Edit inlay-hint source", () => withTimeout(
+    replaceDocumentText(
+      document,
+      "class Example { static void Print(string message) {} void Run() { Print(\"hello\"); var count = 1; } }\n",
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code did not apply the inlay-hint source edit.",
+  ));
   const configuration = vscode.workspace.getConfiguration("csls", document.uri);
-  await configuration.update(
-    "inlayHints.enableInlayHintsForTypes",
-    true,
-    vscode.ConfigurationTarget.Global,
-  );
+  await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForTypes", true);
   await waitUntil(
     () => vscode.workspace
       .getConfiguration("csls", document.uri)
@@ -578,11 +578,7 @@ async function assertConfigurableInlayHints(document: vscode.TextDocument): Prom
     (await getInlayHintLabels(document)).includes("int"),
   "csls did not apply the updated type-hint configuration in VS Code.");
 
-  await vscode.workspace.getConfiguration("csls", document.uri).update(
-    "inlayHints.enableInlayHintsForParameters",
-    true,
-    vscode.ConfigurationTarget.Global,
-  );
+  await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForParameters", true);
   await waitUntil(
     () => vscode.workspace
       .getConfiguration("csls", document.uri)
@@ -596,23 +592,28 @@ async function assertConfigurableInlayHints(document: vscode.TextDocument): Prom
         observedLabels = await getInlayHintLabels(document);
         return observedLabels.includes("message:") && observedLabels.includes("int");
       }, "csls did not apply the updated inlay-hint configuration in VS Code.");
-    } catch {
+    } catch (cause) {
       throw new Error(
         `csls did not return the configured inlay hints in VS Code. Received: ${JSON.stringify(observedLabels)}.`,
+        { cause },
       );
     }
   } finally {
-    await configuration.update(
-      "inlayHints.enableInlayHintsForParameters",
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-    await configuration.update(
-      "inlayHints.enableInlayHintsForTypes",
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
+    await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForParameters", false);
+    await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForTypes", false);
   }
+}
+
+async function updateHintConfiguration(
+  configuration: vscode.WorkspaceConfiguration,
+  key: string,
+  enabled: boolean,
+): Promise<void> {
+  await step(`Set ${key}=${enabled}`, () => withTimeout(
+    configuration.update(key, enabled, vscode.ConfigurationTarget.Global),
+    languageFeatureTimeoutMilliseconds,
+    `VS Code did not finish saving ${key}=${enabled}.`,
+  ));
 }
 
 async function getInlayHintLabels(document: vscode.TextDocument): Promise<string[]> {
@@ -922,22 +923,6 @@ async function replaceDocumentText(
   );
 }
 
-async function waitUntil(
-  condition: () => boolean | Promise<boolean>,
-  message: string,
-): Promise<void> {
-  const deadline = Date.now() + languageFeatureTimeoutMilliseconds;
-  while (Date.now() < deadline) {
-    if (await condition()) {
-      return;
-    }
-
-    await delay(100);
-  }
-
-  throw new Error(message);
-}
-
 function getHoverText(hovers: readonly vscode.Hover[] | undefined): string {
   return hovers
     ?.flatMap((hover) => hover.contents)
@@ -975,34 +960,4 @@ function isExtensionApi(value: unknown): value is {
     typeof value.host === "string" &&
     "state" in value &&
     typeof value.state === "number";
-}
-
-function assert(condition: boolean, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function withTimeout<T>(
-  operation: Thenable<T>,
-  milliseconds: number,
-  message: string,
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<T>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error(message)), milliseconds);
-      }),
-    ]);
-  } finally {
-    if (timeout !== undefined) {
-      clearTimeout(timeout);
-    }
-  }
 }

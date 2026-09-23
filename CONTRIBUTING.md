@@ -17,6 +17,20 @@ never use `--no-build`. Product tests exercise real processes, streams, sockets,
 files, workspaces, SDKs, and editor integrations. Mocking libraries and hand-written
 substitutes for production services are prohibited.
 
+Building the debugger test project also builds its portable C#, Visual Basic, and
+F# fixtures in Debug and Release.
+Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
+
+Debugger dump artifacts contain `debugger-dumps.tar.gz`. Extract this archive into
+the directory containing the downloaded test reports to restore the dump paths
+referenced by TRX attachments. The archive stores identical dumps once and
+restores their additional paths as hard links.
+
+The `DebuggerStress` category includes a live four-GiB object graph. Run these
+tests on a 64-bit host with at least eight GiB of memory capacity. The graph
+test checks populated target memory, bounded inspection pages, adapter memory
+growth, and process cleanup.
+
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
 as skipped and include the exact provisioning command in their result message.
@@ -28,12 +42,12 @@ an opening tag, one text line, and a closing tag.
 Repository automation is implemented only as .NET file-based C# apps under
 `scripts/`. Shell, PowerShell, batch, and command scripts are not used.
 
-The GitHub Actions matrix runs the complete suite on x64 and arm64 Windows,
-Linux, and macOS runners. It also validates the Windows x86, Linux musl x64,
-and Linux musl arm64 tool packages. Every Native AOT launcher is checked from
-its ILC size report by Dotsider, and CodeQL findings fail the analysis job. The
-development container installs every required editor oracle and build dependency
-through
+CI builds the solution and runs focused language-server and debugger end-to-end
+checks alongside repository policy, formatting, Native AOT size, and secret
+scanning. The release workflow validates the Windows x86, Linux musl x64, and
+Linux musl arm64 tool packages. CodeQL findings fail the analysis job. The
+development container installs every required editor oracle and build
+dependency through
 `scripts/Initialize-DevContainer.cs`; its exported image is scanned by Picket.
 
 Provision the real editor and parity oracles locally with:
@@ -50,6 +64,17 @@ dotnet run --file scripts/Provision-Neovim.cs
 Set `CSLS_CSHARP_LS_ORACLE_PATH` or
 `CSLS_ROSLYN_LANGUAGE_SERVER_ORACLE_PATH` to use an externally managed oracle
 executable instead.
+
+Provision the independent DAP debugger oracle with:
+
+```console
+dotnet run --file scripts/Provision-NetcoredbgOracle.cs
+```
+
+`DapAsyncThreadStartupTests` runs against csls by default. Set
+`CSLS_DAP_ORACLE_PATH` to the provisioner's printed executable path to run the
+same source-breakpoint, local-value, and process-termination checks against
+netcoredbg.
 
 Set `CSLS_TOOLS_ROOT` to keep provisioned tools outside the repository. The
 development container uses a container-local tool root so prefix-dependent

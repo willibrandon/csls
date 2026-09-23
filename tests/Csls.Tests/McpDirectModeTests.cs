@@ -141,8 +141,7 @@ public sealed class McpDirectModeTests
                     .. sessionResults.Select(result =>
                     {
                         Assert.IsNull(result.IsError);
-                        Assert.IsTrue(result.StructuredContent.HasValue);
-                        return result.StructuredContent.Value.Deserialize(
+                        return McpAssertions.GetStructuredContent(result).Deserialize(
                             ControlJsonSerializerContext.Default.ControlSessionInfo)
                             ?? throw new InvalidDataException(
                                 "MCP workspace mode returned no session information.");
@@ -164,8 +163,7 @@ public sealed class McpDirectModeTests
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNull(workspaceResult.IsError);
-                Assert.IsTrue(workspaceResult.StructuredContent.HasValue);
-                JsonElement workspace = workspaceResult.StructuredContent.Value;
+                JsonElement workspace = McpAssertions.GetStructuredContent(workspaceResult);
                 Assert.AreEqual(session.ProcessId, workspace.GetProperty("processId").GetInt32());
                 Assert.AreEqual(1, workspace.GetProperty("projectCount").GetInt32());
                 Assert.IsGreaterThanOrEqualTo(
@@ -197,8 +195,7 @@ public sealed class McpDirectModeTests
                     new Dictionary<string, object?> { ["workspace"] = secondProjectPath },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNull(secondSessionResult.IsError);
-                Assert.IsTrue(secondSessionResult.StructuredContent.HasValue);
-                ControlSessionInfo secondSession = secondSessionResult.StructuredContent.Value
+                ControlSessionInfo secondSession = McpAssertions.GetStructuredContent(secondSessionResult)
                     .Deserialize(ControlJsonSerializerContext.Default.ControlSessionInfo)
                     ?? throw new InvalidDataException(
                         "MCP workspace mode returned no second session information.");
@@ -214,8 +211,7 @@ public sealed class McpDirectModeTests
                     "list_sessions",
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNull(listedSessionsResult.IsError);
-                Assert.IsTrue(listedSessionsResult.StructuredContent.HasValue);
-                JsonElement listedSessions = listedSessionsResult.StructuredContent.Value;
+                JsonElement listedSessions = McpAssertions.GetStructuredContent(listedSessionsResult);
                 Assert.AreEqual(JsonValueKind.Array, listedSessions.ValueKind);
                 int[] listedProcessIds =
                 [

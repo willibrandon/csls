@@ -1,1 +1,9 @@
-<Project />
+<Project>
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Csls.SourceGen/Csls.SourceGen.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="All"
+                      GlobalPropertiesToRemove="PublishAot;NativeLib;SelfContained;RuntimeIdentifier;PublishReadyToRun;PublishSingleFile" />
+  </ItemGroup>
+</Project>

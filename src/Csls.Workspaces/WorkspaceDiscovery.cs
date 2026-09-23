@@ -283,7 +283,13 @@ internal static class WorkspaceDiscovery
         }
     }
 
-    private static bool IsDiscoverableFileBasedApp(
+    /// <summary>
+    /// Determines whether a source file contains an explicit file-app directive and executable top-level code.
+    /// </summary>
+    /// <param name="path">The absolute source path to inspect.</param>
+    /// <param name="cancellationToken">The inspection cancellation token.</param>
+    /// <returns>True when automatic workspace discovery should treat the source as a file-based app.</returns>
+    internal static bool IsDiscoverableFileBasedApp(
         string path,
         CancellationToken cancellationToken)
     {

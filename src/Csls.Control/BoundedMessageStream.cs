@@ -5,7 +5,7 @@ namespace Csls.Control;
 /// <summary>
 /// Validates length-prefixed control payloads before allowing their bytes to be read.
 /// </summary>
-internal sealed class BoundedMessageStream : Stream
+public sealed class BoundedMessageStream : Stream
 {
     private readonly Stream _innerStream;
     private readonly int _maximumMessageBytes;
@@ -20,7 +20,7 @@ internal sealed class BoundedMessageStream : Stream
     /// <param name="innerStream">The underlying bidirectional control stream.</param>
     /// <param name="maximumMessageBytes">The inclusive maximum payload size.</param>
     /// <param name="leaveOpen">Whether disposing this stream leaves the inner stream open.</param>
-    internal BoundedMessageStream(
+    public BoundedMessageStream(
         Stream innerStream,
         int maximumMessageBytes,
         bool leaveOpen)

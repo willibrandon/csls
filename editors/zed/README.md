@@ -30,5 +30,25 @@ Set `code_lens` to `menu` to show reference counts in the code-action menu
 instead of above declarations. Selecting a count opens Zed's native location
 view.
 
+The extension also registers the `.NET (csls)` debug adapter and runs the same
+downloaded or configured `csls` binary with `debugger dap`. A `debug.json` launch
+entry names an absolute managed executable or assembly:
+
+```json
+[
+  {
+    "label": ".NET Launch",
+    "adapter": "csls",
+    "request": "launch",
+    "program": "/absolute/path/to/application.dll",
+    "cwd": "/absolute/path/to/project"
+  }
+]
+```
+
+For attachment, set `request` to `attach` and provide a positive `processId`.
+The extension uses the csls debugger directly and never downloads or discovers
+another debugger.
+
 Build the extension with `dotnet run --file scripts/Build-ZedExtension.cs` from
 the repository root.

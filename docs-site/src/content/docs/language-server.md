@@ -1,10 +1,9 @@
 ---
 title: Language server
-description: Language Server Protocol features implemented by csls.
+description: Explore csls language features, workspace loading, and session control.
 ---
 
-`csls` advertises only capabilities backed by an active implementation. Current
-language features include:
+csls provides these language features through LSP:
 
 - C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, navigation, rename, and formatting
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
@@ -20,7 +19,7 @@ Workspace results cover user C# and Razor documents across all loaded projects,
 exclude build output, include versions for open files, and return unchanged reports
 when the client already holds the current result. Clients that provide a partial
 result token receive bounded batches through standard LSP progress notifications.
-Clients without pull-diagnostic support receive complete versioned push diagnostics
+Clients using push diagnostics receive complete versioned reports
 after documents open, change, or save. Rapid edits are coalesced, and closing a
 document clears its published diagnostics.
 
@@ -28,8 +27,8 @@ Compiler and analyzer results are cached by the dependent Roslyn project version
 An edit recomputes affected projects on demand while unrelated projects keep their
 current result identifiers and cached analysis.
 
-Reference CodeLens is discovered from C# declaration syntax without starting a
-reference search. The editor resolves visible lenses on demand, producing exact
+Reference CodeLens is discovered from C# declaration syntax. The editor resolves
+visible lenses on demand through a reference search, producing exact
 `0 references` and `1 reference` labels and a capped `99+ references` label for
 larger result sets. Selecting a lens runs a current reference request and opens
 the editor's native references view. Clients that support CodeLens refresh are
@@ -37,8 +36,8 @@ notified when edits or workspace changes can affect a visible count.
 
 Roslyn diagnostics with hidden severity are omitted unless they fade unnecessary
 code. Diagnostics explicitly raised to information remain visible and use the same
-hint presentation as the C# extension by default. The presentation can be changed
-without recomputing analyzer results.
+hint presentation as the C# extension by default. Presentation changes reuse the
+cached analyzer results.
 
 The server tracks open-document versions and applies incremental text changes.
 Workspace loading supports solutions, projects, file-based apps, loose C# files,
@@ -50,9 +49,9 @@ Folder discovery loads shebang apps and directive apps with top-level statements
 while an explicit C# file workspace always uses file-based app semantics.
 Clients that support work-done progress receive one update for each resolved
 project, including projects discovered through references outside the solution.
-Files loaded once for each target framework use the best available project flavor
-for hover and other position-based requests, with a stable fallback when a flavor
-name has no target framework.
+For files loaded across multiple target frameworks, hover and other position-based
+requests use a project context selected by framework family, platform, and version.
+Project names provide deterministic ordering within those preferences.
 
 Unity projects are detected by their `Assets` directory and
 `ProjectSettings/ProjectVersion.txt` file. csls loads the generated solution at
@@ -73,8 +72,7 @@ Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Method completion
 adds tab stops for required parameters and leaves optional parameters for signature
 help. Other clients receive plain text. `completionItem/resolve` adds Roslyn
-documentation without changing the edit, sort text, or filter text returned by the
-original request.
+documentation and preserves the original edit, sort text, and filter text.
 Hover, completion resolve, signature help, and parameter help preserve structured
 C# XML documentation such as references, paragraphs, code, and lists. Markdown is
 returned only when the client includes it in the corresponding content formats.
@@ -86,8 +84,8 @@ generated project snapshot. Commit edits map back to Razor source, including
 
 Rename works from C# and from mapped C# expressions in `.razor` and `.cshtml`
 files. A single version-aware workspace edit updates Razor references, Razor-local
-members, and ordinary C# declarations and references. Rename is rejected when
-the new identifier would bind to a different symbol in generated Razor code.
+members, and ordinary C# declarations and references. Rename validates that the
+new identifier preserves symbol identity in generated Razor code.
 
 Missing-using quick fixes use Roslyn's project and metadata indexes. Each proposed
 import is applied to a temporary document, simplified, formatted, and kept only
@@ -101,15 +99,15 @@ and the current open-document version.
 Interface implementation quick fixes generate required inherited methods,
 properties, indexers, events, and static abstract members. Existing and default
 members are left alone. csls compiles the temporary document and returns the edit
-only when the selected interface is fully implemented without new compiler errors.
+when the selected interface is fully implemented and passes compiler validation.
 
 Move to file extracts a top-level class, struct, interface, record, enum, or
 delegate from a file that contains another declaration. The result creates the
 matching `.cs` file before inserting its formatted source and removing the
 original declaration. The action is offered only when the client supports
 ordered document changes and create-file resource operations. CLI and MCP
-previews record both the source hash and the requirement that the target path
-does not exist before `--apply` can write either file.
+previews record the source hash and reserve a new target path. `--apply` validates
+both conditions before writing the files.
 
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique
@@ -117,8 +115,7 @@ within the scheme. Unsigned project APIs are unique within their project group,
 while non-public symbols use project or document scope.
 
 `textDocument/linkedEditingRange` links matching start and end names in XML
-documentation, including nested and custom elements. Self-closing, mismatched,
-and unrelated text do not produce linked ranges.
+documentation, including nested and custom elements.
 
 `textDocument/foldingRange` returns C# syntax, comment, import, and region folds
 from the current Roslyn document snapshot. Results honor the client range limit,
@@ -147,7 +144,7 @@ when the client supports it. Push-only clients use the same settings and precede
 
 Each language-server process creates a private Unix domain socket and a session
 manifest in the user cache directory. The socket is supported by .NET on Windows,
-Linux, and macOS. It is not exposed over the network.
+Linux, and macOS.
 
 The CLI and MCP server authenticate through operating-system file permissions and
 connect to this socket. This keeps editor requests, terminal commands, and agent
@@ -156,6 +153,5 @@ requests on one Roslyn workspace.
 ## Debug information
 
 `$/csharp/debugInfo` returns the live workspace phase, loaded folders, active
-requests, queue counters, and cumulative request timings. It bypasses normal
-request scheduling, so clients and tests can inspect a blocked or shutting-down
-session without waiting for queued language work.
+requests, queue counters, and cumulative request timings. Its independent request
+path lets clients and tests inspect a blocked or shutting-down session immediately.

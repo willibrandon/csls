@@ -14,9 +14,11 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze C#
+    name: Scan C#
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      sarif-artifact-id: ${{ steps.sarif.outputs.artifact-id }}
     permissions:
       contents: read
       security-events: write
@@ -45,6 +47,45 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           output: artifacts/codeql-results
+          # The verification job checks this SARIF while GitHub processes the uploaded result.
+          wait-for-processing: false
+
+      - name: Share CodeQL results
+        id: sarif
+        uses: actions/upload-artifact@v7
+        with:
+          name: codeql-results-${{ github.run_attempt }}
+          path: artifacts/codeql-results/**/*.sarif
+          if-no-files-found: error
+
+  verify:
+    name: Analyze C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: analyze
+    if: ${{ always() }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Require successful CodeQL scan
+        env:
+          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.analyze.result }}
+        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
+
+      - name: Retrieve CodeQL results
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.analyze.outputs.sarif-artifact-id }}
+          path: artifacts/codeql-results
 
       - name: Enforce zero CodeQL findings
         run: dotnet run --file scripts/Verify-CodeQl.cs -- artifacts/codeql-results

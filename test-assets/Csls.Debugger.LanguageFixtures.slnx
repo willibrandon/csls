@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
+  <Project Path="Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+  <Project Path="Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
+</Solution>

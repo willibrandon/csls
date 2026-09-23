@@ -1,0 +1,315 @@
+using Csls.Debugger.Interop;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Materializes exact CoreCLR values for managed function-evaluation arguments.
+/// </summary>
+internal sealed partial class CorDebugDebuggee
+{
+    private unsafe nint CreateFunctionArgument(
+        nint evaluation,
+        ManagedExpressionValue argument,
+        nint runtimeArgument,
+        List<nint> temporaryArguments)
+    {
+        if (argument.BoxesNullableAsNull)
+        {
+            return CreateNullFunctionArgument(evaluation, temporaryArguments);
+        }
+
+        if (argument.RequiresBoxing)
+        {
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    "A boxed function argument has no retained runtime value.");
+        }
+
+        if (argument.IsMaterializedFunctionArgument)
+        {
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    "A converted function argument has no retained runtime value.");
+        }
+
+        if (argument.RequiresUnboxing)
+        {
+            if (runtimeArgument == 0 ||
+                !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
+            {
+                throw new InvalidOperationException(
+                    "An explicitly unboxed function argument has no value storage.");
+            }
+
+            temporaryArguments.Add(unboxed);
+            return unboxed;
+        }
+
+        bool hasCapturedRuntimeReference = argument.RuntimeValueReference > 0;
+        bool usesCapturedRuntimeReference = hasCapturedRuntimeReference &&
+            (argument.DeclaredType is { IsReference: true } || !argument.HasScalar);
+        bool usesMaterializedString = argument.HasScalar && argument.Scalar is string;
+        if (usesCapturedRuntimeReference || usesMaterializedString)
+        {
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    $"Function argument '{argument.Display.Name}' has no retained runtime value.");
+        }
+
+        if (argument.IsZeroValueTypeDefault || argument.RequiresNullableMaterialization ||
+            argument.Scalar is decimal or DateTime)
+        {
+            if (runtimeArgument == 0 || !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
+            {
+                throw new InvalidOperationException("A structured argument has no retained runtime value.");
+            }
+
+            temporaryArguments.Add(unboxed);
+            return unboxed;
+        }
+
+        object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
+        uint elementType = GetFunctionArgumentElementType(argument.Type, scalar);
+        nint value = 0;
+        nint* valueAddress = &value;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugEvalAbi(evaluation).CreateValue(
+                elementType,
+                pElementClass: 0,
+                (nint)valueAddress),
+            "ICorDebugEval.CreateValue");
+        value = RequirePointer(
+            Volatile.Read(ref *valueAddress),
+            "ICorDebugEval.CreateValue");
+        try
+        {
+            if (scalar is not null)
+            {
+                SetManagedPrimitiveValue(value, argument.Type, scalar);
+            }
+
+            temporaryArguments.Add(value);
+            return value;
+        }
+        catch
+        {
+            _ = ComAbi.Release(value);
+            throw;
+        }
+    }
+
+    private static unsafe nint CreateNullFunctionArgument(
+        nint evaluation,
+        List<nint> temporaryArguments)
+    {
+        nint value = 0;
+        nint* valueAddress = &value;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugEvalAbi(evaluation).CreateValue(
+                0x12,
+                pElementClass: 0,
+                (nint)valueAddress),
+            "ICorDebugEval.CreateValue");
+        value = RequirePointer(
+            Volatile.Read(ref *valueAddress),
+            "ICorDebugEval.CreateValue");
+        temporaryArguments.Add(value);
+        return value;
+    }
+
+    private static uint GetFunctionArgumentElementType(string type, object? scalar) =>
+        scalar is null
+            ? 0x12u
+            : type switch
+            {
+                "bool" => 0x02u,
+                "char" => 0x03u,
+                "sbyte" => 0x04u,
+                "byte" => 0x05u,
+                "short" => 0x06u,
+                "ushort" => 0x07u,
+                "int" => 0x08u,
+                "uint" => 0x09u,
+                "long" => 0x0au,
+                "ulong" => 0x0bu,
+                "float" => 0x0cu,
+                "double" => 0x0du,
+                // CoreCLR converts these supported full-width literals to the native parameter signature.
+                "nint" => 0x0au,
+                "nuint" => 0x0bu,
+                _ => throw new NotSupportedException(
+                    $"Managed function evaluation cannot materialize an argument of " +
+                    $"type '{type}'.")
+            };
+
+    private static unsafe void SetManagedPrimitiveValue(
+        nint value,
+        string type,
+        object scalar)
+    {
+        nint generic = ComAbi.QueryInterface(value, ICorDebugGenericValueAbi.InterfaceId);
+        try
+        {
+            switch (type)
+            {
+                case "bool":
+                    byte boolean = (bool)scalar ? (byte)1 : (byte)0;
+                    SetGenericValue(generic, &boolean);
+                    break;
+                case "char":
+                    char character = (char)scalar;
+                    SetGenericValue(generic, &character);
+                    break;
+                case "sbyte":
+                    sbyte signedByte = (sbyte)scalar;
+                    SetGenericValue(generic, &signedByte);
+                    break;
+                case "byte":
+                    byte unsignedByte = (byte)scalar;
+                    SetGenericValue(generic, &unsignedByte);
+                    break;
+                case "short":
+                    short signedShort = (short)scalar;
+                    SetGenericValue(generic, &signedShort);
+                    break;
+                case "ushort":
+                    ushort unsignedShort = (ushort)scalar;
+                    SetGenericValue(generic, &unsignedShort);
+                    break;
+                case "int":
+                    int signedInteger = (int)scalar;
+                    SetGenericValue(generic, &signedInteger);
+                    break;
+                case "uint":
+                    uint unsignedInteger = (uint)scalar;
+                    SetGenericValue(generic, &unsignedInteger);
+                    break;
+                case "long":
+                    long signedLong = (long)scalar;
+                    SetGenericValue(generic, &signedLong);
+                    break;
+                case "ulong":
+                    ulong unsignedLong = (ulong)scalar;
+                    SetGenericValue(generic, &unsignedLong);
+                    break;
+                case "float":
+                    float single = (float)scalar;
+                    SetGenericValue(generic, &single);
+                    break;
+                case "double":
+                    double number = (double)scalar;
+                    SetGenericValue(generic, &number);
+                    break;
+                case "nint":
+                    long signedNative = checked((long)scalar);
+                    SetGenericValue(generic, &signedNative);
+                    break;
+                case "nuint":
+                    ulong unsignedNative = checked((ulong)scalar);
+                    SetGenericValue(generic, &unsignedNative);
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"The debugger cannot set a managed primitive of type '{type}'.");
+            }
+        }
+        finally
+        {
+            _ = ComAbi.Release(generic);
+        }
+    }
+
+    private static unsafe void SetGenericValue<T>(nint generic, T* value)
+        where T : unmanaged =>
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugGenericValueAbi(generic).SetValue((nint)value),
+            "ICorDebugGenericValue.SetValue");
+
+    private unsafe nint CreateFunctionEvaluationHandle(nint value)
+    {
+        _managedCallback.ThrowIfRuntimeFailed();
+        nint dereferenced = 0;
+        nint heapValue = 0;
+        nint handle = 0;
+        try
+        {
+            dereferenced = DereferenceValue(value);
+            heapValue = ComAbi.QueryInterface(
+                dereferenced,
+                ICorDebugHeapValue2Abi.InterfaceId);
+            nint* handleAddress = &handle;
+            int createResult = new ICorDebugHeapValue2Abi(heapValue).CreateHandle(
+                type: 1,
+                (nint)handleAddress);
+            handle = Volatile.Read(ref *handleAddress);
+            if (createResult < 0)
+            {
+                if (handle != 0)
+                {
+                    ReleaseFunctionEvaluationHandle(handle);
+                }
+
+                CorDebugHResult.ThrowIfFailed(
+                    createResult,
+                    "ICorDebugHeapValue2.CreateHandle");
+            }
+
+            return RequirePointer(
+                Volatile.Read(ref *handleAddress),
+                "ICorDebugHeapValue2.CreateHandle");
+        }
+        finally
+        {
+            if (heapValue != 0)
+            {
+                _ = ComAbi.Release(heapValue);
+            }
+
+            if (dereferenced != 0)
+            {
+                _ = ComAbi.Release(dereferenced);
+            }
+        }
+    }
+
+    private (nint Value, bool IsHeapHandle) RetainFunctionEvaluationArgument(nint value)
+    {
+        if (ManagedRuntimeValueIdentity.GetElementType(value) == 0x11)
+        {
+            _ = ComAbi.AddRef(value);
+            return (value, false);
+        }
+
+        return (CreateFunctionEvaluationHandle(value), true);
+    }
+
+    private void ReleaseFunctionEvaluationArgument(nint value, bool isHeapHandle, bool runtimeAvailable = true)
+    {
+        if (isHeapHandle)
+        {
+            ReleaseFunctionEvaluationHandle(value, runtimeAvailable);
+        }
+        else if (value != 0)
+        {
+            _ = ComAbi.Release(value);
+        }
+    }
+
+    private void ReleaseFunctionEvaluationHandle(nint handle, bool runtimeAvailable = true)
+    {
+        if (handle == 0)
+        {
+            return;
+        }
+
+        if (runtimeAvailable && RuntimeFailure is null)
+        {
+            _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        }
+
+        _ = ComAbi.Release(handle);
+    }
+}

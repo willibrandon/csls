@@ -69,13 +69,16 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
                 .Distinct(PathComparer)
         ];
         var snapshots = new List<WorkspaceFolderSnapshot>(distinctRootPaths.Length);
+        PortableExecutableReference[] metadataReferences = GetTrustedPlatformReferences(
+            _referencePaths);
         try
         {
             foreach (string rootPath in distinctRootPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                WorkspaceFolderSnapshot snapshot = LoadWithReferences(
+                WorkspaceFolderSnapshot snapshot = LoadCore(
                     rootPath,
+                    metadataReferences,
                     cancellationToken);
                 snapshots.Add(snapshot);
                 progress?.Report(new WorkspaceLoadProgress
@@ -114,17 +117,15 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
         string[] referencePaths = trustedPlatformAssemblies.Split(
             Path.PathSeparator,
             StringSplitOptions.RemoveEmptyEntries);
-        return LoadCore(rootPath, referencePaths, cancellationToken);
+        return LoadCore(
+            rootPath,
+            GetTrustedPlatformReferences(referencePaths),
+            cancellationToken);
     }
-
-    private WorkspaceFolderSnapshot LoadWithReferences(
-        string rootPath,
-        CancellationToken cancellationToken) =>
-        LoadCore(rootPath, _referencePaths, cancellationToken);
 
     private static WorkspaceFolderSnapshot LoadCore(
         string rootPath,
-        IReadOnlyList<string> referencePaths,
+        IReadOnlyList<PortableExecutableReference> metadataReferences,
         CancellationToken cancellationToken)
     {
         bool isSourceFile = File.Exists(rootPath);
@@ -148,7 +149,7 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
                 parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
                 compilationOptions: new CSharpCompilationOptions(
                     OutputKind.DynamicallyLinkedLibrary),
-                metadataReferences: GetTrustedPlatformReferences(referencePaths));
+                metadataReferences: metadataReferences);
             Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
             solution = solution.AddDocument(
                 DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
@@ -189,12 +190,17 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
         }
     }
 
-    private static IEnumerable<MetadataReference> GetTrustedPlatformReferences(
+    private static PortableExecutableReference[] GetTrustedPlatformReferences(
         IReadOnlyList<string> referencePaths)
     {
-        return referencePaths
-            .Distinct(PathComparer)
-            .Select(static path => MetadataReference.CreateFromFile(path));
+        return
+        [
+            .. referencePaths
+                .Distinct(PathComparer)
+                .Select(static path => MetadataReferenceImageCache.GetReference(
+                    path,
+                    MetadataReferenceProperties.Assembly))
+        ];
     }
 
     private static string? FindProjectFile(string rootPath)

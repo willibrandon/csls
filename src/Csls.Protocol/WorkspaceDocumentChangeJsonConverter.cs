@@ -5,7 +5,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace Csls.Protocol;
 
 /// <summary>
-/// Converts the mixed LSP workspace document-change array without reflection metadata.
+/// Converts the mixed LSP workspace document-change array using registered JSON type metadata.
 /// </summary>
 public sealed class WorkspaceDocumentChangeJsonConverter : JsonConverter<WorkspaceDocumentChange>
 {

@@ -25,3 +25,25 @@ Every iteration measures startup, workspace load, language operations, analyzers
 generators, MCP, dashboard attachment, shutdown, and a transient CLI query. The JSON
 report includes operation timings, process-tree memory and CPU, machine details, SDK
 version, probe document, analyzer assemblies, command names, and cache state.
+
+## Debugger measurements
+
+Measure a published csls installation from the repository root:
+
+```console
+dotnet run --project benchmarks/Csls.EndToEndPerformance --configuration Release -- debugger --server /absolute/path/to/csls --fixture-source benchmarks/Csls.EndToEndPerformance/DebuggerPerformanceTarget.cs --iterations 3 --samples 5
+```
+
+Each fresh debugger process launches the compiled harness target, binds its source
+breakpoint, inspects threads, a stack frame, locals and an array page, evaluates a
+watch expression, and receives target output and exit. Every operation validates
+the observed values. Timings include request serialization, transport, response
+parsing, and validation. Launch-to-breakpoint includes source-breakpoint setup.
+
+The JSON report separates first and repeated stopped-state requests and labels
+each fresh process by iteration. It records executable hashes, host and SDK details,
+resident memory, process-tree CPU time, and Windows/Linux private memory. Resource
+snapshots include the target and evaluator processes. Use `--operation-budget-ms`
+to gate each operation's median, `--timeout-seconds` to bound each session, and
+`--output` to choose a new report path. Completed budget failures retain their
+measurements and return exit code 1.

@@ -42,7 +42,7 @@ internal sealed class CslsMcpWorkspaceTools
         ReadOnly = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpWorkspaceSummary))]
-    [Description("Get a compact workspace health overview. Follow the returned resource link only when complete project, document, request, cache, log, or diagnostic details are needed.")]
+    [Description("Get a compact workspace health overview. Follow the returned resource link for complete project, document, request, cache, log, and diagnostic details.")]
     public async Task<CallToolResult> GetWorkspaceStateAsync(
         CancellationToken cancellationToken,
         [Description("Workspace, project, or document path. Specify exactly one target selector.")]

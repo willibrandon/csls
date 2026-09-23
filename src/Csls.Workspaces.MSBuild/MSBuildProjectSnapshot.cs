@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Csls.Workspaces;
 
 /// <summary>
@@ -33,11 +35,11 @@ internal sealed class MSBuildProjectSnapshot
             .Distinct(PathComparer)
             .ToDictionary(
                 static path => path,
-                GetInputStamp,
+                static path => (GetInputStamp(path), GetInputContentHash(path)),
                 PathComparer);
     }
 
-    private readonly IReadOnlyDictionary<string, long> _inputStamps;
+    private readonly IReadOnlyDictionary<string, (long Stamp, byte[]? ContentHash)> _inputStamps;
 
     /// <summary>
     /// Gets the absolute project file path.
@@ -64,7 +66,30 @@ internal sealed class MSBuildProjectSnapshot
     /// </summary>
     /// <returns>True when the design-time state can be reused.</returns>
     internal bool IsCurrent() =>
-        _inputStamps.All(static input => GetInputStamp(input.Key) == input.Value);
+        _inputStamps.All(static input =>
+            GetInputStamp(input.Key) == input.Value.Stamp ||
+            (input.Value.ContentHash is { } expected &&
+                GetInputContentHash(input.Key) is { } actual &&
+                expected.AsSpan().SequenceEqual(actual)));
+
+    private static byte[]? GetInputContentHash(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return SHA256.HashData(stream);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A changing or inaccessible input requires a fresh project evaluation.
+            return null;
+        }
+    }
 
     private static long GetInputStamp(string path)
     {

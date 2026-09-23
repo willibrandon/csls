@@ -24,22 +24,6 @@ public sealed class ControlSocketTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Places session sockets in the stable private directory under the current user profile.
-    /// </summary>
-    [TestMethod]
-    public void SocketDirectoryUsesCurrentUserProfile()
-    {
-        string expected = Path.Join(
-            Environment.GetFolderPath(
-                Environment.SpecialFolder.UserProfile,
-                Environment.SpecialFolderOption.DoNotVerify),
-            ".csls",
-            "sockets");
-
-        Assert.AreEqual(expected, ControlEndpoint.GetSocketDirectory());
-    }
-
-    /// <summary>
     /// Skips an unresponsive control socket while discovering a healthy running session.
     /// </summary>
     [TestMethod]

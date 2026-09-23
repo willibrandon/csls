@@ -7,6 +7,8 @@
 #:include ScriptSupport.cs
 
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -58,6 +60,12 @@ try
     string extensionPath = await ProvisionCSharpExtensionAsync(
         toolsRoot,
         CancellationToken.None).ConfigureAwait(false);
+    await WriteProvisionedOutputsAsync(
+        toolsRoot,
+        executablePath,
+        Path.Join(toolsRoot, "zed", version, platform),
+        extensionPath,
+        expectedSha256).ConfigureAwait(false);
 
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(extensionPath).ConfigureAwait(false);
@@ -73,6 +81,48 @@ catch (Exception exception) when (exception is
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
+}
+
+static async Task WriteProvisionedOutputsAsync(
+    string toolsRoot,
+    string executablePath,
+    string installationPath,
+    string extensionPath,
+    string expectedSha256)
+{
+    string? outputPath = Environment.GetEnvironmentVariable("GITHUB_OUTPUT");
+    if (string.IsNullOrEmpty(outputPath))
+    {
+        return;
+    }
+
+    string executableRelativePath = GetOutputRelativePath(toolsRoot, executablePath);
+    string installationRelativePath = GetOutputRelativePath(toolsRoot, installationPath);
+    string extensionRelativePath = GetOutputRelativePath(toolsRoot, extensionPath);
+    string cacheKey = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+        $"{expectedSha256}\n{installationRelativePath}\n{extensionRelativePath}")));
+    await File.AppendAllTextAsync(
+        outputPath,
+        $"zed-path={executableRelativePath}{Environment.NewLine}" +
+        $"zed-installation={installationRelativePath}{Environment.NewLine}" +
+        $"csharp-extension-path={extensionRelativePath}{Environment.NewLine}" +
+        $"cache-key={cacheKey}{Environment.NewLine}").ConfigureAwait(false);
+}
+
+static string GetOutputRelativePath(string toolsRoot, string path)
+{
+    string relativePath = Path.GetRelativePath(toolsRoot, path).Replace('\\', '/');
+    if (Path.IsPathRooted(relativePath) ||
+        relativePath is "." or ".." ||
+        relativePath.StartsWith("../", StringComparison.Ordinal) ||
+        relativePath.Contains('\r', StringComparison.Ordinal) ||
+        relativePath.Contains('\n', StringComparison.Ordinal) ||
+        relativePath.Contains('\'', StringComparison.Ordinal))
+    {
+        throw new InvalidDataException("The provisioned Zed path is not a safe relative path.");
+    }
+
+    return relativePath;
 }
 
 static (string Platform, string AssetName) SelectAsset()
@@ -106,7 +156,7 @@ static async Task<string> ProvisionCSharpExtensionAsync(
     string manifestPath = Path.Join(installationPath, "extension.toml");
     if (File.Exists(manifestPath))
     {
-        await VerifyExtensionManifestAsync(manifestPath, cancellationToken)
+        await VerifyExtensionManifestAsync(manifestPath, version, cancellationToken)
             .ConfigureAwait(false);
         return installationPath;
     }
@@ -131,6 +181,7 @@ static async Task<string> ProvisionCSharpExtensionAsync(
             cancellationToken).ConfigureAwait(false);
         await VerifyExtensionManifestAsync(
             Path.Join(extractionPath, "extension.toml"),
+            version,
             cancellationToken).ConfigureAwait(false);
         Directory.CreateDirectory(Path.GetDirectoryName(installationPath)!);
         if (Directory.Exists(installationPath))
@@ -164,9 +215,9 @@ static async Task<(string Version, Uri Source)> ResolveLatestCSharpExtensionAsyn
         Timeout = TimeSpan.FromMinutes(2)
     };
     client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
-    using HttpResponseMessage response = await client.GetAsync(
+    using HttpResponseMessage response = await GetExtensionChannelResponseAsync(
+        client,
         source,
-        HttpCompletionOption.ResponseHeadersRead,
         cancellationToken).ConfigureAwait(false);
     if (response.StatusCode is not System.Net.HttpStatusCode.TemporaryRedirect &&
         response.StatusCode is not System.Net.HttpStatusCode.Found)
@@ -179,31 +230,68 @@ static async Task<(string Version, Uri Source)> ResolveLatestCSharpExtensionAsyn
     Uri location = response.Headers.Location
         ?? throw new InvalidDataException(
             "The Zed extension channel returned no current release URI.");
+    if (!location.IsAbsoluteUri ||
+        !string.Equals(location.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal) ||
+        !string.IsNullOrEmpty(location.UserInfo))
+    {
+        throw new InvalidDataException(
+            "The Zed extension channel returned an invalid HTTPS release URI.");
+    }
+
     string[] segments = location.AbsolutePath.Split(
         '/',
         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (segments.Length < 4 ||
+    if (segments.Length != 4 ||
         !string.Equals(segments[0], "extensions", StringComparison.Ordinal) ||
         !string.Equals(segments[1], "csharp", StringComparison.Ordinal) ||
-        !Version.TryParse(segments[2], out _))
+        !Version.TryParse(segments[2], out _) ||
+        !string.Equals(segments[3], "archive.tar.gz", StringComparison.Ordinal))
     {
         throw new InvalidDataException(
-            $"The Zed extension channel returned an invalid release URI: {location}");
+            "The Zed extension channel returned an invalid release URI.");
     }
 
-    return (segments[2], source);
+    return (segments[2], location);
+}
+
+static async Task<HttpResponseMessage> GetExtensionChannelResponseAsync(
+    HttpClient client,
+    Uri source,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        return await client.GetAsync(
+            source,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+    {
+        throw new HttpRequestException(
+            $"The Zed C# extension channel at {source} did not return response headers " +
+            "within the configured HTTP timeout.",
+            exception);
+    }
 }
 
 static async Task VerifyExtensionManifestAsync(
     string manifestPath,
+    string expectedVersion,
     CancellationToken cancellationToken)
 {
     string manifest = await File.ReadAllTextAsync(manifestPath, cancellationToken)
         .ConfigureAwait(false);
-    if (!manifest.Contains("id = \"csharp\"", StringComparison.Ordinal) ||
-        !manifest.Contains("version = \"", StringComparison.Ordinal))
+    string[] rootEntries =
+    [
+        .. manifest.Split('\n')
+            .Select(static line => line.Trim())
+            .TakeWhile(static line => !line.StartsWith('['))
+    ];
+    if (!rootEntries.Contains("id = \"csharp\"", StringComparer.Ordinal) ||
+        !rootEntries.Contains($"version = \"{expectedVersion}\"", StringComparer.Ordinal))
     {
         throw new InvalidDataException(
-            "The Zed C# extension manifest is missing its identity or version.");
+            $"The Zed C# extension manifest does not identify the selected version {expectedVersion}.");
     }
 }

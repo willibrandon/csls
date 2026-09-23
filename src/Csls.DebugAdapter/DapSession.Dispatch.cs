@@ -1,0 +1,163 @@
+using Csls.DebugAdapter.Protocol;
+using Csls.Debugger.Contracts;
+using System.ComponentModel;
+
+namespace Csls.DebugAdapter;
+
+/// <summary>
+/// Dispatches supported DAP requests to capability-specific handlers.
+/// </summary>
+internal sealed partial class DapSession
+{
+    private async ValueTask HandleRequestAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DispatchRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is Win32Exception or UnauthorizedAccessException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask DispatchRequestAsync(Request request, CancellationToken cancellationToken)
+    {
+        if (_dumpCapabilities && _state != DapSessionState.Initialized &&
+            request.Command is not ("initialize" or "launch" or "attach" or "configurationDone" or
+                "threads" or "stackTrace" or "scopes" or "variables" or "modules" or "disconnect" or "cancel"))
+        {
+            await WriteRequestFailureAsync(request,
+                $"The '{request.Command}' request requires a live target; this session inspects a read-only dump.",
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        switch (request.Command)
+        {
+            case "initialize":
+                await InitializeAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "launch":
+                await PrepareLaunchAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "attach":
+                await PrepareAttachAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "configurationDone":
+                await CompleteTargetStartAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "setBreakpoints":
+                await SetBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "setFunctionBreakpoints":
+                await SetFunctionBreakpointsAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "setInstructionBreakpoints":
+                await SetInstructionBreakpointsAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "setExceptionBreakpoints":
+                await SetExceptionBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "threads":
+                await WriteThreadsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "modules":
+                await WriteModulesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "loadedSources":
+                await WriteLoadedSourcesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "source":
+                await WriteSourceContentAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "breakpointLocations":
+                await WriteBreakpointLocationsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "pause":
+                await PauseAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "continue":
+                await ContinueAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "next":
+                await StepAsync(request, DebugStepKind.Over, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "stepIn":
+                await StepAsync(request, DebugStepKind.Into, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "stepOut":
+                await StepAsync(request, DebugStepKind.Out, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "stepInTargets":
+                await WriteStepInTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "gotoTargets":
+                await WriteGotoTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "goto":
+                await GotoAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "restart":
+                await RestartAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "stackTrace":
+                await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "scopes":
+                await WriteScopesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "variables":
+                await WriteVariablesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "evaluate":
+                await EvaluateAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "completions":
+                await WriteCompletionsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "setVariable":
+                await SetVariableAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "setExpression":
+                await SetExpressionAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "readMemory":
+                await ReadMemoryAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "disassemble":
+                await DisassembleAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "exceptionInfo":
+                await WriteExceptionInfoAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "disconnect":
+                await DisconnectAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "cancel":
+                await _writer.WriteResponseAsync(
+                    request,
+                    success: true,
+                    message: null,
+                    writeBody: null,
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            default:
+                await _writer.WriteResponseAsync(
+                    request,
+                    success: false,
+                    $"The request '{request.Command}' is not supported by this debugger capability set.",
+                    writeBody: null,
+                    cancellationToken).ConfigureAwait(false);
+                break;
+        }
+    }
+
+}

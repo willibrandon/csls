@@ -1,7 +1,7 @@
 namespace Csls.Protocol;
 
 /// <summary>
-/// Reports that a client no longer owns an open text document overlay.
+/// Reports that a client has closed a text document overlay.
 /// </summary>
 public sealed record DidCloseTextDocumentParams
 {

@@ -12,6 +12,8 @@ namespace Csls.Workspaces;
 /// </summary>
 internal static partial class DotNetWorkspaceRestorer
 {
+    private const int MinimumConcurrentRestoreProcesses = 8;
+    private const int MaximumConcurrentRestoreProcesses = 16;
     private const int MaximumRetainedOutputCharacters = 32 * 1024;
     private const int ReadBufferCharacters = 4 * 1024;
 
@@ -40,7 +42,12 @@ internal static partial class DotNetWorkspaceRestorer
             new ParallelOptions
             {
                 CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = Environment.ProcessorCount
+                MaxDegreeOfParallelism = Math.Min(
+                    entryPoints.Count,
+                    Math.Clamp(
+                        Environment.ProcessorCount,
+                        MinimumConcurrentRestoreProcesses / 2,
+                        MaximumConcurrentRestoreProcesses / 2) * 2)
             },
             async (entryPoint, restoreCancellationToken) =>
                 await RestoreEntryPointAsync(
@@ -83,6 +90,7 @@ internal static partial class DotNetWorkspaceRestorer
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         startInfo.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
         startInfo.Environment["DOTNET_NOLOGO"] = "true";
+        DotNetSdkProcessEnvironment.UseWorkspaceSdk(startInfo);
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The .NET restore process did not start.");

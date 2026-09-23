@@ -62,7 +62,6 @@ public sealed partial class LanguageServer
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
             failure = exception;
-            LanguageServerLogger.LogWorkspaceLoadFailure(_logger, exception);
         }
         finally
         {

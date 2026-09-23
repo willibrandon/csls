@@ -85,7 +85,11 @@ public sealed partial class WorkspaceManager
         Document? document = FindCurrentDocument(data.Uri);
         if (document is null && isRetired)
         {
-            return codeLens with { Data = null };
+            return CreateRetiredCodeLens(
+                codeLens,
+                data,
+                commandIdentifier,
+                includeLocations);
         }
 
         if (document is null)
@@ -109,7 +113,11 @@ public sealed partial class WorkspaceManager
 
         if (declaration is null && isRetired)
         {
-            return codeLens with { Data = null };
+            return CreateRetiredCodeLens(
+                codeLens,
+                data,
+                commandIdentifier,
+                includeLocations);
         }
 
         if (declaration is null)
@@ -189,6 +197,38 @@ public sealed partial class WorkspaceManager
             Command = new LspCommand
             {
                 Title = title,
+                Command = commandIdentifier,
+                Arguments = arguments
+            }
+        };
+    }
+
+    private static CodeLens CreateRetiredCodeLens(
+        CodeLens codeLens,
+        CodeLensData data,
+        string commandIdentifier,
+        bool includeLocations)
+    {
+        List<JsonElement> arguments =
+        [
+            JsonSerializer.SerializeToElement(data.Uri.ToString()),
+            JsonSerializer.SerializeToElement(
+                data.DeclarationRange.Start,
+                LspJsonSerializerContext.Default.Position)
+        ];
+        if (includeLocations)
+        {
+            arguments.Add(JsonSerializer.SerializeToElement(
+                Array.Empty<LspLocation>(),
+                LspJsonSerializerContext.Default.IReadOnlyListLocation));
+        }
+
+        return codeLens with
+        {
+            Data = null,
+            Command = new LspCommand
+            {
+                Title = "0 references",
                 Command = commandIdentifier,
                 Arguments = arguments
             }

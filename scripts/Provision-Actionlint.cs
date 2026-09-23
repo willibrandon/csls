@@ -71,7 +71,7 @@ catch (Exception exception) when (exception is
     PlatformNotSupportedException or
     UnauthorizedAccessException)
 {
-    await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
+    await Console.Error.WriteLineAsync(exception.ToString()).ConfigureAwait(false);
     return 1;
 }
 

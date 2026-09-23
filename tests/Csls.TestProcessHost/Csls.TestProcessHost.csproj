@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
     <AssemblyName>csls-test-process-host</AssemblyName>
     <RootNamespace>Csls.TestProcessHost</RootNamespace>
     <Description>Cross-platform process environment host for csls integration tests.</Description>

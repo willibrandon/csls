@@ -3,6 +3,7 @@ using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
 
@@ -140,6 +141,7 @@ public sealed class HelixLanguageServerTests
                 fixturePath,
                 width: 100,
                 height: 24);
+            await using ConfiguredAsyncDisposable workloadDisposal = workload.ConfigureAwait(false);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithWorkload(workload)
                 .WithHeadless()
@@ -205,7 +207,6 @@ public sealed class HelixLanguageServerTests
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
-                await workload.DisposeAsync().ConfigureAwait(false);
                 if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(

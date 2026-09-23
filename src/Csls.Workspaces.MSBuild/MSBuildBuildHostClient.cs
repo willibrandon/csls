@@ -91,14 +91,10 @@ internal sealed class MSBuildBuildHostClient
         string workingDirectory,
         CancellationToken cancellationToken)
     {
-        string buildHostPath = ResolveBuildHostPath();
-        bool isManagedAssembly = string.Equals(
-            Path.GetExtension(buildHostPath),
-            ".dll",
-            StringComparison.OrdinalIgnoreCase);
+        string buildHostAssemblyPath = ResolveBuildHostPath();
         var startInfo = new ProcessStartInfo
         {
-            FileName = isManagedAssembly ? ResolveDotNetHost() : buildHostPath,
+            FileName = ResolveDotNetHost(),
             WorkingDirectory = workingDirectory,
             RedirectStandardError = true,
             RedirectStandardInput = true,
@@ -106,12 +102,11 @@ internal sealed class MSBuildBuildHostClient
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        if (isManagedAssembly)
-        {
-            startInfo.ArgumentList.Add(buildHostPath);
-        }
-
-        startInfo.ArgumentList.Add("--msbuild-build-host");
+        startInfo.ArgumentList.Add("--roll-forward");
+        startInfo.ArgumentList.Add("LatestMajor");
+        startInfo.ArgumentList.Add(buildHostAssemblyPath);
+        DotNetSdkProcessEnvironment.UseWorkspaceSdk(startInfo);
+        startInfo.Environment["DOTNET_ROLL_FORWARD_TO_PRERELEASE"] = "1";
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The MSBuild build host did not start.");
         var processTree = WindowsProcessTreeLifetime.Attach(process);
@@ -178,29 +173,14 @@ internal sealed class MSBuildBuildHostClient
 
     private static string ResolveBuildHostPath()
     {
-        string executableName = OperatingSystem.IsWindows()
-            ? "csls-worker.exe"
-            : "csls-worker";
-        const string AssemblyName = "csls-worker.dll";
-        string? processPath = Environment.ProcessPath;
-        if (processPath is not null && string.Equals(
-            Path.GetFileName(processPath),
-            executableName,
-            StringComparison.OrdinalIgnoreCase))
+        const string AssemblyName = "Csls.MSBuildHost.dll";
+        string bundledAssembly = Path.Join(
+            AppContext.BaseDirectory,
+            "msbuild",
+            AssemblyName);
+        if (File.Exists(bundledAssembly))
         {
-            return processPath;
-        }
-
-        string localCandidate = Path.Join(AppContext.BaseDirectory, executableName);
-        if (IsFrameworkDependentBuildHost(localCandidate))
-        {
-            return localCandidate;
-        }
-
-        string localAssembly = Path.Join(AppContext.BaseDirectory, AssemblyName);
-        if (File.Exists(localAssembly))
-        {
-            return localAssembly;
+            return bundledAssembly;
         }
 
         var outputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -210,34 +190,19 @@ internal sealed class MSBuildBuildHostClient
         {
             string repositoryCandidate = Path.Join(
                 artifactsBinDirectory.FullName,
-                "Csls.Worker",
-                configuration,
-                executableName);
-            if (IsFrameworkDependentBuildHost(repositoryCandidate))
-            {
-                return repositoryCandidate;
-            }
-
-            string repositoryAssembly = Path.Join(
-                artifactsBinDirectory.FullName,
-                "Csls.Worker",
+                "Csls.MSBuildHost",
                 configuration,
                 AssemblyName);
-            if (File.Exists(repositoryAssembly))
+            if (File.Exists(repositoryCandidate))
             {
-                return repositoryAssembly;
+                return repositoryCandidate;
             }
         }
 
         throw new FileNotFoundException(
-            "The csls MSBuild build host executable was not found.",
-            localCandidate);
+            "The csls MSBuild build host assembly was not found.",
+            bundledAssembly);
     }
-
-    private static bool IsFrameworkDependentBuildHost(string path) =>
-        File.Exists(path) && File.Exists(Path.Join(
-            Path.GetDirectoryName(path)!,
-            "csls-worker.dll"));
 
     private static string ResolveDotNetHost()
     {

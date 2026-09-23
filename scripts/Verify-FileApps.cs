@@ -73,8 +73,7 @@ try
         .. fileApps.Select(async fileApp =>
         {
             (int exitCode, string output, string error) = await RunAsync(
-                "dotnet",
-                ["run", "--file", fileApp, "--", "--help"],
+                fileApp,
                 repositoryRoot).ConfigureAwait(false);
             return (fileApp, exitCode, output, error);
         })
@@ -85,9 +84,7 @@ try
     [
         .. results
             .Where(static result =>
-                result.ExitCode != 0 ||
-                !result.Output.Contains("Usage:", StringComparison.Ordinal) ||
-                !string.IsNullOrWhiteSpace(result.Error))
+                !HasExpectedHelp(result.ExitCode, result.Output, result.Error))
             .Select(static result =>
                 $"{Path.GetFileName(result.FileApp)} help verification failed with exit " +
                 $"code {result.ExitCode}:{Environment.NewLine}" +
@@ -144,30 +141,48 @@ static string FindRepositoryRoot()
 }
 
 static async Task<(int ExitCode, string Output, string Error)> RunAsync(
-    string executablePath,
-    IReadOnlyList<string> arguments,
+    string fileApp,
     string workingDirectory)
 {
+    string name = Path.GetFileName(fileApp);
+    long started = Stopwatch.GetTimestamp();
+    await Console.Error.WriteLineAsync(
+        $"Starting {name} help verification.").ConfigureAwait(false);
     var startInfo = new ProcessStartInfo
     {
-        FileName = executablePath,
+        FileName = "dotnet",
         RedirectStandardError = true,
         RedirectStandardOutput = true,
         UseShellExecute = false,
-        WorkingDirectory = workingDirectory
+        WorkingDirectory = workingDirectory,
+        ArgumentList = { "run", "--file", fileApp, "--", "--help" }
     };
-    foreach (string argument in arguments)
-    {
-        startInfo.ArgumentList.Add(argument);
-    }
-
     using Process process = Process.Start(startInfo)
-        ?? throw new InvalidOperationException($"{executablePath} did not start.");
+        ?? throw new InvalidOperationException($"{name} help verification did not start.");
+    await Console.Error.WriteLineAsync(
+        $"Started {name} help verification (PID {process.Id}).").ConfigureAwait(false);
     Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
     Task<string> errorTask = process.StandardError.ReadToEndAsync();
     await process.WaitForExitAsync().ConfigureAwait(false);
-    return (
-        process.ExitCode,
-        await outputTask.ConfigureAwait(false),
-        await errorTask.ConfigureAwait(false));
+    string output = await outputTask.ConfigureAwait(false);
+    string error = await errorTask.ConfigureAwait(false);
+    string elapsed = Stopwatch.GetElapsedTime(started).TotalSeconds
+        .ToString("F3", CultureInfo.InvariantCulture);
+    bool passed = HasExpectedHelp(process.ExitCode, output, error);
+    await Console.Error.WriteLineAsync(
+        $"Completed {name} help verification (PID {process.Id}, exit {process.ExitCode}, " +
+        $"{elapsed}s, {(passed ? "passed" : "failed")}).").ConfigureAwait(false);
+    if (!passed)
+    {
+        await Console.Error.WriteLineAsync(
+            $"{name} help verification failed:{Environment.NewLine}{output}{error}")
+            .ConfigureAwait(false);
+    }
+
+    return (process.ExitCode, output, error);
 }
+
+static bool HasExpectedHelp(int exitCode, string output, string error) =>
+    exitCode == 0 &&
+    output.Contains("Usage:", StringComparison.Ordinal) &&
+    string.IsNullOrWhiteSpace(error);

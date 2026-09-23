@@ -1,0 +1,537 @@
+using Csls.Debugger.Dump;
+using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.Runtime;
+using Microsoft.Diagnostics.Runtime.DataReaders.Implementation;
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
+using System.Text.Json;
+
+namespace Csls.Debugger.Tests;
+
+/// <summary>
+/// Verifies independently captured Windows stacks preserve the selected processes and their DAP connection.
+/// </summary>
+[TestClass]
+[OSCondition(OperatingSystems.Windows)]
+[SupportedOSPlatform("windows")]
+public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
+{
+    /// <summary>
+    /// Captures the running test host's native stack storage and resumes its independently waiting thread.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeReaderSnapshotPreservesCurrentHost()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-reader-snapshot-").FullName;
+        using var resume = new ManualResetEventSlim();
+        var ready = new TaskCompletionSource<ulong>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() => WaitWithNativeStack(resume, ready));
+        try
+        {
+            thread.Start();
+            ulong address = await ready.Task.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            using var host = Process.GetCurrentProcess();
+            string path = Path.Join(directory, "host.dmp");
+            (int exitCode, string output, string error) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                host, path, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            Assert.Contains("Snapshot and file released", error);
+            using (var dump = DataTarget.LoadDump(path, new DataTargetOptions { SymbolPaths = [] }))
+            {
+                Assert.AreEqual(host.Id, DumpProcessIdentity.Read(dump.DataReader, path, TestContext.CancellationToken));
+                IThreadReader threads = Assert.IsInstanceOfType<IThreadReader>(dump.DataReader);
+                Assert.IsNotEmpty(threads.EnumerateOSThreadIds());
+                byte[] memory = new byte[128];
+                Assert.AreEqual(memory.Length, dump.DataReader.Read(address, memory));
+                Assert.AreEqual(-1, memory.AsSpan().IndexOfAnyExcept((byte)0x5a));
+            }
+            Assert.IsTrue(thread.IsAlive, "The snapshot must preserve the waiting thread until its owner releases it.");
+        }
+        finally
+        {
+            resume.Set();
+            bool finished = !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(10));
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            Assert.IsTrue(finished, "The captured thread must resume and finish.");
+        }
+    }
+
+    private static unsafe void WaitWithNativeStack(ManualResetEventSlim resume, TaskCompletionSource<ulong> ready)
+    {
+        byte* memory = stackalloc byte[128];
+        new Span<byte>(memory, 128).Fill(0x5a);
+        ready.SetResult((ulong)memory);
+        resume.Wait();
+        _ = Volatile.Read(ref memory[0]);
+    }
+
+    /// <summary>
+    /// Preserves Windows page-relative region boundaries and allocation metadata in captured shared memory.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CapturedMappedMemoryQueriesMatchWindowsPageBoundaries()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-mapping-query-").FullName;
+        try
+        {
+            string path = Path.Join(directory, "query.dmp");
+            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            start.ArgumentList.Add(ResolveTestProcessHost());
+            start.ArgumentList.Add("--windows-mapped-memory-query");
+            start.ArgumentList.Add(path);
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            string[] queries = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            int pageSize = Environment.SystemPageSize;
+            int[] offsets = [0, 1, pageSize, pageSize + 17, 4 * pageSize - 1];
+            Assert.HasCount(offsets.Length, queries);
+            for (int index = 0; index < offsets.Length; index++)
+            {
+                ulong[] fields = [.. queries[index].Split(':').Select(static value => ulong.Parse(value, CultureInfo.InvariantCulture))];
+                Assert.HasCount(5, fields, queries[index]);
+                Assert.AreEqual(checked((ulong)offsets[index]), fields[0]);
+                Assert.AreEqual(checked((ulong)(offsets[index] / pageSize * pageSize)), fields[1], queries[index]);
+                Assert.AreEqual(checked((ulong)(4 * pageSize)) - fields[1], fields[2], queries[index]);
+                Assert.AreEqual(fields[1], fields[3], $"Captured mapping base differs from Windows: {queries[index]}");
+                Assert.AreEqual(fields[2], fields[4], $"Captured mapping length differs from Windows: {queries[index]}");
+            }
+            Assert.IsFalse(File.Exists(path + ".mapped"), "The independently captured mapping must be released.");
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Retires a captured target while an independent observer retains its terminated snapshot process object.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TargetRetirementPreservesIndependentSnapshotObserver()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-retired-snapshot-").FullName;
+        try
+        {
+            using Process target = StartFixture("--windows-module-churn", Path.Join(directory, "stop.signal"));
+            Task<string> targetError = target.StandardError.ReadToEndAsync(CancellationToken.None);
+            try
+            {
+                string? ready = await target.StandardOutput.ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNotNull(ready);
+                Assert.StartsWith("ready:", ready);
+                using Process observer = StartFixture("--windows-retired-snapshot",
+                    target.Id.ToString(CultureInfo.InvariantCulture),
+                    target.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
+                Task<string> observerError = observer.StandardError.ReadToEndAsync(CancellationToken.None);
+                try
+                {
+                    Assert.AreEqual("ready", await observer.StandardOutput.ReadLineAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false));
+                    await WindowsDebuggerProcessCapture.RetireTargetAsync(target).ConfigureAwait(false);
+                    Assert.IsTrue(target.HasExited);
+                    Assert.IsTrue(await Task.Run(() => target.WaitForExit(TimeSpan.Zero), CancellationToken.None)
+                        .ConfigureAwait(false), "The actual target kernel handle must be signaled.");
+                    Assert.AreEqual(string.Empty, await target.StandardOutput.ReadToEndAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false));
+                    Assert.IsFalse(observer.HasExited, "Target retirement must preserve the independently owned observer.");
+                    observer.StandardInput.Close();
+                    await observer.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    Assert.AreEqual(0, observer.ExitCode, await observerError.ConfigureAwait(false));
+                }
+                finally
+                {
+                    observer.StandardInput.Close();
+                    if (!observer.HasExited)
+                    {
+                        observer.Kill();
+                    }
+                    await observer.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                    _ = await observerError.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                if (!target.HasExited)
+                {
+                    target.Kill();
+                }
+                await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                _ = await targetError.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static Process StartFixture(params string[] arguments)
+    {
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        return Process.Start(start) ?? throw new InvalidOperationException("The Windows fixture did not start.");
+    }
+
+    /// <summary>
+    /// Captures each storage policy during native module churn and preserves the original process and memory.
+    /// </summary>
+    /// <param name="captureType">The independently selected Windows dump storage policy.</param>
+    [TestMethod]
+    [DataRow(DumpType.Normal)]
+    [DataRow(DumpType.Triage)]
+    [DataRow(DumpType.WithHeap)]
+    [DataRow(DumpType.Full)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeCaptureSurvivesModuleChurn(DumpType captureType)
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-module-capture-").FullName;
+        try
+        {
+            string stopPath = Path.Join(directory, "stop.signal");
+            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            start.Environment["DOTNET_GCHeapHardLimit"] = "0x8000000";
+            start.ArgumentList.Add(ResolveTestProcessHost());
+            start.ArgumentList.Add("--windows-module-churn");
+            start.ArgumentList.Add(stopPath);
+            using Process process = Process.Start(start) ?? throw new InvalidOperationException("The target did not start.");
+            Task<string> error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            Task<string>? output = null;
+            try
+            {
+                string? announcement = await process.StandardOutput.ReadLineAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                Assert.IsNotNull(announcement);
+                Assert.StartsWith("ready:", announcement);
+                string[] addresses = announcement.Split(':');
+                Assert.HasCount(4, addresses);
+                ulong address = ulong.Parse(addresses[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                ulong mapped = ulong.Parse(addresses[2], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                ulong reserved = ulong.Parse(addresses[3], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+                for (int index = 0; index < 4; index++)
+                {
+                    string path = Path.Join(directory, $"capture-{index}.dmp");
+                    long started = Stopwatch.GetTimestamp();
+                    (int exitCode, string collectedOutput, string collectedError) =
+                        await WindowsDebuggerProcessCapture.CaptureAsync(process, path, TestContext.CancellationToken,
+                            captureType, TestContext)
+                            .ConfigureAwait(false);
+                    TestContext.WriteLine($"{captureType} capture {index}: {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
+                    Assert.AreEqual(0, exitCode, collectedOutput + collectedError);
+                    Assert.Contains("Creating snapshot at ", collectedError);
+                    Assert.Contains("Snapshot captured at ", collectedError);
+                    Assert.Contains("Writing dump at ", collectedError);
+                    Assert.Contains("Dump written at ", collectedError);
+                    Assert.Contains("Releasing snapshot and file at ", collectedError);
+                    Assert.Contains("Snapshot and file released at ", collectedError);
+                    Assert.IsFalse(process.HasExited);
+                    using var dump = DataTarget.LoadDump(path, new DataTargetOptions { SymbolPaths = [] });
+                    Assert.AreEqual(process.Id,
+                        DumpProcessIdentity.Read(dump.DataReader, path, TestContext.CancellationToken));
+                    _ = Assert.ContainsSingle(dump.ClrVersions);
+                    IThreadReader threads = Assert.IsInstanceOfType<IThreadReader>(dump.DataReader);
+                    Assert.IsNotEmpty(threads.EnumerateOSThreadIds());
+                    if (captureType is DumpType.WithHeap or DumpType.Full)
+                    {
+                        byte[] memory = new byte[4096];
+                        foreach (ulong offset in new ulong[] { 0, 512 * 1024, 1024 * 1024 - 4096 })
+                        {
+                            Assert.AreEqual(memory.Length, dump.DataReader.Read(checked(address + offset), memory));
+                            Assert.AreEqual(-1, memory.AsSpan().IndexOfAnyExcept((byte)0x5a));
+                            if (captureType == DumpType.Full)
+                            {
+                                Assert.AreEqual(memory.Length, dump.DataReader.Read(checked(mapped + offset), memory),
+                                    "Full capture must retain readable anonymous mapped pages.");
+                                Assert.AreEqual(-1, memory.AsSpan().IndexOfAnyExcept((byte)0xa6));
+                                Assert.AreEqual(memory.Length, dump.DataReader.Read(checked(reserved + offset), memory),
+                                    "Full capture must retain committed pages from a reserved executable mapping.");
+                                Assert.AreEqual(-1, memory.AsSpan().IndexOfAnyExcept((byte)0xc3));
+                            }
+                        }
+                    }
+                    if (captureType == DumpType.Full)
+                    {
+                        AssertFullImageMemory(path, dump.DataReader);
+                    }
+                    Assert.IsFalse(File.Exists(path + ".mapped"), "The collector must release its mapped-memory storage.");
+                }
+                await File.WriteAllTextAsync(stopPath, "stop", TestContext.CancellationToken).ConfigureAwait(false);
+                await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(0, process.ExitCode, await error.ConfigureAwait(false));
+                string completion = (await output.ConfigureAwait(false)).Trim();
+                Assert.StartsWith("completed:", completion);
+                Assert.IsGreaterThan(1L, long.Parse(completion.AsSpan("completed:".Length), CultureInfo.InvariantCulture));
+            }
+            finally
+            {
+                await WindowsDebuggerProcessCapture.RetireTargetAsync(process).ConfigureAwait(false);
+                _ = await error.ConfigureAwait(false);
+                if (output is not null)
+                {
+                    _ = await output.ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static void AssertFullImageMemory(string path, IDataReader dataReader)
+    {
+        using FileStream file = File.OpenRead(path);
+        using var reader = new BinaryReader(file);
+        file.Position = 8;
+        uint streamCount = reader.ReadUInt32();
+        uint directory = reader.ReadUInt32();
+        Assert.IsLessThanOrEqualTo(128u, streamCount);
+        for (uint stream = 0; stream < streamCount; stream++)
+        {
+            file.Position = checked(directory + stream * 12L);
+            uint type = reader.ReadUInt32();
+            _ = reader.ReadUInt32();
+            uint offset = reader.ReadUInt32();
+            if (type != 16) // MemoryInfoListStream records the writer's complete virtual address map.
+            {
+                continue;
+            }
+            file.Position = offset;
+            uint headerSize = reader.ReadUInt32();
+            uint entrySize = reader.ReadUInt32();
+            ulong entries = reader.ReadUInt64();
+            Assert.AreEqual(16u, headerSize);
+            Assert.AreEqual(48u, entrySize);
+            Assert.IsGreaterThan(0UL, entries);
+            Assert.IsLessThanOrEqualTo(100000UL, entries);
+            int images = 0;
+            byte[] memory = new byte[4096];
+            for (ulong index = 0; index < entries; index++)
+            {
+                file.Position = checked(offset + headerSize + (long)index * entrySize);
+                ulong address = reader.ReadUInt64();
+                file.Position += 16;
+                ulong size = reader.ReadUInt64();
+                uint state = reader.ReadUInt32();
+                uint protection = reader.ReadUInt32();
+                uint memoryType = reader.ReadUInt32();
+                if (state != 0x1000 || memoryType != 0x1000000 || (protection & 0x101) != 0 || (protection & 0xee) == 0)
+                {
+                    continue;
+                }
+                Assert.IsGreaterThan(0UL, size);
+                int length = checked((int)Math.Min((ulong)memory.Length, size));
+                Assert.AreEqual(length, dataReader.Read(address, memory.AsSpan(0, length)),
+                    $"Full capture advertises image storage absent from the snapshot at 0x{address:x}.");
+                Assert.AreEqual(length, dataReader.Read(checked(address + size - (uint)length), memory.AsSpan(0, length)));
+                images++;
+            }
+            Assert.IsGreaterThan(0, images);
+            return;
+        }
+        Assert.Fail("Full capture must record its virtual address map.");
+    }
+
+    /// <summary>
+    /// Retains the actual target's native threads before an unexpected initial stop raises its original assertion.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnexpectedInitialStopCapturesNativeTargetBeforeCleanup()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
+        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, initialize, "initialize", success: true);
+        }
+        int launch = await client.SendRequestAsync("launch", writer => WriteLaunchArguments(
+            writer, ResolveTestProcessHost(), ["--wait-for-standard-input"], wait: true,
+            noDebug: false, stopAtEntry: true), TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(initialized.RootElement, "initialized");
+        }
+        int configuration = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        AssertFailedException failure = await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ReadInitialBreakpointStopAsync(client, configuration, launch, TestContext.CancellationToken, TestContext))
+            .ConfigureAwait(false);
+        Assert.Contains("breakpoint", failure.Message);
+        Assert.Contains("\"reason\":\"entry\"", failure.Message);
+        Assert.Contains("\"stackFrames\":[{", failure.Message);
+        string line = Assert.ContainsSingle(failure.Message.Split(Environment.NewLine)
+            .Where(static line => line.StartsWith("Native process evidence: ", StringComparison.Ordinal)));
+        string directory = line["Native process evidence: ".Length..];
+        int targetId = Assert.IsInstanceOfType<int>(client.TargetProcessId);
+        using var target = Process.GetProcessById(targetId);
+        _ = target.SafeHandle;
+        string dumpPath = Path.Join(directory, $"process-{targetId}.dmp");
+        Assert.IsTrue(File.Exists(dumpPath), await File.ReadAllTextAsync(Path.Join(directory, "capture.log"),
+            TestContext.CancellationToken).ConfigureAwait(false));
+        using (var captured = DataTarget.LoadDump(dumpPath, new DataTargetOptions { SymbolPaths = [] }))
+        {
+            Assert.AreEqual(targetId, DumpProcessIdentity.Read(captured.DataReader, dumpPath, TestContext.CancellationToken));
+            Assert.IsNotEmpty(captured.DataReader.EnumerateModules());
+            IThreadReader capturedThreads = Assert.IsInstanceOfType<IThreadReader>(captured.DataReader);
+            Assert.IsNotEmpty(capturedThreads.EnumerateOSThreadIds());
+        }
+        Assert.IsFalse(target.HasExited, "Native evidence must preserve the stopped target until explicit cleanup.");
+        int threads = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, threads, "threads", success: true);
+            Assert.IsNotEmpty(response.RootElement.GetProperty("body").GetProperty("threads").EnumerateArray());
+        }
+        await DisconnectAsync(client).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(target, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(target.HasExited);
+        Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+    }
+
+    /// <summary>
+    /// Captures the stopped target and adapter with their exact identities and retains a usable debugging session.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeTreeCapturePreservesStoppedSession()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        (int threadId, int processId) = await LaunchAtEntryAsync(client, ResolveTestProcessHost(),
+            ["--print-environment", "CSLS_DEBUGGER_ENTRY_VALUE"]).ConfigureAwait(false);
+        using var targetProcess = Process.GetProcessById(processId);
+        _ = targetProcess.SafeHandle;
+        string directory = await WindowsDebuggerProcessCapture.CaptureTreeAsync(client.HostProcessId, TestContext)
+            .ConfigureAwait(false);
+        try
+        {
+            foreach (int id in new[] { client.HostProcessId, processId })
+            {
+                string dumpPath = Path.Join(directory, $"process-{id}.dmp");
+                using var dump = DataTarget.LoadDump(dumpPath, new DataTargetOptions { SymbolPaths = [] });
+                Assert.AreEqual(id, DumpProcessIdentity.Read(dump.DataReader, dumpPath, TestContext.CancellationToken));
+                IThreadReader threads = Assert.IsInstanceOfType<IThreadReader>(dump.DataReader);
+                Assert.IsNotEmpty(threads.EnumerateOSThreadIds());
+                if (id == processId)
+                {
+                    Assert.Contains(checked((uint)threadId), threads.EnumerateOSThreadIds());
+                }
+            }
+            Assert.IsFalse(targetProcess.HasExited);
+            int request = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            AssertResponse(response.RootElement, request, "threads", success: true);
+            Assert.Contains(threadId, response.RootElement.GetProperty("body").GetProperty("threads").EnumerateArray()
+                .Select(thread => thread.GetProperty("id").GetInt32()));
+            await ContinueEntryToExitAsync(client, threadId, "entry-result").ConfigureAwait(false);
+            await targetProcess.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, targetProcess.ExitCode);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Preserves a completed dump when a later collector is given its existing path.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeCapturePreservesExistingFileAndTarget()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-capture-").FullName;
+        try
+        {
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, initialize, "initialize", success: true);
+            }
+            using var process = Process.GetProcessById(client.HostProcessId);
+            _ = process.SafeHandle;
+            string path = Path.Join(directory, "adapter.dmp");
+            (int exitCode, string output, string error) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                process, path, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            byte[] original = await File.ReadAllBytesAsync(path, TestContext.CancellationToken).ConfigureAwait(false);
+            (exitCode, output, error) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                process, path, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(0, exitCode, output + error);
+            Assert.Contains("IOException", error);
+            Assert.StartsWith("Native dump collector ", error);
+            string[] failure = error.Split(' ', 7);
+            int collectorId = int.Parse(failure[3], CultureInfo.InvariantCulture);
+            Assert.IsGreaterThan(0, collectorId);
+            Assert.AreNotEqual(process.Id, collectorId, "Crash evidence must select the failed collector, not its live target.");
+            Assert.Contains($"exited with code {exitCode}.", error);
+            Assert.AreSequenceEqual(original,
+                await File.ReadAllBytesAsync(path, TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsFalse(process.HasExited);
+            await DisconnectAsync(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a stale creation-time identity before creating an output file or changing the live process.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeCaptureRejectsChangedProcessIdentity()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-capture-identity-").FullName;
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            string path = Path.Join(directory, "unexpected.dmp");
+            var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            startInfo.ArgumentList.Add(ResolveTestProcessHost());
+            startInfo.ArgumentList.Add("--windows-native-dump");
+            startInfo.ArgumentList.Add(process.Id.ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add((process.StartTime.ToUniversalTime().ToFileTimeUtc() + 1)
+                .ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add(path);
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+                startInfo, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(0, exitCode, output + error);
+            Assert.Contains("The selected process identity has changed.", error);
+            Assert.IsFalse(File.Exists(path));
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+}

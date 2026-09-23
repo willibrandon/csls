@@ -1,7 +1,7 @@
 namespace Csls.Protocol;
 
 /// <summary>
-/// Advertises only the LSP capabilities implemented by the running server.
+/// Advertises the running server's LSP capabilities.
 /// </summary>
 public sealed record ServerCapabilities
 {

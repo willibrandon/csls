@@ -224,6 +224,7 @@ internal static class FileBasedAppProjectLoader
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         startInfo.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
         startInfo.Environment["DOTNET_NOLOGO"] = "true";
+        DotNetSdkProcessEnvironment.UseWorkspaceSdk(startInfo);
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The .NET file-based app evaluator did not start.");
@@ -476,7 +477,12 @@ internal static class FileBasedAppProjectLoader
         }
 
         XNamespace projectNamespace = root.Name.Namespace;
-        var directoryPaths = new XElement(projectNamespace + "PropertyGroup");
+        var directoryPaths = new XElement(
+            projectNamespace + "PropertyGroup",
+            new XElement(projectNamespace + "EnableSourceControlManagerQueries", "false"),
+            new XElement(projectNamespace + "EnableSourceLink", "false"),
+            new XElement(projectNamespace + "PublishRepositoryUrl", "false"),
+            new XElement(projectNamespace + "EmbedUntrackedSources", "false"));
         AddPathPropertyIfPresent(
             directoryPaths,
             projectNamespace,
@@ -502,10 +508,7 @@ internal static class FileBasedAppProjectLoader
             projectNamespace,
             "ProjectAssetsFile",
             projectAssetsPath);
-        if (directoryPaths.HasElements)
-        {
-            root.AddFirst(directoryPaths);
-        }
+        root.AddFirst(directoryPaths);
 
         return document.ToString(SaveOptions.DisableFormatting);
     }

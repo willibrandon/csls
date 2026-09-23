@@ -1,0 +1,214 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Interop;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Expands managed arrays with bounded paging and CLR index semantics.
+/// </summary>
+internal sealed partial class CorDebugDebuggee
+{
+    private const int MaximumArrayPageSize = 64 * 1024;
+
+    private List<DebugVariableInfo> WithArrayChildCounts(List<DebugVariableInfo> variables)
+    {
+        for (int index = 0; index < variables.Count; index++)
+        {
+            _valueRead?.CheckCancellation();
+            variables[index] = WithArrayChildCounts(variables[index]);
+        }
+        return variables;
+    }
+
+    private DebugVariableInfo WithArrayChildCounts(DebugVariableInfo variable) =>
+        GetRetainedArrayLength(variable.VariablesReference) is int length
+            ? variable with { NamedVariables = 0, IndexedVariables = length }
+            : variable;
+
+    private DebugEvaluateResult WithArrayChildCounts(DebugEvaluateResult result) =>
+        GetRetainedArrayLength(result.VariablesReference) is int length
+            ? result with { NamedVariables = 0, IndexedVariables = length }
+            : result;
+
+    private int? GetRetainedArrayLength(int variablesReference)
+    {
+        if (!_values.TryGetValue(variablesReference, out ManagedValueHandle? handle) ||
+            handle.View == ManagedValueView.ResultsView || handle.SyntheticVariables is not null)
+        {
+            return null;
+        }
+
+        ValidateValueLifetime(handle);
+        nint value = DereferenceInspectionValue(handle);
+        nint array = 0;
+        try
+        {
+            if (!ComAbi.TryQueryInterface(value, ICorDebugArrayValueAbi.InterfaceId, out array))
+            {
+                return null;
+            }
+            uint length = GetArrayElementCount(new ICorDebugArrayValueAbi(array));
+            return length <= int.MaxValue ? (int)length : null;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(array);
+            _ = ComAbi.Release(value);
+        }
+    }
+
+    private unsafe List<DebugVariableInfo> ExpandArray(
+        nint array,
+        string? parentEvaluateName,
+        int? frameId,
+        DebugStopGeneration generation,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        int start,
+        int count,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
+    {
+        var api = new ICorDebugArrayValueAbi(array);
+        uint elementCount = GetArrayElementCount(api);
+        int available = checked((int)elementCount);
+        if (start >= available)
+        {
+            return [];
+        }
+
+        int take = count == 0 ? available - start : Math.Min(count, available - start);
+        if (take > MaximumArrayPageSize)
+        {
+            throw new InvalidOperationException(
+                $"The array page exceeds the debugger limit of {MaximumArrayPageSize} elements. " +
+                "Request a smaller page with start and count.");
+        }
+
+        uint rank = GetArrayRank(api);
+        uint[] dimensions = GetArrayDimensions(api, rank);
+        int[] bases = GetArrayBases(api, rank);
+        int end = start + take;
+        DebugExpressionLanguage? language = parentEvaluateName is not null && frameId is int id
+            ? GetFrame(id, generation).ExpressionLanguage
+            : null;
+        var result = new List<DebugVariableInfo>(take);
+        for (int index = start; index < end; index++)
+        {
+            _valueRead?.CheckCancellation();
+            nint element = 0;
+            nint* elementAddress = &element;
+            CorDebugHResult.ThrowIfFailed(
+                api.GetElementAtPosition(checked((uint)index), (nint)elementAddress),
+                "ICorDebugArrayValue.GetElementAtPosition");
+            element = Volatile.Read(ref *elementAddress);
+            if (element == 0)
+            {
+                throw new InvalidOperationException(
+                    "ICorDebugArrayValue.GetElementAtPosition returned no value.");
+            }
+
+            try
+            {
+                ManagedValueDisplay display = FormatRuntimeValue(
+                    element,
+                    tupleCustomTypeInfo);
+                int[] indices = GetArrayIndices(index, dimensions, bases);
+                string name = $"[{string.Join(',', indices)}]";
+                string? evaluateName = ManagedExpressionName.CreateElement(
+                    parentEvaluateName, indices, language);
+                ManagedValueReferences references = RetainValue(
+                    element,
+                    generation,
+                    evaluateName,
+                    frameId,
+                    tupleCustomTypeInfo: tupleCustomTypeInfo,
+                    origin: origin is null ? null : new ManagedArrayElementValueOrigin(origin, index),
+                    lifetime: lifetime);
+                result.Add(new DebugVariableInfo(
+                    display.Name ?? name,
+                    display.Value,
+                    display.Type,
+                    references.VariablesReference,
+                    references.MemoryReference,
+                    evaluateName,
+                    IsIndexed: true));
+            }
+            finally
+            {
+                _ = ComAbi.Release(element);
+            }
+        }
+
+        return result;
+    }
+
+    private static unsafe uint GetArrayElementCount(ICorDebugArrayValueAbi array)
+    {
+        uint count = 0;
+        uint* countAddress = &count;
+        CorDebugHResult.ThrowIfFailed(
+            array.GetCount((nint)countAddress),
+            "ICorDebugArrayValue.GetCount");
+        return Volatile.Read(ref *countAddress);
+    }
+
+    private static unsafe uint GetArrayRank(ICorDebugArrayValueAbi array)
+    {
+        uint rank = 0;
+        uint* rankAddress = &rank;
+        CorDebugHResult.ThrowIfFailed(
+            array.GetRank((nint)rankAddress),
+            "ICorDebugArrayValue.GetRank");
+        return Volatile.Read(ref *rankAddress);
+    }
+
+    private static unsafe uint[] GetArrayDimensions(ICorDebugArrayValueAbi array, uint rank)
+    {
+        uint[] dimensions = new uint[checked((int)rank)];
+        fixed (uint* dimensionsAddress = dimensions)
+        {
+            CorDebugHResult.ThrowIfFailed(
+                array.GetDimensions(rank, (nint)dimensionsAddress),
+                "ICorDebugArrayValue.GetDimensions");
+        }
+
+        return dimensions;
+    }
+
+    private static unsafe int[] GetArrayBases(ICorDebugArrayValueAbi array, uint rank)
+    {
+        int hasBases = 0;
+        int* hasBasesAddress = &hasBases;
+        CorDebugHResult.ThrowIfFailed(
+            array.HasBaseIndicies((nint)hasBasesAddress),
+            "ICorDebugArrayValue.HasBaseIndicies");
+        int[] bases = new int[checked((int)rank)];
+        if (Volatile.Read(ref *hasBasesAddress) == 0)
+        {
+            return bases;
+        }
+
+        fixed (int* basesAddress = bases)
+        {
+            CorDebugHResult.ThrowIfFailed(
+                array.GetBaseIndicies(rank, (nint)basesAddress),
+                "ICorDebugArrayValue.GetBaseIndicies");
+        }
+
+        return bases;
+    }
+
+    private static int[] GetArrayIndices(int position, uint[] dimensions, int[] bases)
+    {
+        int remainder = position;
+        int[] indices = new int[dimensions.Length];
+        for (int dimension = dimensions.Length - 1; dimension >= 0; dimension--)
+        {
+            int length = checked((int)dimensions[dimension]);
+            indices[dimension] = bases[dimension] + (remainder % length);
+            remainder /= length;
+        }
+
+        return indices;
+    }
+}

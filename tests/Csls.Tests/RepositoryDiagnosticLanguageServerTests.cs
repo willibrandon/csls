@@ -33,11 +33,19 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
+        string diagnosticsDirectory = Path.Join(repositoryRoot, "artifacts", "test-results",
+            $"repository-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(diagnosticsDirectory);
+        string diagnosticsPath = Path.Join(diagnosticsDirectory, "server.log");
+        using var diagnosticOutput = new StreamWriter(diagnosticsPath);
+        TestContext.AddResultFile(diagnosticsPath);
+
         LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-repository-diagnostic-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            repositoryRoot).ConfigureAwait(false);
+            repositoryRoot,
+            diagnosticOutput: diagnosticOutput).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         using var capabilities = JsonDocument.Parse(
             """
@@ -58,11 +66,20 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             capabilities.RootElement,
             TestContext.CancellationToken).ConfigureAwait(false);
         await lsp.CompleteInitializationAsync().ConfigureAwait(false);
-        ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
-            repositoryRoot,
-            TimeSpan.FromMinutes(3),
-            TestContext.CancellationToken,
-            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
+        ControlSessionInfo session;
+        try
+        {
+            session = await ControlSessionWaiter.WaitForRunningAsync(
+                repositoryRoot,
+                TimeSpan.FromMinutes(3),
+                TestContext.CancellationToken,
+                expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            await WriteStartupFailureDiagnosticsAsync(lsp).ConfigureAwait(false);
+            throw;
+        }
         var control = new ControlRpcClient(session.SocketPath);
         await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
         string requestContextPath = Path.Join(
@@ -167,9 +184,18 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             reloadedSnapshot.Projects.Select(static project => project.Name));
         string standardError = await lsp.ShutdownAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        await diagnosticOutput.FlushAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(standardError, await File.ReadAllTextAsync(diagnosticsPath, TestContext.CancellationToken)
+            .ConfigureAwait(false));
         TestContext.WriteLine(standardError);
 
         Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fail:", standardError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task WriteStartupFailureDiagnosticsAsync(LspProcessSession lsp)
+    {
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        TestContext.WriteLine(await lsp.ShutdownAsync(cleanupTimeout.Token).ConfigureAwait(false));
     }
 }

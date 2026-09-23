@@ -5,4 +5,7 @@
     <Description>Scheduling, lifecycle, limits, and shared runtime primitives for csls.</Description>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Csls.Tests" />
+  </ItemGroup>
 </Project>
