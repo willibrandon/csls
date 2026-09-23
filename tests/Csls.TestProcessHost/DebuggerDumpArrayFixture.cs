@@ -916,6 +916,8 @@ internal static class DebuggerDumpArrayFixture
         DebuggerExplicitNumericResultSource explicitNumericResultSource = new(41);
         DebuggerExplicitNumericResultSource? populatedLiftedNumericResult = explicitNumericResultSource;
         DebuggerExplicitNumericResultSource? emptyLiftedNumericResult = null;
+        DebuggerExplicitTargetRankingSource targetRankingSource = new(41);
+        DebuggerExplicitNullableTargetRankingSource nullableTargetRankingSource = new(41);
         DebuggerImplicitConversionReferenceDerived implicitReferenceConversion = new(41);
         DebuggerImplicitConversionReferenceSource explicitReferenceInput =
             implicitReferenceConversion;
@@ -974,17 +976,13 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(boxedIntegerValue);
         GC.KeepAlive(boxedDecimalValue);
         GC.KeepAlive(boxedStructValue);
-        GC.KeepAlive(implicitConversion);
-        GC.KeepAlive(emptyImplicitConversion);
-        GC.KeepAlive(throwingImplicitConversion);
-        GC.KeepAlive(populatedLiftedImplicitConversion);
-        GC.KeepAlive(emptyLiftedImplicitConversion);
-        GC.KeepAlive(populatedNullableResultConversion);
-        GC.KeepAlive(nullNullableResultConversion);
-        GC.KeepAlive(emptyNullableResultConversion);
+        GC.KeepAlive((implicitConversion, emptyImplicitConversion, throwingImplicitConversion));
+        GC.KeepAlive((populatedLiftedImplicitConversion, emptyLiftedImplicitConversion));
+        GC.KeepAlive((populatedNullableResultConversion, nullNullableResultConversion,
+            emptyNullableResultConversion));
         GC.KeepAlive((populatedNullableNumericConversion, emptyNullableNumericConversion,
             liftedNumericOverloadSource, explicitNumericResultSource, populatedLiftedNumericResult,
-            emptyLiftedNumericResult));
+            emptyLiftedNumericResult, targetRankingSource, nullableTargetRankingSource));
         GC.KeepAlive((explicitReferenceInput, invalidExplicitReferenceInput));
         GC.KeepAlive((explicitReferenceResultSource, invalidExplicitReferenceResultSource));
         GC.KeepAlive(explicitConversionResult);

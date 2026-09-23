@@ -77,7 +77,8 @@ internal sealed class ManagedUserDefinedConversionResolver
             AddMatches(declaringType, source, destination, matches);
         }
 
-        ManagedUserDefinedConversion? resolved = SelectBest(matches, source, destination);
+        ManagedUserDefinedConversion? resolved = SelectBest(
+            matches, source, destination, explicitConversion: false);
         _cache.Add((source, destination, resolved));
         return resolved;
     }
@@ -110,7 +111,7 @@ internal sealed class ManagedUserDefinedConversionResolver
             AddExplicitMatches(declaringType, source, destination, matches);
         }
 
-        return SelectBest(matches, source, destination);
+        return SelectBest(matches, source, destination, explicitConversion: true);
     }
 
     private void AddExplicitMatches(
@@ -305,24 +306,29 @@ internal sealed class ManagedUserDefinedConversionResolver
     private ManagedUserDefinedConversion? SelectBest(
         List<ManagedUserDefinedConversion> matches,
         ManagedBoundType source,
-        ManagedBoundType destination)
+        ManagedBoundType destination,
+        bool explicitConversion)
     {
         if (matches.Count <= 1)
         {
             return matches.SingleOrDefault();
         }
 
-        ManagedBoundType? bestSource = SelectBestType(
-            matches.Select(match => GetEffectiveSourceType(match, source)), source,
-            mostEncompassing: false);
+        IEnumerable<ManagedBoundType> sourceTypes =
+            matches.Select(match => GetEffectiveSourceType(match, source));
+        ManagedBoundType? bestSource = explicitConversion
+            ? SelectBestExplicitSourceType(sourceTypes, source)
+            : SelectBestType(sourceTypes, source, mostEncompassing: false);
         if (bestSource is null)
         {
             return null;
         }
 
-        ManagedBoundType? bestTarget = SelectBestType(
-            matches.Select(match => GetEffectiveTargetType(match, destination)), destination,
-            mostEncompassing: true);
+        IEnumerable<ManagedBoundType> targetTypes =
+            matches.Select(match => GetEffectiveTargetType(match, destination));
+        ManagedBoundType? bestTarget = explicitConversion
+            ? SelectBestExplicitTargetType(targetTypes, destination)
+            : SelectBestType(targetTypes, destination, mostEncompassing: true);
         if (bestTarget is null)
         {
             return null;
@@ -345,10 +351,52 @@ internal sealed class ManagedUserDefinedConversionResolver
 
     private ManagedBoundType GetEffectiveTargetType(
         ManagedUserDefinedConversion conversion,
-        ManagedBoundType destination) => conversion.ResultType.IsSameType(destination) ||
-        HasExactExplicitNullableResultConversion(conversion.ResultType, destination)
-            ? destination
+        ManagedBoundType destination)
+    {
+        if (conversion.ResultType.IsSameType(destination))
+        {
+            return destination;
+        }
+
+        return HasSupportedExplicitNullableResultConversion(
+            conversion.ResultType, destination)
+            ? _types.MakeNullable(conversion.ResultType, _thread)
             : conversion.ResultType;
+    }
+
+    private ManagedBoundType? SelectBestExplicitSourceType(
+        IEnumerable<ManagedBoundType> candidates,
+        ManagedBoundType source)
+    {
+        ManagedBoundType[] all = [.. candidates];
+        if (all.Any(source.IsSameType))
+        {
+            return source;
+        }
+
+        ManagedBoundType[] encompassing = [.. all.Where(candidate =>
+            HasStandardImplicitConversion(source, candidate))];
+        return encompassing.Length > 0
+            ? SelectBestType(encompassing, source, mostEncompassing: false)
+            : SelectBestType(all, source, mostEncompassing: true);
+    }
+
+    private ManagedBoundType? SelectBestExplicitTargetType(
+        IEnumerable<ManagedBoundType> candidates,
+        ManagedBoundType destination)
+    {
+        ManagedBoundType[] all = [.. candidates];
+        if (all.Any(destination.IsSameType))
+        {
+            return destination;
+        }
+
+        ManagedBoundType[] encompassed = [.. all.Where(candidate =>
+            HasStandardImplicitConversion(candidate, destination))];
+        return encompassed.Length > 0
+            ? SelectBestType(encompassed, destination, mostEncompassing: true)
+            : SelectBestType(all, destination, mostEncompassing: false);
+    }
 
     private bool IsApplicableLiftedConversion(
         ManagedBoundType source,

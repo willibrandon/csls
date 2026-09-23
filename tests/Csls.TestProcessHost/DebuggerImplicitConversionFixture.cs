@@ -307,6 +307,22 @@ internal static class DebuggerImplicitConversionFixture
         ((DebuggerExplicitLiftedNumericOverloadDestination?)source)?.Number ?? -1;
 
     /// <summary>
+    /// Runs the compiler's most-encompassed explicit target selection.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The selected narrowed result.</returns>
+    internal static short CompilerExplicitTargetRankingForDebugger(
+        DebuggerExplicitTargetRankingSource source) => (short)source;
+
+    /// <summary>
+    /// Runs the compiler's lifted nullable explicit target selection.
+    /// </summary>
+    /// <param name="source">The authored conversion source.</param>
+    /// <returns>The selected lifted nullable result.</returns>
+    internal static int? CompilerExplicitNullableTargetRankingForDebugger(
+        DebuggerExplicitNullableTargetRankingSource source) => (int?)source;
+
+    /// <summary>
     /// Runs the compiler's runtime-checked reference conversion before an explicit operator.
     /// </summary>
     /// <param name="source">The base-declared reference source.</param>
