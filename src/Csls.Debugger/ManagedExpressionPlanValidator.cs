@@ -139,12 +139,16 @@ internal static class ManagedExpressionPlanValidator
             DebugExpressionNodeKind.Unary => node.Operator is
                 DebugExpressionOperator.UnaryPlus or
                 DebugExpressionOperator.Negate or
+                DebugExpressionOperator.CheckedNegate or
                 DebugExpressionOperator.LogicalNot or
                 DebugExpressionOperator.OnesComplement,
             DebugExpressionNodeKind.Binary => node.Operator is
                 DebugExpressionOperator.Add or
+                DebugExpressionOperator.CheckedAdd or
                 DebugExpressionOperator.Subtract or
+                DebugExpressionOperator.CheckedSubtract or
                 DebugExpressionOperator.Multiply or
+                DebugExpressionOperator.CheckedMultiply or
                 DebugExpressionOperator.Divide or
                 DebugExpressionOperator.Remainder or
                 DebugExpressionOperator.Equal or

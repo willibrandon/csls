@@ -79,20 +79,13 @@ internal static class CSharpExpressionLowerer
                 ]),
             ObjectCreationExpressionSyntax creation => LowerObjectCreation(creation, checkedContext),
             InvocationExpressionSyntax invocation => LowerInvocation(invocation, checkedContext),
-            PrefixUnaryExpressionSyntax unary when checkedContext &&
-                unary.IsKind(SyntaxKind.UnaryMinusExpression) => throw new NotSupportedException(
-                    "Checked C# arithmetic is not supported by safe evaluation."),
             PrefixUnaryExpressionSyntax unary => OperatorNode(
                 DebugExpressionNodeKind.Unary,
-                UnaryOperator(unary.Kind()),
+                UnaryOperator(unary.Kind(), checkedContext),
                 Lower(unary.Operand, checkedContext)),
-            BinaryExpressionSyntax binary when checkedContext &&
-                binary.Kind() is SyntaxKind.AddExpression or SyntaxKind.SubtractExpression or
-                    SyntaxKind.MultiplyExpression => throw new NotSupportedException(
-                        "Checked C# arithmetic is not supported by safe evaluation."),
             BinaryExpressionSyntax binary => OperatorNode(
                 DebugExpressionNodeKind.Binary,
-                BinaryOperator(binary.Kind()),
+                BinaryOperator(binary.Kind(), checkedContext),
                 Lower(binary.Left, checkedContext),
                 Lower(binary.Right, checkedContext)),
             ConditionalExpressionSyntax conditional => Node(
@@ -162,37 +155,49 @@ internal static class CSharpExpressionLowerer
                 Lower(argument.Expression, checkedContext))
             : Lower(argument.Expression, checkedContext);
 
-    private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
-    {
-        SyntaxKind.UnaryPlusExpression => DebugExpressionOperator.UnaryPlus,
-        SyntaxKind.UnaryMinusExpression => DebugExpressionOperator.Negate,
-        SyntaxKind.LogicalNotExpression => DebugExpressionOperator.LogicalNot,
-        SyntaxKind.BitwiseNotExpression => DebugExpressionOperator.OnesComplement,
-        _ => throw new NotSupportedException(
-            $"C# unary operator {kind} is not supported by safe evaluation.")
-    };
+    private static DebugExpressionOperator UnaryOperator(
+        SyntaxKind kind,
+        bool checkedContext) => kind switch
+        {
+            SyntaxKind.UnaryPlusExpression => DebugExpressionOperator.UnaryPlus,
+            SyntaxKind.UnaryMinusExpression => checkedContext
+                ? DebugExpressionOperator.CheckedNegate
+                : DebugExpressionOperator.Negate,
+            SyntaxKind.LogicalNotExpression => DebugExpressionOperator.LogicalNot,
+            SyntaxKind.BitwiseNotExpression => DebugExpressionOperator.OnesComplement,
+            _ => throw new NotSupportedException(
+                $"C# unary operator {kind} is not supported by safe evaluation.")
+        };
 
-    private static DebugExpressionOperator BinaryOperator(SyntaxKind kind) => kind switch
-    {
-        SyntaxKind.AddExpression => DebugExpressionOperator.Add,
-        SyntaxKind.SubtractExpression => DebugExpressionOperator.Subtract,
-        SyntaxKind.MultiplyExpression => DebugExpressionOperator.Multiply,
-        SyntaxKind.DivideExpression => DebugExpressionOperator.Divide,
-        SyntaxKind.ModuloExpression => DebugExpressionOperator.Remainder,
-        SyntaxKind.EqualsExpression => DebugExpressionOperator.Equal,
-        SyntaxKind.NotEqualsExpression => DebugExpressionOperator.NotEqual,
-        SyntaxKind.LessThanExpression => DebugExpressionOperator.LessThan,
-        SyntaxKind.LessThanOrEqualExpression => DebugExpressionOperator.LessThanOrEqual,
-        SyntaxKind.GreaterThanExpression => DebugExpressionOperator.GreaterThan,
-        SyntaxKind.GreaterThanOrEqualExpression => DebugExpressionOperator.GreaterThanOrEqual,
-        SyntaxKind.LogicalAndExpression => DebugExpressionOperator.LogicalAnd,
-        SyntaxKind.LogicalOrExpression => DebugExpressionOperator.LogicalOr,
-        SyntaxKind.BitwiseAndExpression => DebugExpressionOperator.BitwiseAnd,
-        SyntaxKind.BitwiseOrExpression => DebugExpressionOperator.BitwiseOr,
-        SyntaxKind.ExclusiveOrExpression => DebugExpressionOperator.ExclusiveOr,
-        _ => throw new NotSupportedException(
-            $"C# binary operator {kind} is not supported by safe evaluation.")
-    };
+    private static DebugExpressionOperator BinaryOperator(
+        SyntaxKind kind,
+        bool checkedContext) => kind switch
+        {
+            SyntaxKind.AddExpression => checkedContext
+                ? DebugExpressionOperator.CheckedAdd
+                : DebugExpressionOperator.Add,
+            SyntaxKind.SubtractExpression => checkedContext
+                ? DebugExpressionOperator.CheckedSubtract
+                : DebugExpressionOperator.Subtract,
+            SyntaxKind.MultiplyExpression => checkedContext
+                ? DebugExpressionOperator.CheckedMultiply
+                : DebugExpressionOperator.Multiply,
+            SyntaxKind.DivideExpression => DebugExpressionOperator.Divide,
+            SyntaxKind.ModuloExpression => DebugExpressionOperator.Remainder,
+            SyntaxKind.EqualsExpression => DebugExpressionOperator.Equal,
+            SyntaxKind.NotEqualsExpression => DebugExpressionOperator.NotEqual,
+            SyntaxKind.LessThanExpression => DebugExpressionOperator.LessThan,
+            SyntaxKind.LessThanOrEqualExpression => DebugExpressionOperator.LessThanOrEqual,
+            SyntaxKind.GreaterThanExpression => DebugExpressionOperator.GreaterThan,
+            SyntaxKind.GreaterThanOrEqualExpression => DebugExpressionOperator.GreaterThanOrEqual,
+            SyntaxKind.LogicalAndExpression => DebugExpressionOperator.LogicalAnd,
+            SyntaxKind.LogicalOrExpression => DebugExpressionOperator.LogicalOr,
+            SyntaxKind.BitwiseAndExpression => DebugExpressionOperator.BitwiseAnd,
+            SyntaxKind.BitwiseOrExpression => DebugExpressionOperator.BitwiseOr,
+            SyntaxKind.ExclusiveOrExpression => DebugExpressionOperator.ExclusiveOr,
+            _ => throw new NotSupportedException(
+                $"C# binary operator {kind} is not supported by safe evaluation.")
+        };
 
     private static DebugExpressionNode Node(
         DebugExpressionNodeKind kind,

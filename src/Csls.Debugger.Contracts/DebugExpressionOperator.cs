@@ -26,6 +26,11 @@ public enum DebugExpressionOperator
     Negate,
 
     /// <summary>
+    /// Negates a numeric operand in a checked C# context.
+    /// </summary>
+    CheckedNegate,
+
+    /// <summary>
     /// Negates a Boolean operand.
     /// </summary>
     LogicalNot,
@@ -41,14 +46,29 @@ public enum DebugExpressionOperator
     Add,
 
     /// <summary>
+    /// Adds operands in a checked C# context.
+    /// </summary>
+    CheckedAdd,
+
+    /// <summary>
     /// Subtracts the right numeric operand from the left.
     /// </summary>
     Subtract,
 
     /// <summary>
+    /// Subtracts numeric operands in a checked C# context.
+    /// </summary>
+    CheckedSubtract,
+
+    /// <summary>
     /// Multiplies numeric operands.
     /// </summary>
     Multiply,
+
+    /// <summary>
+    /// Multiplies numeric operands in a checked C# context.
+    /// </summary>
+    CheckedMultiply,
 
     /// <summary>
     /// Divides the left numeric operand by the right.

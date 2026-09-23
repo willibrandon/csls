@@ -31,11 +31,13 @@ internal static class ManagedPrimitiveOperatorEvaluator
         object result = operation switch
         {
             DebugExpressionOperator.UnaryPlus => numeric.Value,
-            DebugExpressionOperator.Negate => Negate(numeric),
+            DebugExpressionOperator.Negate => Negate(numeric, isChecked: false),
+            DebugExpressionOperator.CheckedNegate => Negate(numeric, isChecked: true),
             DebugExpressionOperator.OnesComplement => OnesComplement(numeric),
             _ => throw Unsupported(operation)
         };
-        ManagedNumericKind resultKind = operation == DebugExpressionOperator.Negate &&
+        ManagedNumericKind resultKind = (operation is
+            DebugExpressionOperator.Negate or DebugExpressionOperator.CheckedNegate) &&
             numeric.Kind == ManagedNumericKind.UInt32
                 ? ManagedNumericKind.Int64
                 : numeric.Kind;
@@ -64,7 +66,7 @@ internal static class ManagedPrimitiveOperatorEvaluator
                 "bool");
         }
 
-        if (operation == DebugExpressionOperator.Add &&
+        if (operation is DebugExpressionOperator.Add or DebugExpressionOperator.CheckedAdd &&
             leftValue is string leftString && rightValue is string rightString)
         {
             return ManagedExpressionValueFactory.FromScalar(
@@ -176,8 +178,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         operation switch
         {
             DebugExpressionOperator.Add => unchecked(left + right),
+            DebugExpressionOperator.CheckedAdd => checked(left + right),
             DebugExpressionOperator.Subtract => unchecked(left - right),
+            DebugExpressionOperator.CheckedSubtract => checked(left - right),
             DebugExpressionOperator.Multiply => unchecked(left * right),
+            DebugExpressionOperator.CheckedMultiply => checked(left * right),
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             DebugExpressionOperator.BitwiseAnd => left & right,
@@ -190,8 +195,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         operation switch
         {
             DebugExpressionOperator.Add => unchecked(left + right),
+            DebugExpressionOperator.CheckedAdd => checked(left + right),
             DebugExpressionOperator.Subtract => unchecked(left - right),
+            DebugExpressionOperator.CheckedSubtract => checked(left - right),
             DebugExpressionOperator.Multiply => unchecked(left * right),
+            DebugExpressionOperator.CheckedMultiply => checked(left * right),
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             DebugExpressionOperator.BitwiseAnd => left & right,
@@ -204,8 +212,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         operation switch
         {
             DebugExpressionOperator.Add => unchecked(left + right),
+            DebugExpressionOperator.CheckedAdd => checked(left + right),
             DebugExpressionOperator.Subtract => unchecked(left - right),
+            DebugExpressionOperator.CheckedSubtract => checked(left - right),
             DebugExpressionOperator.Multiply => unchecked(left * right),
+            DebugExpressionOperator.CheckedMultiply => checked(left * right),
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             DebugExpressionOperator.BitwiseAnd => left & right,
@@ -218,8 +229,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         operation switch
         {
             DebugExpressionOperator.Add => unchecked(left + right),
+            DebugExpressionOperator.CheckedAdd => checked(left + right),
             DebugExpressionOperator.Subtract => unchecked(left - right),
+            DebugExpressionOperator.CheckedSubtract => checked(left - right),
             DebugExpressionOperator.Multiply => unchecked(left * right),
+            DebugExpressionOperator.CheckedMultiply => checked(left * right),
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             DebugExpressionOperator.BitwiseAnd => left & right,
@@ -232,8 +246,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         operation switch
         {
             DebugExpressionOperator.Add => left + right,
+            DebugExpressionOperator.CheckedAdd => left + right,
             DebugExpressionOperator.Subtract => left - right,
+            DebugExpressionOperator.CheckedSubtract => left - right,
             DebugExpressionOperator.Multiply => left * right,
+            DebugExpressionOperator.CheckedMultiply => left * right,
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             _ => throw Unsupported(operation)
@@ -245,8 +262,11 @@ internal static class ManagedPrimitiveOperatorEvaluator
         double right) => operation switch
         {
             DebugExpressionOperator.Add => left + right,
+            DebugExpressionOperator.CheckedAdd => left + right,
             DebugExpressionOperator.Subtract => left - right,
+            DebugExpressionOperator.CheckedSubtract => left - right,
             DebugExpressionOperator.Multiply => left * right,
+            DebugExpressionOperator.CheckedMultiply => left * right,
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             _ => throw Unsupported(operation)
@@ -258,37 +278,42 @@ internal static class ManagedPrimitiveOperatorEvaluator
         decimal right) => operation switch
         {
             DebugExpressionOperator.Add => left + right,
+            DebugExpressionOperator.CheckedAdd => left + right,
             DebugExpressionOperator.Subtract => left - right,
+            DebugExpressionOperator.CheckedSubtract => left - right,
             DebugExpressionOperator.Multiply => left * right,
+            DebugExpressionOperator.CheckedMultiply => left * right,
             DebugExpressionOperator.Divide => left / right,
             DebugExpressionOperator.Remainder => left % right,
             _ => throw Unsupported(operation)
         };
 
-    private static object Negate(ManagedNumericValue value) => value.Kind switch
-    {
-        ManagedNumericKind.Int32 => unchecked(-Convert.ToInt32(
-            value.Value,
-            CultureInfo.InvariantCulture)),
-        ManagedNumericKind.UInt32 => -Convert.ToInt64(
-            value.Value,
-            CultureInfo.InvariantCulture),
-        ManagedNumericKind.Int64 => unchecked(-Convert.ToInt64(
-            value.Value,
-            CultureInfo.InvariantCulture)),
-        ManagedNumericKind.UInt64 => throw new InvalidOperationException(
-            "Unary negation is not defined for UInt64."),
-        ManagedNumericKind.Single => -Convert.ToSingle(
-            value.Value,
-            CultureInfo.InvariantCulture),
-        ManagedNumericKind.Double => -Convert.ToDouble(
-            value.Value,
-            CultureInfo.InvariantCulture),
-        ManagedNumericKind.Decimal => -Convert.ToDecimal(
-            value.Value,
-            CultureInfo.InvariantCulture),
-        _ => throw new ArgumentOutOfRangeException(nameof(value))
-    };
+    private static object Negate(
+        ManagedNumericValue value,
+        bool isChecked) => value.Kind switch
+        {
+            ManagedNumericKind.Int32 => isChecked
+                ? checked(-Convert.ToInt32(value.Value, CultureInfo.InvariantCulture))
+                : unchecked(-Convert.ToInt32(value.Value, CultureInfo.InvariantCulture)),
+            ManagedNumericKind.UInt32 => -Convert.ToInt64(
+                value.Value,
+                CultureInfo.InvariantCulture),
+            ManagedNumericKind.Int64 => isChecked
+                ? checked(-Convert.ToInt64(value.Value, CultureInfo.InvariantCulture))
+                : unchecked(-Convert.ToInt64(value.Value, CultureInfo.InvariantCulture)),
+            ManagedNumericKind.UInt64 => throw new InvalidOperationException(
+                "Unary negation is not defined for UInt64."),
+            ManagedNumericKind.Single => -Convert.ToSingle(
+                value.Value,
+                CultureInfo.InvariantCulture),
+            ManagedNumericKind.Double => -Convert.ToDouble(
+                value.Value,
+                CultureInfo.InvariantCulture),
+            ManagedNumericKind.Decimal => -Convert.ToDecimal(
+                value.Value,
+                CultureInfo.InvariantCulture),
+            _ => throw new ArgumentOutOfRangeException(nameof(value))
+        };
 
     private static object OnesComplement(ManagedNumericValue value) => value.Kind switch
     {

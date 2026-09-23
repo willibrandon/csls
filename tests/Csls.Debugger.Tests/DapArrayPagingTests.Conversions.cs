@@ -509,6 +509,92 @@ public sealed partial class DapArrayPagingTests
                 StringComparison.OrdinalIgnoreCase);
         }
 
+        foreach ((string expression, string compilerExpression, string expected, string type) in new[]
+        {
+            ("unchecked(2147483647 + vector[0])",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.AddForDebugger(vector[0])",
+                "-2147483608", "int"),
+            ("unchecked(4294967295u + 1u)",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.AddUInt32ForDebugger(1u)",
+                "0", "uint"),
+            ("unchecked(9223372036854775807L + 1L)",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.AddInt64ForDebugger(1L)",
+                "-9223372036854775808", "long"),
+            ("unchecked(18446744073709551615UL + 1UL)",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.AddUInt64ForDebugger(1UL)",
+                "0", "ulong"),
+            ("unchecked((-2147483647 - 1) - vector[0])",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.SubtractForDebugger(vector[0])",
+                "2147483607", "int"),
+            ("unchecked(100000000 * vector[0])",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture.MultiplyForDebugger(vector[0])",
+                "-194967296", "int"),
+            ("unchecked(-(-2147483647 - 1))",
+                "Csls.TestProcessHost.DebuggerCheckedArithmeticFixture." +
+                    "NegateForDebugger(-2147483647 - 1)",
+                "-2147483648", "int")
+        })
+        {
+            JsonElement direct = await ReadEvaluationAsync(
+                client,
+                frameId,
+                expression,
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, direct.GetProperty("result").GetString());
+            Assert.AreEqual(type, direct.GetProperty("type").GetString());
+            JsonElement compiler = await ReadEvaluationAsync(
+                client,
+                frameId,
+                compilerExpression,
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, compiler.GetProperty("result").GetString());
+            using JsonDocument invalidated = await client.ReadMessageAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
+
+        foreach (string expression in new[]
+        {
+            "checked(2147483647 + vector[0])",
+            "checked(4294967295u + 1u)",
+            "checked(9223372036854775807L + 1L)",
+            "checked(18446744073709551615UL + 1UL)",
+            "checked((-2147483647 - 1) - vector[0])",
+            "checked(100000000 * vector[0])",
+            "checked(-(-2147483647 - 1))"
+        })
+        {
+            JsonElement overflow = await ReadEvaluationAsync(
+                client,
+                frameId,
+                expression,
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("overflow", Assert.IsInstanceOfType<string>(
+                overflow.GetProperty("message").GetString()),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        foreach ((string expression, string expected, string type) in new[]
+        {
+            ("checked(1.5f + 2.5f)", "4", "float"),
+            ("checked(1.5 + 2.5)", "4", "double"),
+            ("checked(1m + 2m)", "3", "decimal"),
+            ("checked(\"a\" + \"b\")", "\"ab\"", "string")
+        })
+        {
+            JsonElement unchanged = await ReadEvaluationAsync(
+                client,
+                frameId,
+                expression,
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(expected, unchanged.GetProperty("result").GetString());
+            Assert.AreEqual(type, unchanged.GetProperty("type").GetString());
+        }
+
         JsonElement emptyLiftedNumericResultValue = await ReadEvaluationAsync(
             client,
             frameId,
