@@ -173,6 +173,40 @@ internal static class DebuggerImplicitConversionFixture
         ((DebuggerExplicitConversionGenericDestination<IComparable>)source).Number;
 
     /// <summary>
+    /// Runs the compiler's exact unboxing before an explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The value-type-declared boxed primitive source.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static int CompilerExplicitUnboxedInputForDebugger(ValueType source) =>
+        ((DebuggerExplicitUnboxedInputDestination)source).Number;
+
+    /// <summary>
+    /// Runs the compiler's exact authored-struct unboxing before an explicit conversion operator.
+    /// </summary>
+    /// <param name="source">The value-type-declared boxed authored value source.</param>
+    /// <returns>The number carried through the explicit conversion.</returns>
+    internal static int CompilerExplicitUnboxedStructInputForDebugger(ValueType source) =>
+        ((DebuggerExplicitUnboxedStructInputDestination)source).Number;
+
+    /// <summary>
+    /// Verifies that a direct built-in object cast takes precedence over user-defined conversion lookup.
+    /// </summary>
+    /// <param name="source">The object-declared boxed primitive source.</param>
+    /// <returns>True when the compiler-selected built-in cast rejects the runtime value.</returns>
+    internal static bool CompilerExplicitObjectInputUsesBuiltInForDebugger(object source)
+    {
+        try
+        {
+            _ = (DebuggerExplicitUnboxedInputDestination)source;
+            return false;
+        }
+        catch (InvalidCastException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Runs the compiler's numeric narrowing before an explicit conversion operator.
     /// </summary>
     /// <param name="source">The primitive source value.</param>

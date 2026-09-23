@@ -34,8 +34,24 @@ internal sealed partial class CorDebugDebuggee
                     "A converted function argument has no retained runtime value.");
         }
 
-        if (!argument.HasScalar && argument.RuntimeValueReference > 0 ||
-            argument.HasScalar && argument.Scalar is string)
+        if (argument.RequiresUnboxing)
+        {
+            if (runtimeArgument == 0 ||
+                !TryDereferenceAndUnboxValue(runtimeArgument, out nint unboxed))
+            {
+                throw new InvalidOperationException(
+                    "An explicitly unboxed function argument has no value storage.");
+            }
+
+            temporaryArguments.Add(unboxed);
+            return unboxed;
+        }
+
+        bool hasCapturedRuntimeReference = argument.RuntimeValueReference > 0;
+        bool usesCapturedRuntimeReference = hasCapturedRuntimeReference &&
+            (argument.DeclaredType is { IsReference: true } || !argument.HasScalar);
+        bool usesMaterializedString = argument.HasScalar && argument.Scalar is string;
+        if (usesCapturedRuntimeReference || usesMaterializedString)
         {
             return runtimeArgument != 0
                 ? runtimeArgument

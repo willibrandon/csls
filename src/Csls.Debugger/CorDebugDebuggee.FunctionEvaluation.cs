@@ -357,7 +357,9 @@ internal sealed partial class CorDebugDebuggee
             {
                 if (suppliedArguments[index] is
                     { RuntimeValueReference: > 0 } argument &&
-                    (!argument.HasScalar || argument.Scalar is string || argument.RequiresNullableMaterialization))
+                    (argument.DeclaredType is { IsReference: true } ||
+                     !argument.HasScalar || argument.Scalar is string ||
+                     argument.RequiresNullableMaterialization || argument.RequiresUnboxing))
                 {
                     (runtimeArguments[index], runtimeArgumentIsHeapHandle[index]) =
                         RetainFunctionEvaluationArgument(GetRuntimeValue(argument));

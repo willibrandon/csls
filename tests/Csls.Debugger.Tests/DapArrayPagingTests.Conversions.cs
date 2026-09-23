@@ -206,6 +206,43 @@ public sealed partial class DapArrayPagingTests
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
                 "CompilerExplicitReferenceResultDowncastForDebugger(explicitReferenceResultSource)",
             "41").ConfigureAwait(false);
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitUnboxedInputDestination)boxedIntegerValue",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitUnboxedInputForDebugger(boxedIntegerValue)",
+            "47").ConfigureAwait(false);
+        await AssertExplicitConversionAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitUnboxedStructInputDestination)boxedStructValue",
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitUnboxedStructInputForDebugger(boxedStructValue)",
+            "41").ConfigureAwait(false);
+
+        JsonElement directObjectCast = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitUnboxedInputDestination)boxedNullableValue",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("cannot be cast", Assert.IsInstanceOfType<string>(
+            directObjectCast.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
+        JsonElement compilerDirectObjectCast = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "Csls.TestProcessHost.DebuggerImplicitConversionFixture." +
+                "CompilerExplicitObjectInputUsesBuiltInForDebugger(boxedNullableValue)",
+            success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("true", compilerDirectObjectCast.GetProperty("result").GetString());
+        using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false))
+        {
+            AssertEvent(invalidated.RootElement, "invalidated");
+        }
 
         JsonElement nonStandardNumericBridge = await ReadEvaluationAsync(
             client,
@@ -228,6 +265,17 @@ public sealed partial class DapArrayPagingTests
             invalidReferenceInput.GetProperty("message").GetString()),
             StringComparison.OrdinalIgnoreCase);
 
+        JsonElement invalidUnboxedInput = await ReadEvaluationAsync(
+            client,
+            frameId,
+            "(Csls.TestProcessHost.DebuggerExplicitUnboxedInputDestination)" +
+                "boxedDecimalValue",
+            success: false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("cannot be unboxed", Assert.IsInstanceOfType<string>(
+            invalidUnboxedInput.GetProperty("message").GetString()),
+            StringComparison.OrdinalIgnoreCase);
+
         JsonElement invalidReferenceResult = await ReadEvaluationAsync(
             client,
             frameId,
@@ -247,7 +295,7 @@ public sealed partial class DapArrayPagingTests
         JsonElement finalCount = await ReadEvaluationAsync(client, frameId,
             "Csls.TestProcessHost.DebuggerImplicitConversionFixture.GetConversionCountForDebugger()",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("37", finalCount.GetProperty("result").GetString());
+        Assert.AreEqual("41", finalCount.GetProperty("result").GetString());
         using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false))
         {

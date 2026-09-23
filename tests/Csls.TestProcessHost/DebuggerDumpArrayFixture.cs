@@ -899,6 +899,9 @@ internal static class DebuggerDumpArrayFixture
         object? boxedNullableEmpty = null;
         object boxedNullableMismatch = "not an integer";
         object boxedNullableStruct = new DebuggerOptionalStructFixture();
+        ValueType boxedIntegerValue = 47;
+        ValueType boxedDecimalValue = 47m;
+        ValueType boxedStructValue = new DebuggerOptionalStructFixture();
         DebuggerImplicitConversionSource implicitConversion = new(41);
         DebuggerImplicitConversionSource emptyImplicitConversion = new(0);
         DebuggerImplicitConversionSource throwingImplicitConversion = new(-1);
@@ -958,6 +961,9 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(boxedNullableEmpty);
         GC.KeepAlive(boxedNullableMismatch);
         GC.KeepAlive(boxedNullableStruct);
+        GC.KeepAlive(boxedIntegerValue);
+        GC.KeepAlive(boxedDecimalValue);
+        GC.KeepAlive(boxedStructValue);
         GC.KeepAlive(implicitConversion);
         GC.KeepAlive(emptyImplicitConversion);
         GC.KeepAlive(throwingImplicitConversion);

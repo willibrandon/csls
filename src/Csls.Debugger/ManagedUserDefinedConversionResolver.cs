@@ -91,6 +91,8 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType destination)
     {
         if (source.IsSameType(destination) || source.IsArray || destination.IsArray ||
+            _referenceConversions.IsExplicit(source, destination, _thread) ||
+            HasSupportedStandardUnboxingConversion(source, destination) ||
             (_types.GetAttributes(source) & TypeAttributes.Interface) != 0 ||
             (_types.GetAttributes(destination) & TypeAttributes.Interface) != 0)
         {
@@ -402,6 +404,7 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType source,
         ManagedBoundType destination) => HasStandardImplicitConversion(source, destination) ||
         HasStandardExplicitReferenceConversion(source, destination) ||
+        HasSupportedStandardUnboxingConversion(source, destination) ||
         ManagedPrimitiveConversionEvaluator.IsStandardExplicitUserDefinedConversion(
             source, destination, _language);
 
@@ -417,4 +420,10 @@ internal sealed class ManagedUserDefinedConversionResolver
         ManagedBoundType source,
         ManagedBoundType destination) => source.IsReference && destination.IsReference &&
         _referenceConversions.IsImplicit(destination, source, _thread);
+
+    private bool HasSupportedStandardUnboxingConversion(
+        ManagedBoundType source,
+        ManagedBoundType destination) => source.IsReference && !destination.IsReference &&
+        !_types.IsCoreType(destination, "System.Nullable`1", _thread) &&
+        _referenceConversions.IsImplicitBoxing(destination, source, _thread);
 }

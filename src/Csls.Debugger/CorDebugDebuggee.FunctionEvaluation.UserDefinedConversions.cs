@@ -123,6 +123,43 @@ internal sealed partial class CorDebugDebuggee
             };
         }
 
+        if (sourceType.IsReference && !conversion.ParameterType.IsReference &&
+            !_boundTypes.IsCoreType(conversion.ParameterType, "System.Nullable`1", thread) &&
+            referenceConversions.IsImplicitBoxing(
+                conversion.ParameterType, sourceType, thread))
+        {
+            if (value is { HasScalar: true, Scalar: null } ||
+                value.RuntimeValueReference <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"A null reference cannot be unboxed to " +
+                    $"'{conversion.ParameterType.DisplayName}'.");
+            }
+
+            ManagedBoundType actual = _boundTypes.CaptureValue(
+                GetRuntimeValue(value), thread);
+            if (!actual.IsSameType(conversion.ParameterType))
+            {
+                throw new InvalidOperationException(
+                    $"The boxed runtime value has type '{actual.DisplayName}', which cannot be " +
+                        $"unboxed to '{conversion.ParameterType.DisplayName}'.");
+            }
+
+            bool requiresValueStorage = conversion.ParameterType.ElementType == 0x11;
+            if (!requiresValueStorage && !value.HasScalar)
+            {
+                throw new InvalidOperationException(
+                    $"The boxed primitive '{conversion.ParameterType.DisplayName}' cannot be decoded.");
+            }
+
+            return value with
+            {
+                DeclaredType = conversion.ParameterType,
+                ExplicitReceiverType = conversion.ParameterType,
+                RequiresUnboxing = requiresValueStorage
+            };
+        }
+
         if (referenceConversions.IsImplicitBoxing(
             sourceType, conversion.ParameterType, thread))
         {

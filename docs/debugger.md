@@ -181,7 +181,7 @@ reference conversions around the operator and boxing into constructed generic op
 parameters, then execute as supervised target-code stages before the selected call. Lifted
 nullable conversions invoke the operator for populated values and propagate null directly.
 Explicit casts select loaded explicit or implicit conversion operators, apply standard numeric and
-reference conversions around the operator, and box operator inputs when required. They require
+reference conversions around the operator, and box or unbox operator inputs when required. They require
 target-code authorization and can supply generation-safe direct assignment. Direct assignments update
 stopped target storage.
 
